@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RebOnly - Session de Formation en Direct</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    }
+    body {
+      background: #090a0f;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #11141d;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.25rem;
+      color: #10b981;
+    }
+    .badge-live {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 0.2rem 0.6rem;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .badge-live::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: #ef4444;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #ef4444;
+    }
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.5rem;
+    }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: #11141d;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.5rem;
+    }
+    .video-placeholder {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #181c28;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      margin-bottom: 1.25rem;
+    }
+    .video-icon {
+      width: 60px;
+      height: 60px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+    .notes-list {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .note-item {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      border-left: 3px solid #10b981;
+      font-size: 0.88rem;
+    }
+    .hint-box {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-top: 1.5rem;
+    }
+    .hint-box h3 {
+      color: #10b981;
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="/img/icon.png" width="32" height="32" alt="Logo">
+      <span>RebOnly Academy</span>
+    </div>
+    <div class="badge-live">Direct Formateur</div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="video-placeholder">
+        <div class="video-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </div>
+        <p style="font-weight: 600; color: #cbd5e1;">Module 3 : Maîtrise des Architectures Cloud & Souveraines</p>
+      </div>
+
+      <h1>Session Interactive RebOnly</h1>
+      <p>Cette page de test intègre le widget direct DigiCom. Cliquez sur le bouton en bas à droite pour envoyer un message ou un signal SOS en direct à votre formateur.</p>
+
+      <div class="hint-box">
+        <h3>🧪 Test du Widget RebOnly</h3>
+        <p>1. Cliquez sur le bouton rond en bas à droite pour ouvrir la bulle.</p>
+        <p>2. Tapez un message de test et envoyez-le.</p>
+        <p>3. Ouvrez votre application <strong>DigiCom</strong> dans un autre onglet : le message apparaîtra instantanément dans le canal de Support avec toutes les informations de ce cours !</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">Ressources du Cours</h2>
+      <div class="notes-list">
+        <div class="note-item">📚 Guide d'architecture temps réel</div>
+        <div class="note-item">🔐 Clés de chiffrement souveraines</div>
+        <div class="note-item">⚡ Déploiement VPS automatisé</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- REBONLY SOS WIDGET INTEGRATION -->
+  <script>
+    window.RebOnlyConfig = {
+      serverUrl: window.location.origin,
+      trainerName: "Étudiant RebOnly Demo",
+      courseTitle: "Module 3 : Architectures Cloud & Souveraineté",
+      position: "bottom-right"
+    };
+  </script>
+  <script src="/widget/rebonly-widget.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+services:
+  digicom:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: digicom
+    restart: always
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - JWT_SECRET=digicom_ultra_secure_jwt_key_prod_2026
+    volumes:
+      - ./server/data:/app/server/data
+      - ./public:/app/public
+      - ./widget:/app/widget
+      - /root/.ssh/id_ed25519_digicom:/root/.ssh/id_ed25519_digicom:ro
+    networks:
+      - n8n_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.digicom.rule=Host(`chat.digiroys.com`)"
+      - "traefik.http.routers.digicom.entrypoints=websecure"
+      - "traefik.http.routers.digicom.tls=true"
+      - "traefik.http.routers.digicom.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.digicom.loadbalancer.server.port=3000"
+
+networks:
+  n8n_default:
+    external: true

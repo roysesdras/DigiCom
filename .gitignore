@@ -1,0 +1,20 @@
+# Node dependencies
+node_modules/
+server/node_modules/
+package-lock.json
+
+# Persistent data & databases
+server/data/*.db
+server/data/*.db-journal
+server/data/vapid.json
+server/data/uploads/
+
+# Environment and sensitive keys
+.env
+.ssh/
+*.log
+
+# OS & IDE metadata
+.DS_Store
+.vscode/
+.idea/
