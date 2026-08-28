@@ -2,16 +2,18 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1090';
+const CACHE_NAME = 'digicom-pwa-v1097';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/css/style.css',
   '/fonts/plus-jakarta-sans-latin.woff2',
   '/socket.io/socket.io.js',
+  '/js/qrcode.js',
   '/js/idb-store.js',
-  '/js/app.js',
   '/js/push-client.js',
+  '/js/webrtc-call.js',
+  '/js/app.js',
   '/img/bubble.jpeg',
   '/img/bot.png',
   '/img/icon-192.png',
@@ -172,7 +174,9 @@ self.addEventListener('notificationclick', (event) => {
   const notifData = (event.notification && event.notification.data) || {};
   let targetUrl = self.location.origin;
 
-  if (notifData.salonId) {
+  if (notifData.openRequests || notifData.type === 'contact_request') {
+    targetUrl = new URL('/?openRequests=true', self.location.origin).href;
+  } else if (notifData.salonId) {
     targetUrl = new URL(`/?salon=${encodeURIComponent(notifData.salonId)}`, self.location.origin).href;
   } else if (notifData.senderId && (notifData.channel === 'support' || notifData.channel === 'sos')) {
     targetUrl = new URL(`/?channel=support&sender=${encodeURIComponent(notifData.senderId)}`, self.location.origin).href;

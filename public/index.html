@@ -14,7 +14,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/style.css?v=1090">
+  <link rel="stylesheet" href="/css/style.css?v=1097">
 </head>
 
 <body>
@@ -48,7 +48,7 @@
               <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             </svg>
           </button>
-          <button type="button" class="action-btn" id="btn-add-contact" title="Ajouter un contact / Partager mon pseudo" aria-label="Ajouter contact">
+          <button type="button" class="action-btn" id="btn-add-contact" title="Ajouter un contact / Connexions" aria-label="Ajouter contact">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -56,6 +56,7 @@
               <line x1="20" y1="8" x2="20" y2="14"></line>
               <line x1="17" y1="11" x2="23" y2="11"></line>
             </svg>
+            <span class="action-btn-badge action-btn-badge-hidden" id="btn-add-contact-badge">0</span>
           </button>
           <button type="button" class="action-btn" id="btn-admin-manage" title="Gérer les membres"
             style="display: none;" aria-label="Membres">
@@ -96,41 +97,34 @@
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="sidebar-tabs">
-        <button type="button" class="tab-btn active" id="tab-btn-contacts">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          <span>Discussions</span>
-          <span class="tab-badge" id="contacts-badge" style="display: none;">0</span>
-        </button>
-        <button type="button" class="tab-btn" id="tab-btn-salons">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-          </svg>
-          <span>Salons</span>
-          <span class="tab-badge" id="salons-badge" style="display: none;">0</span>
-        </button>
-        <button type="button" class="tab-btn" id="tab-btn-support" style="display: none;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span>Supp SOS</span>
-          <span class="tab-badge" id="support-badge" style="display: none;">0</span>
-        </button>
+      <!-- Navigation Tabs (Horizontally Scrollable Pill Filters) -->
+      <div class="sidebar-tabs-container">
+        <div class="sidebar-tabs-scroll" id="sidebar-tabs-row">
+          <button type="button" class="tab-btn active" id="tab-btn-all" data-tab="all">
+            <span>Toutes</span>
+            <span class="tab-badge" id="all-badge" style="display: none;">0</span>
+          </button>
+          <button type="button" class="tab-btn" id="tab-btn-contacts" data-tab="contacts">
+            <span>Discussions</span>
+            <span class="tab-badge" id="contacts-badge" style="display: none;">0</span>
+          </button>
+          <button type="button" class="tab-btn" id="tab-btn-salons" data-tab="salons">
+            <span>Salons</span>
+            <span class="tab-badge" id="salons-badge" style="display: none;">0</span>
+          </button>
+          <button type="button" class="tab-btn" id="tab-btn-support" data-tab="support" style="display: none;">
+            <span>Supp SOS</span>
+            <span class="tab-badge" id="support-badge" style="display: none;">0</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Contacts & Salons Container -->
-      <div class="contacts-feed" id="contacts-list-container">
+      <!-- Feeds Containers -->
+      <div class="contacts-feed" id="all-list-container">
+        <!-- All conversations combined dynamically -->
+      </div>
+
+      <div class="contacts-feed" id="contacts-list-container" style="display: none;">
         <!-- Contacts rendered dynamically -->
       </div>
 
@@ -146,6 +140,10 @@
           </button>
         </div>
         <div id="salons-cards-list"></div>
+      </div>
+
+      <div class="contacts-feed" id="support-list-container" style="display: none;">
+        <!-- Support SOS tickets rendered dynamically -->
       </div>
     </aside>
 
@@ -519,9 +517,19 @@
 
   <!-- MODAL: Search & Add Contact -->
   <div class="modal-backdrop" id="add-contact-modal">
-    <div class="glass-modal">
+    <div class="glass-modal add-contact-modal-custom">
       <div class="modal-top">
-        <h3>Ajouter un Contact</h3>
+        <div class="modal-title-with-icon">
+          <div class="modal-icon-badge contact-modal-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+          </div>
+          <h3>Connexions &amp; Contacts</h3>
+        </div>
         <button type="button" class="btn-close" id="btn-close-add-contact-modal" aria-label="Fermer">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -530,50 +538,111 @@
         </button>
       </div>
 
-      <!-- Full Width User Profile & Invitation Widget -->
-      <div class="my-username-banner" id="my-username-banner">
-        <div class="banner-user-info">
-          <span class="banner-label">Mon pseudo :</span>
-          <strong id="my-username-tag">@...</strong>
-        </div>
-        <div class="banner-buttons">
-          <button type="button" class="btn-copy-username" id="btn-copy-my-username" title="Copier mon pseudo">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-            Copier pseudo
-          </button>
-          <button type="button" class="btn-copy-username btn-invite-link" id="btn-copy-invite-link" title="Copier le lien d'invitation direct">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-            </svg>
-            Lien d'invitation
-          </button>
-        </div>
-      </div>
-
-      <div id="add-contact-search-section">
-        <div class="search-box search-box-modal">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Add Contact Modal Navigation Tabs -->
+      <div class="modal-tabs-nav">
+        <button type="button" class="modal-tab-btn active" id="modal-tab-qr" data-tab="qr">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          QR
+        </button>
+        <button type="button" class="modal-tab-btn" id="modal-tab-exact" data-tab="exact">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <textarea id="contact-search-input" name="digicom_search_query" class="search-box-textarea" placeholder="Saisir un @pseudo (ex: alex)..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-form-type="other" inputmode="search"></textarea>
-        </div>
+          @pseudo
+        </button>
+        <button type="button" class="modal-tab-btn" id="modal-tab-requests" data-tab="requests">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          Dem.
+          <span id="modal-requests-badge" class="modal-badge-count modal-badge-hidden">0</span>
+        </button>
+      </div>
 
-        <div id="contact-search-results" class="users-list-scroll contact-search-scroll">
+      <!-- Panel 1: Mon QR Code & Lien Direct -->
+      <div id="modal-panel-qr" class="modal-subpanel">
+        <div class="qr-presentation-card">
+          <div class="qr-code-canvas-container" id="user-qr-code-box">
+            <!-- QR Code SVG generated dynamically -->
+          </div>
+          <div class="qr-user-badge">
+            <span class="qr-user-label">Votre carte de contact :</span>
+            <strong id="my-username-tag" class="qr-username-text">@...</strong>
+          </div>
+          <p class="qr-subtitle">Faites scanner ce QR Code ou partagez votre lien pour vous connecter instantanément.</p>
+          <div class="qr-action-buttons">
+            <button type="button" class="btn-copy-username" id="btn-copy-my-username" title="Copier mon pseudo">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copier pseudo
+            </button>
+            <button type="button" class="btn-copy-username btn-invite-link" id="btn-copy-invite-link" title="Copier le lien d'invitation direct">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+              Copier le lien direct
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 2: Ajouter par @pseudo exact (Sans annuaire public) -->
+      <div id="modal-panel-exact" class="modal-subpanel subpanel-hidden">
+        <div class="exact-search-container">
+          <p class="exact-search-hint">
+            Saisissez le <strong>@pseudo exact</strong> de votre contact pour lui envoyer une demande :
+          </p>
+          <form id="form-exact-contact-search" class="exact-search-form">
+            <div class="search-box search-box-modal exact-input-wrap">
+              <span class="exact-at-prefix">@</span>
+              <input type="text" id="contact-exact-input" class="search-box-input" placeholder="pseudo_exact" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" required>
+            </div>
+            <button type="submit" class="btn-submit-modal btn-search-exact-compact" id="btn-search-exact">Search</button>
+          </form>
+          <div id="exact-search-feedback" class="exact-feedback-area"></div>
+        </div>
+      </div>
+
+      <!-- Panel 3: Demandes reçues en attente -->
+      <div id="modal-panel-requests" class="modal-subpanel subpanel-hidden">
+        <div id="pending-requests-container" class="pending-requests-list">
           <div class="contact-search-placeholder">
             <div class="placeholder-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </div>
-            <div>Saisissez le <strong>@pseudo</strong> d'un ami pour l'ajouter à vos discussions.</div>
+            <div>Aucune demande de contact en attente.</div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Confirmation d'invitation directe / QR Code -->
+  <div class="modal-backdrop modal-invite-backdrop" id="confirm-invite-modal">
+    <div class="glass-modal confirm-invite-box">
+      <div class="confirm-invite-header">
+        <div class="confirm-invite-avatar" id="confirm-invite-avatar">?</div>
+        <h3 id="confirm-invite-name">Utilisateur</h3>
+        <div id="confirm-invite-tag" class="confirm-invite-username">@pseudo</div>
+      </div>
+      <p class="confirm-invite-text">
+        Souhaitez-vous ajouter cette personne à vos contacts pour commencer à discuter de manière souveraine et chiffrée ?
+      </p>
+      <div class="modal-actions-row">
+        <button type="button" class="btn-cancel-modal" id="btn-reject-direct-invite">Rejet</button>
+        <button type="button" class="btn-submit-modal" id="btn-accept-direct-invite">Confirm</button>
       </div>
     </div>
   </div>
@@ -902,11 +971,12 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/socket.io/socket.io.js?v=1090"></script>
-  <script src="/js/idb-store.js?v=1090"></script>
-  <script src="/js/push-client.js?v=1090"></script>
-  <script src="/js/webrtc-call.js?v=1090"></script>
-  <script src="/js/app.js?v=1090"></script>
+  <script src="/socket.io/socket.io.js?v=1097"></script>
+  <script src="/js/qrcode.js?v=1097"></script>
+  <script src="/js/idb-store.js?v=1097"></script>
+  <script src="/js/push-client.js?v=1097"></script>
+  <script src="/js/webrtc-call.js?v=1097"></script>
+  <script src="/js/app.js?v=1097"></script>
 </body>
 
 </html>

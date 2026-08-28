@@ -303,7 +303,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// 3c. Contact Management Endpoints (Admin Restricted for Sovereign Directory Protection)
+// 3c. Contact Management Endpoints
 app.get('/api/contacts/search', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -315,6 +315,199 @@ app.get('/api/contacts/search', authenticateToken, async (req, res) => {
     }
     const users = await db.searchUsers(query, req.user.id);
     res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/find-exact', authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Nom d\'utilisateur requis' });
+    }
+    const cleanUsername = username.trim().replace(/^@/, '');
+    const user = await db.getUserByExactUsername(cleanUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Aucun utilisateur trouvé avec ce @pseudo exact' });
+    }
+    if (user.id === req.user.id) {
+      return res.status(400).json({ error: 'Il s\'agit de votre propre compte' });
+    }
+    const isContact = await db.areUsersContacts(req.user.id, user.id);
+    const existingReq = await db.getPendingContactRequests(user.id);
+    const hasPendingSent = existingReq.some(r => r.sender_id === req.user.id);
+    const myIncoming = await db.getPendingContactRequests(req.user.id);
+    const incomingReq = myIncoming.find(r => r.sender_id === user.id);
+
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+        role: user.role
+      },
+      isContact,
+      hasPendingSent,
+      incomingRequestId: incomingReq ? incomingReq.request_id : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/request', authenticateToken, async (req, res) => {
+  try {
+    const { username, targetUserId } = req.body;
+    let targetUser = null;
+    if (targetUserId) {
+      targetUser = await db.getUserById(targetUserId);
+    } else if (username) {
+      targetUser = await db.getUserByExactUsername(username);
+    }
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+    if (targetUser.id === req.user.id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas vous ajouter vous-même' });
+    }
+
+    const result = await db.createContactRequest(req.user.id, targetUser.id);
+    const sender = await db.getUserById(req.user.id);
+
+    if (result.autoAccepted) {
+      io.to(`user_${req.user.id}`).emit('contact_added', { contact: targetUser });
+      io.to(`user_${targetUser.id}`).emit('contact_added', { contact: sender });
+      io.to(`user_${req.user.id}`).emit('contact_request_accepted', { contact: targetUser, requestId: result.requestId });
+      io.to(`user_${targetUser.id}`).emit('contact_request_accepted', { contact: sender, requestId: result.requestId });
+
+      return res.json({ success: true, autoAccepted: true, contact: targetUser });
+    }
+
+    // Emit Socket notification to receiver
+    io.to(`user_${targetUser.id}`).emit('new_contact_request', {
+      requestId: result.requestId,
+      sender: {
+        id: sender.id,
+        username: sender.username,
+        displayName: sender.display_name,
+        role: sender.role
+      }
+    });
+
+    // Send Web Push notification to receiver
+    pushService.sendNotificationToUser(targetUser.id, {
+      title: 'Nouvelle demande de contact',
+      body: `${sender.display_name || sender.username} (@${sender.username}) souhaite vous ajouter à ses contacts.`,
+      icon: '/img/icon-192.png',
+      badge: '/img/badge-72.png',
+      data: {
+        url: '/?openRequests=true',
+        openRequests: true,
+        type: 'contact_request',
+        senderId: sender.id
+      }
+    }).catch(e => console.error('[-] Push error for contact request:', e));
+
+    res.json({ success: true, autoAccepted: false, requestId: result.requestId });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/contacts/requests/pending', authenticateToken, async (req, res) => {
+  try {
+    const requests = await db.getPendingContactRequests(req.user.id);
+    res.json({ requests });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/requests/:id/accept', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = await db.acceptContactRequest(id, req.user.id);
+    const sender = await db.getUserById(request.sender_id);
+    const receiver = await db.getUserById(request.receiver_id);
+
+    // Notify both users in real-time
+    io.to(`user_${request.sender_id}`).emit('contact_added', { contact: receiver });
+    io.to(`user_${request.receiver_id}`).emit('contact_added', { contact: sender });
+    io.to(`user_${request.sender_id}`).emit('contact_request_accepted', { contact: receiver, requestId: id });
+    io.to(`user_${request.receiver_id}`).emit('contact_request_accepted', { contact: sender, requestId: id });
+
+    // Send push notification to sender that request was accepted
+    pushService.sendNotificationToUser(request.sender_id, {
+      title: 'Demande de contact acceptée',
+      body: `Votre demande à @${receiver.username} a été acceptée.`,
+      icon: '/img/icon-192.png',
+      badge: '/img/badge-72.png',
+      data: { url: `/?contact=${receiver.id}` }
+    }).catch(e => console.error('[-] Push error for accepted request:', e));
+
+    res.json({ success: true, contact: sender });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/requests/:id/reject', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = await db.getContactRequestById(id);
+    if (!request) {
+      return res.status(404).json({ error: 'Demande introuvable' });
+    }
+    await db.rejectContactRequest(id, req.user.id);
+
+    const sender = await db.getUserById(request.sender_id);
+    const receiver = await db.getUserById(request.receiver_id);
+
+    // Notify sender in real-time about rejection
+    io.to(`user_${request.sender_id}`).emit('contact_request_rejected', {
+      receiver: {
+        id: receiver ? receiver.id : request.receiver_id,
+        username: receiver ? receiver.username : 'contact',
+        displayName: receiver ? (receiver.display_name || receiver.username) : 'contact'
+      },
+      requestId: id
+    });
+
+    // Send push notification to sender that request was rejected
+    if (receiver) {
+      pushService.sendNotificationToUser(request.sender_id, {
+        title: 'Demande de contact refusée',
+        body: `Votre demande à @${receiver.username} a été refusée.`,
+        icon: '/img/icon-192.png',
+        badge: '/img/badge-72.png',
+        data: { url: '/?tab=contacts' }
+      }).catch(e => console.error('[-] Push error for rejected request:', e));
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/contacts/invite-info/:username', authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.params;
+    const user = await db.getUserByExactUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+    const isContact = await db.areUsersContacts(req.user.id, user.id);
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+        role: user.role
+      },
+      isContact
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -115,6 +115,19 @@ async function initTables() {
   `);
   await run(`CREATE INDEX IF NOT EXISTS idx_user_contacts_user ON user_contacts(user_id)`);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS contact_requests (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(sender_id, receiver_id)
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_contact_req_receiver ON contact_requests(receiver_id, status)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_contact_req_sender ON contact_requests(sender_id, status)`);
+
   // Auto-migration: Populate user_contacts from existing messages so no existing conversations are lost
   try {
     await run(`
@@ -411,14 +424,110 @@ async function searchUsers(query, currentUserId) {
   );
 }
 
+async function areUsersContacts(userAId, userBId) {
+  if (!userAId || !userBId || userAId === userBId) return false;
+  const row = await get(
+    `SELECT 1 FROM user_contacts WHERE user_id = ? AND contact_id = ?`,
+    [userAId, userBId]
+  );
+  return Boolean(row);
+}
+
+async function getUserByExactUsername(username) {
+  if (!username) return null;
+  const clean = username.toLowerCase().trim().replace(/^@/, '');
+  return await get(`SELECT id, username, display_name, role, created_at FROM users WHERE LOWER(username) = ?`, [clean]);
+}
+
+async function createContactRequest(senderId, receiverId) {
+  if (!senderId || !receiverId || senderId === receiverId) {
+    throw new Error('Action non valide');
+  }
+  const isAlready = await areUsersContacts(senderId, receiverId);
+  if (isAlready) {
+    throw new Error('Cet utilisateur est déjà dans vos contacts');
+  }
+
+  // Check if there is an inverse pending request
+  const inverse = await get(
+    `SELECT * FROM contact_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'`,
+    [receiverId, senderId]
+  );
+  if (inverse) {
+    await addContact(senderId, receiverId);
+    await run(`UPDATE contact_requests SET status = 'accepted' WHERE id = ?`, [inverse.id]);
+    return { autoAccepted: true, requestId: inverse.id };
+  }
+
+  const reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  await run(
+    `INSERT INTO contact_requests (id, sender_id, receiver_id, status, created_at)
+     VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP)
+     ON CONFLICT(sender_id, receiver_id) DO UPDATE SET status = 'pending', created_at = CURRENT_TIMESTAMP`,
+    [reqId, senderId, receiverId]
+  );
+  return { autoAccepted: false, requestId: reqId };
+}
+
+async function getPendingContactRequests(receiverId) {
+  return await all(
+    `SELECT cr.id as request_id, cr.created_at, u.id as sender_id, u.username, u.display_name, u.role
+     FROM contact_requests cr
+     JOIN users u ON cr.sender_id = u.id
+     WHERE cr.receiver_id = ? AND cr.status = 'pending'
+     ORDER BY cr.created_at DESC`,
+    [receiverId]
+  );
+}
+
+async function getContactRequestById(requestId) {
+  return await get(`SELECT * FROM contact_requests WHERE id = ?`, [requestId]);
+}
+
+async function acceptContactRequest(requestId, receiverId) {
+  const req = await get(
+    `SELECT * FROM contact_requests WHERE id = ? AND receiver_id = ?`,
+    [requestId, receiverId]
+  );
+  if (!req) throw new Error('Demande introuvable');
+  if (req.status === 'accepted') return req;
+
+  await addContact(req.sender_id, req.receiver_id);
+  await run(`UPDATE contact_requests SET status = 'accepted' WHERE id = ?`, [requestId]);
+  return req;
+}
+
+async function rejectContactRequest(requestId, receiverId) {
+  const req = await get(
+    `SELECT * FROM contact_requests WHERE id = ? AND receiver_id = ?`,
+    [requestId, receiverId]
+  );
+  if (!req) throw new Error('Demande introuvable');
+  await run(`UPDATE contact_requests SET status = 'rejected' WHERE id = ?`, [requestId]);
+  return req;
+}
+
 async function getContactsForUser(currentUserId, currentUserRole = 'family') {
   const contacts = await all(
-    `SELECT DISTINCT u.id, u.username, u.display_name, u.role, u.created_at
+    `SELECT DISTINCT 
+       u.id, u.username, u.display_name, u.role, u.created_at,
+       m.content AS last_message,
+       m.timestamp AS last_message_time,
+       m.sender_id AS last_sender_id,
+       m.is_read AS last_is_read
      FROM users u
      INNER JOIN user_contacts uc ON uc.contact_id = u.id
+     LEFT JOIN messages m ON m.id = (
+       SELECT id FROM messages
+       WHERE channel_type = 'private'
+         AND ((sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?))
+         AND (deleted_scope IS NULL OR deleted_scope != 'all')
+       ORDER BY timestamp DESC
+       LIMIT 1
+     )
      WHERE uc.user_id = ? AND u.id != ?
-     ORDER BY u.display_name ASC`,
-    [currentUserId, currentUserId]
+     ORDER BY COALESCE(m.timestamp, u.created_at) DESC`,
+    [currentUserId, currentUserId, currentUserId, currentUserId]
   );
 
   const unreadCounts = await getUnreadCountsForUser(currentUserId);
@@ -429,7 +538,7 @@ async function getContactsForUser(currentUserId, currentUserRole = 'family') {
 }
 
 async function getSupportConversations() {
-  return await all(`
+  const rows = await all(`
     SELECT 
       CASE 
         WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
@@ -449,6 +558,24 @@ async function getSupportConversations() {
       END
     ORDER BY last_activity DESC
   `);
+
+  for (const r of rows) {
+    const lastMsg = await get(`
+      SELECT content, timestamp, sender_id, is_read
+      FROM messages
+      WHERE channel_type = 'support' AND (sender_id = ? OR receiver_id = ?)
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `, [r.sender_id, r.sender_id]);
+    if (lastMsg) {
+      r.last_message = lastMsg.content;
+      r.last_message_at = lastMsg.timestamp;
+      r.last_sender_id = lastMsg.sender_id;
+      r.last_is_read = lastMsg.is_read;
+    }
+  }
+
+  return rows;
 }
 
 async function createSalon({ id, name, description, icon, created_by, memberIds = [] }) {
@@ -457,18 +584,10 @@ async function createSalon({ id, name, description, icon, created_by, memberIds 
     [id, name, description || '', icon || '🛡️', created_by]
   );
   // Add creator as creator role
-  await run(
-    `INSERT OR IGNORE INTO salon_members (salon_id, user_id, role) VALUES (?, ?, 'creator')`,
-    [id, created_by]
-  );
-
-  // Add initial members
-  for (const uid of memberIds) {
-    if (uid !== created_by) {
-      await run(
-        `INSERT OR IGNORE INTO salon_members (salon_id, user_id, role) VALUES (?, ?, 'member')`,
-        [id, uid]
-      );
+  await addSalonMember(id, created_by, 'creator');
+  for (const mid of memberIds) {
+    if (mid && mid !== created_by) {
+      await addSalonMember(id, mid, 'member');
     }
   }
   return await getSalonById(id);
@@ -479,6 +598,10 @@ async function getSalonsForUser(userId) {
     `SELECT s.*, sm.role as my_role, sm.last_read_at,
        (SELECT COUNT(*) FROM salon_members WHERE salon_id = s.id) as member_count,
        (SELECT timestamp FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_activity,
+       (SELECT content FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_message,
+       (SELECT sender_id FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_sender_id,
+       (SELECT sender_name FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_sender_name,
+       (SELECT is_read FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_is_read,
        (SELECT COUNT(*) FROM messages 
         WHERE channel_type = 'salon' 
           AND receiver_id = s.id 
@@ -649,5 +772,13 @@ module.exports = {
   markSalonMessagesAsRead,
   markSalonMessageReadByMembers,
   getSalonMessages,
+  // Contact Requests exports
+  areUsersContacts,
+  getUserByExactUsername,
+  createContactRequest,
+  getPendingContactRequests,
+  getContactRequestById,
+  acceptContactRequest,
+  rejectContactRequest,
   initTables
 };

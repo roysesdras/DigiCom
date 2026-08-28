@@ -8,7 +8,7 @@ let state = {
   user: null,
   socket: null,
   pushClient: null,
-  activeTab: 'contacts', // 'contacts' | 'support'
+  activeTab: 'all',      // 'all' | 'contacts' | 'salons' | 'support'
   activeContact: null,   // { id, username, displayName, role }
   activeSupportSession: null, // targetUserId for support replies
   contacts: [],
@@ -74,6 +74,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if ('serviceWorker' in navigator) {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        console.log('[+] New version detected. Auto-refreshing app...');
+        window.location.reload();
+      }
+    });
+
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'FLUSH_OUTBOX') {
         flushOutbox();
@@ -132,7 +141,7 @@ async function checkAuthAndInit() {
     try {
       state.user = JSON.parse(cachedUserStr);
       hideModals();
-      initAppInterface();
+      await initAppInterface();
     } catch (e) {}
   }
 
@@ -146,9 +155,7 @@ async function checkAuthAndInit() {
       }
       localStorage.setItem('digicom_user', JSON.stringify(data.user));
       hideModals();
-      if (!state.contacts || state.contacts.length === 0) {
-        initAppInterface();
-      }
+      await initAppInterface();
     } else {
       localStorage.removeItem('digicom_user');
       localStorage.removeItem('digicom_token');
@@ -162,7 +169,8 @@ async function checkAuthAndInit() {
   }
 }
 
-function initAppInterface() {
+async function initAppInterface() {
+  if (!state.user) return;
   const username = state.user.displayName || state.user.username;
   const usernameEl = document.getElementById('current-username');
   if (usernameEl) usernameEl.textContent = username;
@@ -170,16 +178,19 @@ function initAppInterface() {
   const roleEl = document.getElementById('user-role-badge');
   if (roleEl) roleEl.textContent = state.user.role === 'admin' ? 'Admin' : 'Membre';
 
-  if (state.user.role === 'admin') {
-    document.getElementById('tab-btn-support').style.display = 'flex';
-    document.getElementById('btn-admin-manage').style.display = 'flex';
-    const chatAdmin = document.getElementById('chat-header-admin-actions');
-    if (chatAdmin) chatAdmin.style.display = 'flex';
-  } else {
-    document.getElementById('tab-btn-support').style.display = 'none';
-    document.getElementById('btn-admin-manage').style.display = 'none';
-    const chatAdmin = document.getElementById('chat-header-admin-actions');
-    if (chatAdmin) chatAdmin.style.display = 'none';
+  const tabSupport = document.getElementById('tab-btn-support');
+  if (tabSupport) {
+    tabSupport.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+  }
+
+  const btnAdminManage = document.getElementById('btn-admin-manage');
+  if (btnAdminManage) {
+    btnAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
+  }
+
+  const chatAdmin = document.getElementById('chat-header-admin-actions');
+  if (chatAdmin) {
+    chatAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 
   // Auto-activate & Auto-heal push subscription if permission already granted
@@ -195,14 +206,20 @@ function initAppInterface() {
   initSocket();
 
   // Load Contacts List
-  loadContacts();
+  await loadContacts();
 
   // Load Salons List
-  loadSalons();
+  await loadSalons();
 
-  if (state.user.role === 'admin') {
-    loadSupportConversations();
+  // Load Pending Contact Requests
+  loadPendingContactRequests();
+
+  if (state.user && state.user.role === 'admin') {
+    await loadSupportConversations();
   }
+
+  // Render initial active tab
+  await switchTab(state.activeTab || 'all');
 }
 
 function initSocket() {
@@ -241,7 +258,7 @@ function initSocket() {
 
   state.socket.on('presence_update', (data) => {
     state.onlineUserIds = data.onlineUserIds || [];
-    renderContactsList();
+    renderCurrentActiveTabFeed();
     updateActiveContactStatus();
   });
 
@@ -282,16 +299,9 @@ function initSocket() {
     );
 
     if (!isChatVisibleToUser) {
-      // User is in background, locked screen, on another app (WhatsApp/YouTube) or on another contact -> DO NOT mark as read!
-      const cBadge = document.getElementById('contacts-badge');
-      if (cBadge) {
-        const count = parseInt(cBadge.textContent || '0', 10) + 1;
-        cBadge.textContent = count > 99 ? '99+' : count;
-        cBadge.style.display = 'inline-block';
-      }
-
       state.unreadCounts[otherPartyId] = (state.unreadCounts[otherPartyId] || 0) + 1;
-      renderContactsList();
+      renderCurrentActiveTabFeed();
+      updateAllTabsBadges();
 
       let textSnippet = typeof msg.content === 'object' ? (msg.content.text || 'Nouveau fichier') : msg.content;
       if (typeof textSnippet === 'string' && (textSnippet.startsWith('{') || textSnippet.startsWith('&quot;{'))) {
@@ -353,6 +363,59 @@ function initSocket() {
           }
         });
       }
+    }
+  });
+
+  // Contact Request & Direct Connection Real-time Events
+  state.socket.on('contact_added', (data) => {
+    loadContacts();
+    if (data && data.contact) {
+      showInAppToast({
+        title: 'Nouveau Contact Connecté',
+        body: `${data.contact.displayName || data.contact.display_name || data.contact.username} fait désormais partie de vos contacts.`,
+        type: 'system'
+      });
+    }
+  });
+
+  state.socket.on('new_contact_request', (data) => {
+    playNotificationSound();
+    showInAppToast({
+      title: 'Demande de contact reçue',
+      body: `${data.sender.displayName || data.sender.username} (@${data.sender.username}) souhaite vous ajouter. Cliquez pour voir.`,
+      type: 'system',
+      onClick: () => {
+        switchTab('contacts');
+        showModal('add-contact-modal');
+        switchAddContactModalTab('requests');
+      }
+    });
+    loadPendingContactRequests();
+  });
+
+  state.socket.on('contact_request_accepted', (data) => {
+    loadContacts();
+    if (data && data.contact) {
+      showInAppToast({
+        title: 'Demande acceptée',
+        body: `Votre demande à @${data.contact.username} a été acceptée.`,
+        type: 'system',
+        onClick: () => {
+          switchTab('contacts');
+          const found = state.contacts ? state.contacts.find(c => c.id === data.contact.id) : null;
+          if (found) selectContact(found);
+        }
+      });
+    }
+  });
+
+  state.socket.on('contact_request_rejected', (data) => {
+    if (data && data.receiver) {
+      showInAppToast({
+        title: 'Demande refusée',
+        body: `Votre demande à @${data.receiver.username} a été refusée.`,
+        type: 'system'
+      });
     }
   });
 
@@ -599,14 +662,8 @@ function initSocket() {
     } else {
       if (msg.senderId !== state.user.id) {
         state.unreadSalonCounts[salonId] = (state.unreadSalonCounts[salonId] || 0) + 1;
-        renderSalonsList();
-
-        const sBadge = document.getElementById('salons-badge');
-        if (sBadge && state.activeTab !== 'salons') {
-          const currentCount = parseInt(sBadge.textContent || '0', 10) + 1;
-          sBadge.textContent = currentCount > 99 ? '99+' : currentCount;
-          sBadge.style.display = 'inline-block';
-        }
+        renderCurrentActiveTabFeed();
+        updateAllTabsBadges();
 
         let snippet = typeof msg.content === 'object' ? (msg.content.text || 'Nouveau fichier') : msg.content;
         try {
@@ -850,7 +907,7 @@ function showLocalNotification(title, body) {
   }
 }
 
-function showInAppToast({ title, body, type = 'private', senderId = null }) {
+function showInAppToast({ title, body, type = 'private', senderId = null, onClick = null }) {
   let container = document.getElementById('toast-notifications-container');
   if (!container) {
     container = document.createElement('div');
@@ -884,6 +941,10 @@ function showInAppToast({ title, body, type = 'private', senderId = null }) {
   if (btnAction) {
     btnAction.addEventListener('click', () => {
       card.remove();
+      if (typeof onClick === 'function') {
+        onClick();
+        return;
+      }
       if (type === 'support') {
         if (senderId) {
           window.openSupportConversationBySenderId(senderId);
@@ -899,6 +960,15 @@ function showInAppToast({ title, body, type = 'private', senderId = null }) {
       }
     });
   }
+
+  card.addEventListener('click', (e) => {
+    if (e.target !== btnAction && !btnAction.contains(e.target)) {
+      if (typeof onClick === 'function') {
+        card.remove();
+        onClick();
+      }
+    }
+  });
 
   container.appendChild(card);
 
@@ -928,9 +998,14 @@ function getMessagePreviewText(content) {
 }
 
 function setupEventListeners() {
-  document.getElementById('tab-btn-contacts').addEventListener('click', () => switchTab('contacts'));
-  document.getElementById('tab-btn-salons').addEventListener('click', () => switchTab('salons'));
-  document.getElementById('tab-btn-support').addEventListener('click', () => switchTab('support'));
+  const btnTabAll = document.getElementById('tab-btn-all');
+  if (btnTabAll) btnTabAll.addEventListener('click', () => switchTab('all'));
+  const btnTabContacts = document.getElementById('tab-btn-contacts');
+  if (btnTabContacts) btnTabContacts.addEventListener('click', () => switchTab('contacts'));
+  const btnTabSalons = document.getElementById('tab-btn-salons');
+  if (btnTabSalons) btnTabSalons.addEventListener('click', () => switchTab('salons'));
+  const btnTabSupport = document.getElementById('tab-btn-support');
+  if (btnTabSupport) btnTabSupport.addEventListener('click', () => switchTab('support'));
 
   // Sidebar Search Listeners
   const searchInput = document.getElementById('search-contacts-input');
@@ -941,7 +1016,7 @@ function setupEventListeners() {
       if (clearSearchBtn) {
         clearSearchBtn.style.display = state.searchQuery ? 'flex' : 'none';
       }
-      renderContactsList();
+      renderCurrentActiveTabFeed();
     });
   }
   if (clearSearchBtn) {
@@ -949,7 +1024,7 @@ function setupEventListeners() {
       if (searchInput) searchInput.value = '';
       state.searchQuery = '';
       clearSearchBtn.style.display = 'none';
-      renderContactsList();
+      renderCurrentActiveTabFeed();
     });
   }
 
@@ -1126,6 +1201,12 @@ function setupEventListeners() {
     navigator.serviceWorker.addEventListener('message', async (event) => {
       if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
         const notifData = event.data.data || {};
+        if (notifData.openRequests || notifData.type === 'contact_request' || (notifData.url && notifData.url.includes('openRequests=true'))) {
+          await switchTab('contacts');
+          showModal('add-contact-modal');
+          switchAddContactModalTab('requests');
+          return;
+        }
         if (notifData.channel === 'support' || notifData.channel === 'sos') {
           if (notifData.senderId) {
             window.openSupportConversationBySenderId(notifData.senderId);
@@ -1789,48 +1870,38 @@ function setupEventListeners() {
     });
   }
 
-  // Add Contact Modal Handlers
+  // Add Contact Modal & Sovereign Connection Handlers
   const btnAddContact = document.getElementById('btn-add-contact');
   const btnCloseAddContactModal = document.getElementById('btn-close-add-contact-modal');
   const addContactModal = document.getElementById('add-contact-modal');
-  const contactSearchInput = document.getElementById('contact-search-input');
-  const contactSearchResults = document.getElementById('contact-search-results');
-  const myUsernameTag = document.getElementById('my-username-tag');
   const btnCopyMyUsername = document.getElementById('btn-copy-my-username');
+  const btnCopyInviteLink = document.getElementById('btn-copy-invite-link');
+  const formExactSearch = document.getElementById('form-exact-contact-search');
 
   if (btnAddContact && addContactModal) {
     btnAddContact.addEventListener('click', () => {
       showModal('add-contact-modal');
-      if (myUsernameTag && state.user) {
-        myUsernameTag.textContent = `@${state.user.username}`;
-      }
-
-      const searchSection = document.getElementById('add-contact-search-section');
-      const isAdmin = state.user && state.user.role === 'admin';
-      if (searchSection) {
-        searchSection.style.display = isAdmin ? 'block' : 'none';
-      }
-
-      if (isAdmin) {
-        if (contactSearchInput) {
-          contactSearchInput.value = '';
-          contactSearchInput.focus();
-        }
-        if (contactSearchResults) {
-          contactSearchResults.innerHTML = `
-            <div class="contact-search-placeholder">
-              <div class="placeholder-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              </div>
-              <div>Saisissez le <strong>@pseudo</strong> d'un ami pour l'ajouter à vos discussions.</div>
-            </div>
-          `;
-        }
-      }
+      switchAddContactModalTab('qr');
+      loadPendingContactRequests();
     });
+  }
+
+  if (btnCloseAddContactModal && addContactModal) {
+    btnCloseAddContactModal.addEventListener('click', () => {
+      hideModal('add-contact-modal');
+    });
+  }
+
+  // Modal Tabs Switching
+  document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab');
+      if (tab) switchAddContactModalTab(tab);
+    });
+  });
+
+  if (formExactSearch) {
+    formExactSearch.addEventListener('submit', handleExactContactSearch);
   }
 
   if (btnCopyMyUsername) {
@@ -1850,7 +1921,6 @@ function setupEventListeners() {
     });
   }
 
-  const btnCopyInviteLink = document.getElementById('btn-copy-invite-link');
   if (btnCopyInviteLink) {
     btnCopyInviteLink.addEventListener('click', () => {
       if (state.user && state.user.username && navigator.clipboard) {
@@ -1944,34 +2014,6 @@ function setupEventListeners() {
     }
   });
 
-  let contactSearchTimeout = null;
-  if (contactSearchInput) {
-    contactSearchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') e.preventDefault();
-    });
-    contactSearchInput.addEventListener('input', () => {
-      clearTimeout(contactSearchTimeout);
-      const query = contactSearchInput.value.trim();
-      if (!query) {
-        if (contactSearchResults) {
-          contactSearchResults.innerHTML = '<div class="contact-search-placeholder">Tapez un @pseudo pour rechercher un ami.</div>';
-        }
-        return;
-      }
-
-      contactSearchTimeout = setTimeout(async () => {
-        try {
-          if (!state.user || state.user.role !== 'admin') return;
-          const res = await authFetch(`/api/contacts/search?q=${encodeURIComponent(query)}`);
-          if (!res.ok) return;
-          const data = await res.json();
-          renderContactSearchResults(data.users || []);
-        } catch (e) {
-          console.error('[-] Error searching contacts:', e);
-        }
-      }, 250);
-    });
-  }
 
   // Admin user creation form
   const addUserForm = document.getElementById('add-user-form');
@@ -2519,7 +2561,8 @@ async function loadContacts() {
       state.unreadCounts[c.id] = 0;
     }
   });
-  renderContactsList();
+  renderCurrentActiveTabFeed();
+  updateAllTabsBadges();
 
   // Restore active salon, contact, or support session from URL
   const urlParams = new URLSearchParams(window.location.search);
@@ -2545,7 +2588,13 @@ async function loadContacts() {
     }
   }
 
-  // Handle direct invite link (?invite=username)
+  if (urlParams.get('openRequests') === 'true') {
+    switchTab('contacts');
+    showModal('add-contact-modal');
+    switchAddContactModalTab('requests');
+  }
+
+  // Handle direct invite link (?invite=username) with Confirmation Dialog
   const inviteUsername = urlParams.get('invite') || localStorage.getItem('digicom_pending_invite');
   if (inviteUsername) {
     localStorage.setItem('digicom_pending_invite', inviteUsername);
@@ -2553,21 +2602,66 @@ async function loadContacts() {
       (async () => {
         try {
           const cleanName = inviteUsername.trim().replace(/^@/, '');
-          const res = await authFetch('/api/contacts/accept-invite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: cleanName })
-          });
-          if (res.ok) {
-            const data = await res.json();
+          if (cleanName.toLowerCase() === (state.user.username || '').toLowerCase()) {
             localStorage.removeItem('digicom_pending_invite');
-            await loadContacts();
-            if (data.contact) {
-              const contactToSelect = state.contacts.find(c => c.id === data.contact.id);
-              if (contactToSelect) selectContact(contactToSelect);
+            return;
+          }
+          const infoRes = await authFetch(`/api/contacts/invite-info/${encodeURIComponent(cleanName)}`);
+          if (infoRes.ok) {
+            const infoData = await infoRes.json();
+            if (infoData.isContact) {
+              localStorage.removeItem('digicom_pending_invite');
+              const found = state.contacts.find(c => c.id === infoData.user.id);
+              if (found) selectContact(found);
+              return;
+            }
+
+            // Show Confirmation Dialog Modal
+            const confirmModal = document.getElementById('confirm-invite-modal');
+            const avatarEl = document.getElementById('confirm-invite-avatar');
+            const nameEl = document.getElementById('confirm-invite-name');
+            const tagEl = document.getElementById('confirm-invite-tag');
+            const btnAccept = document.getElementById('btn-accept-direct-invite');
+            const btnReject = document.getElementById('btn-reject-direct-invite');
+
+            if (avatarEl) avatarEl.textContent = (infoData.user.displayName || infoData.user.username || '?').charAt(0).toUpperCase();
+            if (nameEl) nameEl.textContent = infoData.user.displayName || infoData.user.username;
+            if (tagEl) tagEl.textContent = `@${infoData.user.username}`;
+
+            showModal('confirm-invite-modal');
+
+            if (btnAccept) {
+              btnAccept.onclick = async () => {
+                btnAccept.disabled = true;
+                const accRes = await authFetch('/api/contacts/accept-invite', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ username: cleanName })
+                });
+                localStorage.removeItem('digicom_pending_invite');
+                hideModal('confirm-invite-modal');
+                btnAccept.disabled = false;
+                if (accRes.ok) {
+                  const data = await accRes.json();
+                  await loadContacts();
+                  if (data.contact) {
+                    const contactToSelect = state.contacts.find(c => c.id === data.contact.id);
+                    if (contactToSelect) selectContact(contactToSelect);
+                  }
+                }
+              };
+            }
+
+            if (btnReject) {
+              btnReject.onclick = () => {
+                localStorage.removeItem('digicom_pending_invite');
+                hideModal('confirm-invite-modal');
+              };
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[-] Error handling invite modal:', e);
+        }
       })();
     }
   }
@@ -2579,6 +2673,273 @@ async function loadContacts() {
       selectContact(found);
       return;
     }
+  }
+}
+
+function renderMyQrCode() {
+  const qrBox = document.getElementById('user-qr-code-box');
+  const myTag = document.getElementById('my-username-tag');
+  if (!qrBox || !state.user) return;
+  const username = state.user.username;
+  if (myTag) myTag.textContent = `@${username}`;
+  const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(username)}`;
+  if (window.DigiQR && typeof window.DigiQR.renderTo === 'function') {
+    window.DigiQR.renderTo(qrBox, inviteUrl, 200, '#00a884', '#ffffff');
+  }
+}
+
+function switchAddContactModalTab(tabName) {
+  document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+  });
+  const panels = {
+    qr: document.getElementById('modal-panel-qr'),
+    exact: document.getElementById('modal-panel-exact'),
+    requests: document.getElementById('modal-panel-requests')
+  };
+  Object.keys(panels).forEach(k => {
+    if (panels[k]) {
+      panels[k].style.display = (k === tabName) ? 'block' : 'none';
+    }
+  });
+
+  if (tabName === 'qr') {
+    renderMyQrCode();
+  } else if (tabName === 'exact') {
+    const input = document.getElementById('contact-exact-input');
+    if (input) input.focus();
+  } else if (tabName === 'requests') {
+    loadPendingContactRequests();
+  }
+}
+
+async function loadPendingContactRequests() {
+  try {
+    const res = await authFetch('/api/contacts/requests/pending');
+    if (res.ok) {
+      const data = await res.json();
+      state.pendingContactRequests = data.requests || [];
+      updateContactRequestsBadge();
+      renderPendingContactRequests(state.pendingContactRequests);
+    }
+  } catch (e) {
+    console.error('[-] Error loading pending contact requests:', e);
+  }
+}
+
+function updateContactRequestsBadge() {
+  const modalBadge = document.getElementById('modal-requests-badge');
+  const headerBadge = document.getElementById('btn-add-contact-badge');
+  const count = (state.pendingContactRequests || []).length;
+
+  if (modalBadge) {
+    if (count > 0) {
+      modalBadge.textContent = count > 99 ? '99+' : count;
+      modalBadge.style.display = 'inline-block';
+    } else {
+      modalBadge.textContent = '0';
+      modalBadge.style.display = 'none';
+    }
+  }
+
+  if (headerBadge) {
+    if (count > 0) {
+      headerBadge.textContent = count > 99 ? '99+' : count;
+      headerBadge.classList.remove('action-btn-badge-hidden');
+      headerBadge.style.display = 'block';
+    } else {
+      headerBadge.textContent = '0';
+      headerBadge.classList.add('action-btn-badge-hidden');
+      headerBadge.style.display = 'none';
+    }
+  }
+
+  if (state.activeTab === 'contacts') {
+    renderContactsList();
+  }
+}
+
+function renderPendingContactRequests(requests) {
+  const container = document.getElementById('pending-requests-container');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!requests || requests.length === 0) {
+    container.innerHTML = `
+      <div class="contact-search-placeholder">
+        <div class="placeholder-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <div>Aucune demande de contact en attente.</div>
+      </div>
+    `;
+    return;
+  }
+
+  requests.forEach(r => {
+    const initial = (r.display_name || r.username || '?').charAt(0).toUpperCase();
+    const card = document.createElement('div');
+    card.className = 'pending-request-card';
+    card.innerHTML = `
+      <div class="exact-user-info">
+        <div class="exact-user-avatar">${initial}</div>
+        <div class="exact-user-details">
+          <strong>${escapeHtml(r.display_name || r.username)}</strong>
+          <span>@${escapeHtml(r.username)}</span>
+        </div>
+      </div>
+      <div class="pending-actions">
+        <button type="button" class="btn-action-reject" data-req-id="${r.request_id}">Rejet</button>
+        <button type="button" class="btn-action-accept" data-req-id="${r.request_id}">Confirm</button>
+      </div>
+    `;
+
+    card.querySelector('.btn-action-accept').onclick = async () => {
+      try {
+        const acceptRes = await authFetch(`/api/contacts/requests/${r.request_id}/accept`, { method: 'POST' });
+        if (acceptRes.ok) {
+          const accData = await acceptRes.json();
+          hideModal('add-contact-modal');
+          await loadContacts();
+          if (accData.contact) {
+            const newC = state.contacts.find(c => c.id === accData.contact.id);
+            if (newC) selectContact(newC);
+          }
+          showInAppToast({
+            title: 'Contact Ajouté !',
+            body: `Vous pouvez désormais échanger avec ${r.display_name || r.username}.`,
+            type: 'system'
+          });
+        }
+      } catch (e) {
+        alert('Erreur lors de l\'acceptation');
+      }
+    };
+
+    card.querySelector('.btn-action-reject').onclick = async () => {
+      try {
+        const rejRes = await authFetch(`/api/contacts/requests/${r.request_id}/reject`, { method: 'POST' });
+        if (rejRes.ok) {
+          state.pendingContactRequests = state.pendingContactRequests.filter(x => x.request_id !== r.request_id);
+          updateContactRequestsBadge();
+          renderPendingContactRequests(state.pendingContactRequests);
+        }
+      } catch (e) {
+        alert('Erreur lors du refus');
+      }
+    };
+
+    container.appendChild(card);
+  });
+}
+
+async function handleExactContactSearch(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById('contact-exact-input');
+  const feedback = document.getElementById('exact-search-feedback');
+  if (!input || !feedback) return;
+  const raw = input.value.trim().replace(/^@/, '');
+  if (!raw) return;
+
+  feedback.innerHTML = '<div style="text-align:center; padding: 1rem; color: var(--text-dim); font-size: 0.85rem;">Recherche en cours...</div>';
+
+  try {
+    const res = await authFetch('/api/contacts/find-exact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: raw })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      feedback.innerHTML = `
+        <div style="text-align: center; padding: 1rem; color: #f43f5e; font-size: 0.85rem;">
+          ${escapeHtml(data.error || 'Utilisateur introuvable.')}
+        </div>
+      `;
+      return;
+    }
+
+    const u = data.user;
+    const initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
+
+    let actionBtnHtml = '';
+    if (data.isContact) {
+      actionBtnHtml = `<span class="exact-status-pill">Déjà dans vos contacts</span>`;
+    } else if (data.hasPendingSent) {
+      actionBtnHtml = `<span class="exact-status-pill" style="color: #f59e0b;">Demande déjà envoyée</span>`;
+    } else if (data.incomingRequestId) {
+      actionBtnHtml = `<button type="button" class="btn-action-accept" id="btn-exact-accept-now">Confirm</button>`;
+    } else {
+      actionBtnHtml = `<button type="button" class="btn-action-accept" id="btn-exact-send-invite">+ Envoyer une invitation</button>`;
+    }
+
+    feedback.innerHTML = `
+      <div class="exact-user-card">
+        <div class="exact-user-info">
+          <div class="exact-user-avatar">${initial}</div>
+          <div class="exact-user-details">
+            <strong>${escapeHtml(u.displayName || u.username)}</strong>
+            <span>@${escapeHtml(u.username)}</span>
+          </div>
+        </div>
+        <div id="exact-card-actions">
+          ${actionBtnHtml}
+        </div>
+      </div>
+    `;
+
+    const btnSend = document.getElementById('btn-exact-send-invite');
+    if (btnSend) {
+      btnSend.onclick = async () => {
+        try {
+          btnSend.disabled = true;
+          const reqRes = await authFetch('/api/contacts/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUserId: u.id })
+          });
+          const reqData = await reqRes.json();
+          if (reqRes.ok) {
+            if (reqData.autoAccepted) {
+              hideModal('add-contact-modal');
+              await loadContacts();
+              const newC = state.contacts.find(c => c.id === u.id);
+              if (newC) selectContact(newC);
+            } else {
+              document.getElementById('exact-card-actions').innerHTML = `<span class="exact-status-pill" style="color: #10b981;">✓ Invitation envoyée</span>`;
+            }
+          } else {
+            alert(reqData.error || 'Erreur lors de l\'envoi');
+            btnSend.disabled = false;
+          }
+        } catch (e) {
+          alert('Erreur réseau');
+          btnSend.disabled = false;
+        }
+      };
+    }
+
+    const btnAcceptNow = document.getElementById('btn-exact-accept-now');
+    if (btnAcceptNow && data.incomingRequestId) {
+      btnAcceptNow.onclick = async () => {
+        try {
+          btnAcceptNow.disabled = true;
+          const accRes = await authFetch(`/api/contacts/requests/${data.incomingRequestId}/accept`, { method: 'POST' });
+          if (accRes.ok) {
+            hideModal('add-contact-modal');
+            await loadContacts();
+            const newC = state.contacts.find(c => c.id === u.id);
+            if (newC) selectContact(newC);
+          }
+        } catch (e) {
+          alert('Erreur');
+        }
+      };
+    }
+
+  } catch (err) {
+    feedback.innerHTML = '<div style="text-align: center; padding: 1rem; color: #f43f5e; font-size: 0.85rem;">Erreur de connexion.</div>';
   }
 }
 
@@ -2685,45 +3046,351 @@ function renderContactSearchResults(users) {
   });
 }
 
-function getLastMessagePreview(contactId) {
-  const history = state.directMessages[contactId];
-  if (!history || history.length === 0) {
-    return '';
+function formatConversationTime(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  
+  const isToday = d.getDate() === now.getDate() &&
+                  d.getMonth() === now.getMonth() &&
+                  d.getFullYear() === now.getFullYear();
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  const lastMsg = history[history.length - 1];
-  const isMe = lastMsg.senderId === state.user.id || lastMsg.sender_id === state.user.id;
-  const prefix = isMe ? 'Vous : ' : '';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.getDate() === yesterday.getDate() &&
+                      d.getMonth() === yesterday.getMonth() &&
+                      d.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) {
+    return 'Hier';
+  }
 
-  let parsed = null;
-  if (typeof lastMsg.content === 'object' && lastMsg.content !== null) {
-    parsed = lastMsg.content;
-  } else if (typeof lastMsg.content === 'string') {
-    try {
-      parsed = JSON.parse(lastMsg.content);
-    } catch (e) {
-      parsed = { text: lastMsg.content };
+  const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+  if (diffDays < 7) {
+    const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    return days[d.getDay()];
+  }
+
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function renderEyeStatusHtml(isRead, isPending) {
+  if (isPending) {
+    return `
+      <span class="preview-status-eye pending" title="En attente">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8696a0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+      </span>
+    `;
+  }
+  if (isRead) {
+    return `
+      <span class="preview-status-eye read" title="Message lu">
+        <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+          <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+        </svg>
+      </span>
+    `;
+  }
+  return `
+    <span class="preview-status-eye unread" title="Message distribué">
+      <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+        <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#8696a0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="8" cy="6" r="2.2" fill="#8696a0"/>
+      </svg>
+    </span>
+  `;
+}
+
+function getLastMessageInfo(type, id, item) {
+  let content = null;
+  let timestamp = null;
+  let senderId = null;
+  let isRead = false;
+  let isPending = false;
+
+  if (type === 'contact') {
+    const history = state.directMessages[id];
+    if (history && history.length > 0) {
+      const lastMsg = history[history.length - 1];
+      content = lastMsg.content;
+      timestamp = lastMsg.timestamp || lastMsg.created_at;
+      senderId = lastMsg.senderId || lastMsg.sender_id;
+      isRead = Boolean(lastMsg.is_read === 1 || lastMsg.is_read === true || lastMsg.isRead === true);
+      isPending = Boolean(lastMsg.isPending || lastMsg.pending);
+    } else if (item && item.last_message) {
+      content = item.last_message;
+      timestamp = item.last_message_time;
+      senderId = item.last_sender_id;
+      isRead = Boolean(item.last_is_read === 1 || item.last_is_read === true);
+    } else if (item) {
+      timestamp = item.created_at;
     }
+  } else if (type === 'salon') {
+    const history = state.salonMessages[id];
+    if (history && history.length > 0) {
+      const lastMsg = history[history.length - 1];
+      content = lastMsg.content;
+      timestamp = lastMsg.timestamp || lastMsg.created_at;
+      senderId = lastMsg.senderId || lastMsg.sender_id;
+      isRead = Boolean(lastMsg.is_read === 1 || lastMsg.is_read === true || lastMsg.isRead === true);
+    } else if (item && item.last_message) {
+      content = item.last_message;
+      timestamp = item.last_activity || item.created_at;
+      senderId = item.last_sender_id;
+      isRead = Boolean(item.last_is_read === 1 || item.last_is_read === true);
+    } else if (item) {
+      timestamp = item.last_activity || item.created_at;
+    }
+  } else if (type === 'support') {
+    content = item ? item.last_message : null;
+    timestamp = item ? (item.last_message_at || item.last_activity) : null;
+    senderId = item ? item.last_sender_id : null;
+    isRead = Boolean(item && (item.last_is_read === 1 || item.last_is_read === true));
   }
+
+  const isMe = Boolean(state.user && senderId && (String(senderId) === String(state.user.id) || String(senderId).startsWith('admin_')));
 
   let text = '';
-  if (parsed && parsed.type === 'image') text = 'Photo';
-  else if (parsed && parsed.type === 'video') text = 'Vidéo';
-  else if (parsed && parsed.type === 'audio') text = 'Note vocale';
-  else if (parsed && parsed.type === 'file') text = `Fichier: ${parsed.fileName || 'Document'}`;
-  else text = (parsed && parsed.text !== undefined) ? String(parsed.text) : String(lastMsg.content || '');
+  if (content !== null && content !== undefined) {
+    let parsed = null;
+    if (typeof content === 'object') {
+      parsed = content;
+    } else if (typeof content === 'string') {
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        parsed = { text: content };
+      }
+    }
 
-  while (typeof text === 'string' && (text.startsWith('{"') || text.startsWith('{&quot;'))) {
-    try {
-      const inner = JSON.parse(text.replace(/&quot;/g, '"'));
-      text = inner.text || inner.previewText || text;
-    } catch (e) {
-      break;
+    if (parsed && parsed.type === 'image') text = '📷 Photo';
+    else if (parsed && parsed.type === 'video') text = '🎥 Vidéo';
+    else if (parsed && parsed.type === 'audio') text = '🎤 Note vocale';
+    else if (parsed && parsed.type === 'file') text = `📎 ${parsed.fileName || 'Fichier'}`;
+    else text = (parsed && parsed.text !== undefined) ? String(parsed.text) : String(content);
+
+    while (typeof text === 'string' && (text.startsWith('{"') || text.startsWith('{&quot;'))) {
+      try {
+        const inner = JSON.parse(text.replace(/&quot;/g, '"'));
+        text = inner.text || inner.previewText || text;
+      } catch (e) {
+        break;
+      }
     }
   }
 
-  const snippet = text.length > 30 ? text.substring(0, 30) + '...' : text;
-  return `${prefix}${snippet}`;
+  const snippet = text.length > 32 ? text.substring(0, 32) + '...' : text;
+  const timeStr = formatConversationTime(timestamp);
+
+  return {
+    snippet,
+    timestamp: timestamp ? new Date(timestamp).getTime() : 0,
+    timeStr,
+    isMe,
+    isRead,
+    isPending
+  };
+}
+
+function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, isActive, unreadCount, categoryTag, categoryClass, lastInfo }) {
+  const eyeHtml = lastInfo.isMe ? renderEyeStatusHtml(lastInfo.isRead, lastInfo.isPending) : '';
+  const isUnreadMsg = !lastInfo.isMe && unreadCount > 0;
+  const timeClass = unreadCount > 0 ? 'contact-time-text has-unread' : 'contact-time-text';
+  const previewClass = isUnreadMsg ? 'contact-preview-box unread-text' : 'contact-preview-box';
+
+  let avatarClass = 'contact-avatar-box';
+  let badgeOnline = `<div class="micro-dot ${isOnline ? 'online' : ''}"></div>`;
+
+  if (type === 'salon') {
+    avatarClass = 'salon-icon-box';
+    badgeOnline = '';
+  } else if (type === 'support') {
+    avatarClass = 'contact-avatar-box sos';
+    badgeOnline = `<span class="micro-dot online" style="background: #f43f5e; box-shadow: 0 0 6px #f43f5e;" title="Ticket SOS Actif"></span>`;
+  }
+
+  const categoryTagHtml = categoryTag ? `<span class="conversation-category-tag ${categoryClass}">${categoryTag}</span>` : '';
+  const unreadBadgeHtml = unreadCount > 0 ? `<span class="contact-unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : '';
+
+  return `
+    <div class="${avatarClass}">
+      ${avatarInitial}
+      ${badgeOnline}
+    </div>
+    <div class="contact-details">
+      <div class="contact-row-top">
+        <div style="display: flex; align-items: center; min-width: 0; gap: 4px; overflow: hidden;">
+          <span class="contact-name-text">${escapeHtml(title)}</span>
+          ${categoryTagHtml}
+        </div>
+        <span class="${timeClass}">${escapeHtml(lastInfo.timeStr || '')}</span>
+      </div>
+      <div class="contact-row-bottom">
+        <div class="${previewClass}">
+          ${eyeHtml}
+          <span>${escapeHtml(lastInfo.snippet || '')}</span>
+        </div>
+        ${unreadBadgeHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderAllConversationsList() {
+  const container = document.getElementById('all-list-container');
+  if (!container || state.activeTab !== 'all') return;
+
+  container.innerHTML = '';
+
+  // Render prominent Pending Contact Requests banner if any
+  if (state.pendingContactRequests && state.pendingContactRequests.length > 0) {
+    const reqBanner = document.createElement('div');
+    reqBanner.className = 'pending-requests-banner';
+    const reqCount = state.pendingContactRequests.length;
+    reqBanner.innerHTML = `
+      <div class="pending-requests-banner-content">
+        <div class="pending-banner-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <line x1="20" y1="8" x2="20" y2="14"></line>
+            <line x1="23" y1="11" x2="17" y2="11"></line>
+          </svg>
+        </div>
+        <div class="pending-banner-text">
+          <strong>${reqCount} demande${reqCount > 1 ? 's' : ''} de contact reçue${reqCount > 1 ? 's' : ''}</strong>
+          <span>Cliquez pour confirmer ou refuser</span>
+        </div>
+      </div>
+      <button type="button" class="btn-pending-banner-action">Voir (${reqCount})</button>
+    `;
+    reqBanner.addEventListener('click', () => {
+      showModal('add-contact-modal');
+      switchAddContactModalTab('requests');
+    });
+    container.appendChild(reqBanner);
+  }
+
+  const allItems = [];
+
+  // Add Direct Contacts
+  (state.contacts || []).forEach(c => {
+    const lastInfo = getLastMessageInfo('contact', c.id, c);
+    const unreadCount = state.unreadCounts[c.id] || 0;
+    const isOnline = state.onlineUserIds.includes(c.id);
+    allItems.push({
+      type: 'contact',
+      id: c.id,
+      title: c.display_name || c.username,
+      rawItem: c,
+      avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+      isOnline,
+      unreadCount,
+      categoryTag: '',
+      categoryClass: '',
+      lastInfo
+    });
+  });
+
+  // Add Salons
+  (state.salons || []).forEach(s => {
+    const lastInfo = getLastMessageInfo('salon', s.id, s);
+    const unreadCount = state.unreadSalonCounts[s.id] || 0;
+    allItems.push({
+      type: 'salon',
+      id: s.id,
+      title: formatSalonName(s.name),
+      rawItem: s,
+      avatarInitial: '#',
+      isOnline: false,
+      unreadCount,
+      categoryTag: 'Salon',
+      categoryClass: 'salon',
+      lastInfo
+    });
+  });
+
+  // Add Support SOS if Admin
+  if (state.user && state.user.role === 'admin') {
+    (state.supportConversations || []).forEach(conv => {
+      const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
+      const unreadCount = conv.unread_count || 0;
+      const title = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
+      allItems.push({
+        type: 'support',
+        id: conv.sender_id,
+        title,
+        rawItem: conv,
+        avatarInitial: title.charAt(0).toUpperCase(),
+        isOnline: true,
+        unreadCount,
+        categoryTag: 'SOS',
+        categoryClass: 'support',
+        lastInfo
+      });
+    });
+  }
+
+  if (allItems.length === 0) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.style.cssText = 'padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;';
+    emptyDiv.innerHTML = `
+      Aucune conversation pour le moment.<br>
+      Utilisez le bouton <strong>Connexions</strong> ci-dessus pour inviter vos amis ou créer un Salon.
+    `;
+    container.appendChild(emptyDiv);
+    return;
+  }
+
+  // Filter with Search query
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  let filteredItems = allItems;
+  if (query) {
+    filteredItems = allItems.filter(item => {
+      return item.title.toLowerCase().includes(query) ||
+             (item.lastInfo && item.lastInfo.snippet.toLowerCase().includes(query));
+    });
+  }
+
+  // Sort by latest message timestamp descending
+  filteredItems.sort((a, b) => (b.lastInfo.timestamp || 0) - (a.lastInfo.timestamp || 0));
+
+  filteredItems.forEach(item => {
+    let isActive = false;
+    if (item.type === 'contact') isActive = state.activeContact && String(state.activeContact.id) === String(item.id);
+    else if (item.type === 'salon') isActive = state.activeSalon && String(state.activeSalon.id) === String(item.id);
+    else if (item.type === 'support') isActive = state.activeSupportSession && String(state.activeSupportSession) === String(item.id);
+
+    const card = document.createElement('div');
+    card.className = `contact-card ${isActive ? 'active' : ''}`;
+    card.innerHTML = renderConversationCardHtml({
+      type: item.type,
+      id: item.id,
+      title: item.title,
+      avatarInitial: item.avatarInitial,
+      isOnline: item.isOnline,
+      isActive,
+      unreadCount: item.unreadCount,
+      categoryTag: item.categoryTag,
+      categoryClass: item.categoryClass,
+      lastInfo: item.lastInfo
+    });
+
+    card.addEventListener('click', () => {
+      if (item.type === 'contact') selectContact(item.rawItem);
+      else if (item.type === 'salon') selectSalon(item.rawItem);
+      else if (item.type === 'support') window.openSupportConversationBySenderId(item.rawItem.sender_id);
+    });
+
+    container.appendChild(card);
+  });
 }
 
 function renderContactsList() {
@@ -2731,41 +3398,65 @@ function renderContactsList() {
   if (!container || state.activeTab !== 'contacts') return;
 
   container.innerHTML = '';
-  if (state.contacts.length === 0) {
-    container.innerHTML = `
-      <div style="padding: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
-        Aucun contact pour le moment.<br>
-        ${state.user.role === 'admin' ? 'Cliquez sur l\'icône en haut pour ajouter un membre.' : 'Votre administrateur ajoutera bientôt des contacts.'}
+
+  // Render prominent Pending Contact Requests banner if any
+  if (state.pendingContactRequests && state.pendingContactRequests.length > 0) {
+    const reqBanner = document.createElement('div');
+    reqBanner.className = 'pending-requests-banner';
+    const reqCount = state.pendingContactRequests.length;
+    reqBanner.innerHTML = `
+      <div class="pending-requests-banner-content">
+        <div class="pending-banner-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <line x1="20" y1="8" x2="20" y2="14"></line>
+            <line x1="23" y1="11" x2="17" y2="11"></line>
+          </svg>
+        </div>
+        <div class="pending-banner-text">
+          <strong>${reqCount} demande${reqCount > 1 ? 's' : ''} de contact reçue${reqCount > 1 ? 's' : ''}</strong>
+          <span>Cliquez pour confirmer ou refuser</span>
+        </div>
       </div>
+      <button type="button" class="btn-pending-banner-action">Voir (${reqCount})</button>
     `;
+    reqBanner.addEventListener('click', () => {
+      showModal('add-contact-modal');
+      switchAddContactModalTab('requests');
+    });
+    container.appendChild(reqBanner);
+  }
+
+  if (state.contacts.length === 0) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.style.cssText = 'padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;';
+    emptyDiv.innerHTML = `
+      Aucun contact pour le moment.<br>
+      Cliquez sur l'icône <strong>Connexions</strong> en haut pour partager votre QR Code ou ajouter un ami par @pseudo.
+    `;
+    container.appendChild(emptyDiv);
     return;
   }
 
-  // Priority sorting: Online users at top, then unread messages, then alphabetical
-  const sortedContacts = [...state.contacts].sort((a, b) => {
-    const aOnline = state.onlineUserIds.includes(a.id);
-    const bOnline = state.onlineUserIds.includes(b.id);
-    if (aOnline && !bOnline) return -1;
-    if (!aOnline && bOnline) return 1;
-
-    const aUnread = state.unreadCounts[a.id] || 0;
-    const bUnread = state.unreadCounts[b.id] || 0;
-    if (aUnread > 0 && bUnread === 0) return -1;
-    if (aUnread === 0 && bUnread > 0) return 1;
-
-    return (a.display_name || a.username || '').localeCompare(b.display_name || b.username || '');
-  });
-
   const query = (state.searchQuery || '').trim().toLowerCase();
-  let contactsToRender = sortedContacts;
+  let contactsToRender = [...state.contacts];
+
   if (query) {
-    contactsToRender = sortedContacts.filter(c => {
+    contactsToRender = contactsToRender.filter(c => {
       const name = (c.display_name || c.username || '').toLowerCase();
       const username = (c.username || '').toLowerCase();
-      const lastMsg = (getLastMessagePreview(c.id) || '').toLowerCase();
-      return name.includes(query) || username.includes(query) || lastMsg.includes(query);
+      const lastInfo = getLastMessageInfo('contact', c.id, c);
+      return name.includes(query) || username.includes(query) || (lastInfo.snippet || '').toLowerCase().includes(query);
     });
   }
+
+  // Sort by latest message timestamp descending
+  contactsToRender.sort((a, b) => {
+    const infoA = getLastMessageInfo('contact', a.id, a);
+    const infoB = getLastMessageInfo('contact', b.id, b);
+    return (infoB.timestamp || 0) - (infoA.timestamp || 0);
+  });
 
   if (contactsToRender.length === 0) {
     container.innerHTML = `
@@ -2779,25 +3470,24 @@ function renderContactsList() {
   contactsToRender.forEach(c => {
     const isOnline = state.onlineUserIds.includes(c.id);
     const isActive = state.activeContact && String(state.activeContact.id) === String(c.id);
-    const initial = (c.display_name || c.username || '?').charAt(0).toUpperCase();
     const unreadCount = state.unreadCounts[c.id] || 0;
-    const lastPreview = getLastMessagePreview(c.id);
+    const lastInfo = getLastMessageInfo('contact', c.id, c);
+    const initial = (c.display_name || c.username || '?').charAt(0).toUpperCase();
 
     const item = document.createElement('div');
     item.className = `contact-card ${isActive ? 'active' : ''}`;
-    item.innerHTML = `
-      <div class="contact-avatar-box">
-        ${initial}
-        <div class="micro-dot ${isOnline ? 'online' : ''}"></div>
-      </div>
-      <div class="contact-details" style="min-width: 0; flex: 1;">
-        <div class="contact-title" style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600;">${escapeHtml(c.display_name || c.username)}</span>
-          ${unreadCount > 0 ? `<span class="contact-unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
-        </div>
-        <div class="contact-desc">${escapeHtml(lastPreview)}</div>
-      </div>
-    `;
+    item.innerHTML = renderConversationCardHtml({
+      type: 'contact',
+      id: c.id,
+      title: c.display_name || c.username,
+      avatarInitial: initial,
+      isOnline,
+      isActive,
+      unreadCount,
+      categoryTag: '',
+      categoryClass: '',
+      lastInfo
+    });
 
     item.addEventListener('click', () => {
       selectContact(c);
@@ -4164,15 +4854,15 @@ async function flushOutbox() {
 }
 
 async function switchTab(tab) {
-  if (tab !== 'salons' && state.activeSalon && state.socket) {
+  if (tab !== 'salons' && tab !== 'all' && state.activeSalon && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
     state.activeSalon = null;
   }
-  if (tab !== 'contacts' && state.activeContact && state.socket) {
+  if (tab !== 'contacts' && tab !== 'all' && state.activeContact && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
     state.activeContact = null;
   }
-  if (tab !== 'support' && state.activeSupportSession && state.socket) {
+  if (tab !== 'support' && tab !== 'all' && state.activeSupportSession && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
     state.activeSupportSession = null;
   }
@@ -4183,39 +4873,61 @@ async function switchTab(tab) {
   state.activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
+  const allFeed = document.getElementById('all-list-container');
   const contactsFeed = document.getElementById('contacts-list-container');
   const salonsFeed = document.getElementById('salons-list-container');
+  const supportFeed = document.getElementById('support-list-container');
 
-  if (tab === 'contacts') {
-    document.getElementById('tab-btn-contacts').classList.add('active');
-    if (contactsFeed) contactsFeed.style.display = 'block';
-    if (salonsFeed) salonsFeed.style.display = 'none';
-    const cBadge = document.getElementById('contacts-badge');
-    if (cBadge) {
-      cBadge.textContent = '0';
-      cBadge.style.display = 'none';
-    }
+  if (allFeed) allFeed.style.display = (tab === 'all') ? 'block' : 'none';
+  if (contactsFeed) contactsFeed.style.display = (tab === 'contacts') ? 'block' : 'none';
+  if (salonsFeed) salonsFeed.style.display = (tab === 'salons') ? 'block' : 'none';
+  if (supportFeed) supportFeed.style.display = (tab === 'support') ? 'block' : 'none';
+
+  const tabBtn = document.getElementById(`tab-btn-${tab}`);
+  if (tabBtn) tabBtn.classList.add('active');
+
+  renderCurrentActiveTabFeed();
+  updateAllTabsBadges();
+}
+
+function renderCurrentActiveTabFeed() {
+  if (state.activeTab === 'all') {
+    renderAllConversationsList();
+  } else if (state.activeTab === 'contacts') {
     renderContactsList();
-  } else if (tab === 'salons') {
-    document.getElementById('tab-btn-salons').classList.add('active');
-    if (contactsFeed) contactsFeed.style.display = 'none';
-    if (salonsFeed) salonsFeed.style.display = 'block';
-    const sBadge = document.getElementById('salons-badge');
-    if (sBadge) {
-      sBadge.textContent = '0';
-      sBadge.style.display = 'none';
-    }
-    await loadSalons();
-  } else if (tab === 'support') {
-    document.getElementById('tab-btn-support').classList.add('active');
-    if (contactsFeed) contactsFeed.style.display = 'block';
-    if (salonsFeed) salonsFeed.style.display = 'none';
-    const badge = document.getElementById('support-badge');
-    if (badge) {
-      badge.textContent = '0';
-      badge.style.display = 'none';
-    }
-    await loadSupportConversations();
+  } else if (state.activeTab === 'salons') {
+    renderSalonsList();
+  } else if (state.activeTab === 'support') {
+    renderSupportConversations();
+  }
+}
+
+function updateAllTabsBadges() {
+  const contactsUnread = Object.values(state.unreadCounts || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+  const salonsUnread = Object.values(state.unreadSalonCounts || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+  const supportUnread = (state.supportConversations || []).reduce((a, c) => a + (Number(c.unread_count) || 0), 0);
+  const totalUnread = contactsUnread + salonsUnread + (state.user && state.user.role === 'admin' ? supportUnread : 0);
+
+  const allBadge = document.getElementById('all-badge');
+  const contactsBadge = document.getElementById('contacts-badge');
+  const salonsBadge = document.getElementById('salons-badge');
+  const supportBadge = document.getElementById('support-badge');
+
+  if (allBadge) {
+    allBadge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+    allBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
+  }
+  if (contactsBadge) {
+    contactsBadge.textContent = contactsUnread > 99 ? '99+' : contactsUnread;
+    contactsBadge.style.display = contactsUnread > 0 ? 'inline-block' : 'none';
+  }
+  if (salonsBadge) {
+    salonsBadge.textContent = salonsUnread > 99 ? '99+' : salonsUnread;
+    salonsBadge.style.display = salonsUnread > 0 ? 'inline-block' : 'none';
+  }
+  if (supportBadge) {
+    supportBadge.textContent = supportUnread > 99 ? '99+' : supportUnread;
+    supportBadge.style.display = supportUnread > 0 ? 'inline-block' : 'none';
   }
 }
 
@@ -4225,19 +4937,11 @@ async function loadSupportConversations() {
     if (res.ok) {
       const data = await res.json();
       state.supportConversations = data.conversations || [];
-      const totalUnreads = state.supportConversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-      const badge = document.getElementById('support-badge');
-      if (badge) {
-        if (totalUnreads > 0 && state.activeTab !== 'support') {
-          badge.textContent = totalUnreads > 99 ? '99+' : totalUnreads;
-          badge.style.display = 'inline-block';
-        } else if (totalUnreads === 0) {
-          badge.textContent = '0';
-          badge.style.display = 'none';
-        }
-      }
+      updateAllTabsBadges();
       if (state.activeTab === 'support') {
         renderSupportConversations();
+      } else if (state.activeTab === 'all') {
+        renderAllConversationsList();
       }
     }
   } catch (e) {
@@ -4246,44 +4950,46 @@ async function loadSupportConversations() {
 }
 
 function renderSupportConversations() {
-  const container = document.getElementById('contacts-list-container');
+  const container = document.getElementById('support-list-container');
   if (!container || state.activeTab !== 'support') return;
 
   container.innerHTML = '';
   if (state.supportConversations.length === 0) {
-    container.innerHTML = '<div style="padding: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">Aucun ticket SOS pour le moment.</div>';
+    container.innerHTML = '<div style="padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">Aucun ticket SOS pour le moment.</div>';
     return;
   }
 
-  state.supportConversations.forEach(conv => {
-    let ctxTitle = '';
-    if (conv.context_data) {
-      try {
-        const ctx = JSON.parse(conv.context_data);
-        ctxTitle = ctx.courseTitle || '';
-      } catch (e) {}
-    }
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  let supportToRender = [...state.supportConversations];
+  if (query) {
+    supportToRender = supportToRender.filter(conv => {
+      const name = (conv.sender_name || conv.sender_id || '').toLowerCase();
+      const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
+      return name.includes(query) || (lastInfo.snippet || '').toLowerCase().includes(query);
+    });
+  }
 
+  supportToRender.forEach(conv => {
     const studentDisplayName = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
     const initial = studentDisplayName.charAt(0).toUpperCase();
+    const isActive = state.activeSupportSession === conv.sender_id;
+    const unreadCount = conv.unread_count || 0;
+    const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
+
     const item = document.createElement('div');
-    item.className = `contact-card ${state.activeSupportSession === conv.sender_id ? 'active' : ''}`;
-    item.innerHTML = `
-      <div class="contact-avatar-box" style="background: linear-gradient(135deg, #e11d48 0%, #881337 100%); color: #ffffff; font-weight: 700; font-size: 1.1rem; border: 1px solid rgba(244, 63, 94, 0.4);">
-        <span>${escapeHtml(initial)}</span>
-        <span class="micro-dot online" style="background: #f43f5e; box-shadow: 0 0 6px #f43f5e;" title="Ticket SOS Actif"></span>
-      </div>
-      <div class="contact-details">
-        <div class="contact-title" style="display: flex; align-items: center; justify-content: space-between;">
-          <span>${escapeHtml(studentDisplayName)}</span>
-          <span style="display: inline-flex; align-items: center; gap: 4px;">
-            ${(conv.unread_count > 0 && state.activeSupportSession !== conv.sender_id) ? `<span class="contact-unread-badge">${conv.unread_count > 99 ? '99+' : conv.unread_count}</span>` : ''}
-            <span style="font-size: 0.65rem; background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 1px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase;">SOS</span>
-          </span>
-        </div>
-        <div class="contact-desc">${escapeHtml(ctxTitle || 'Assistance SOS')}</div>
-      </div>
-    `;
+    item.className = `contact-card ${isActive ? 'active' : ''}`;
+    item.innerHTML = renderConversationCardHtml({
+      type: 'support',
+      id: conv.sender_id,
+      title: studentDisplayName,
+      avatarInitial: initial,
+      isOnline: true,
+      isActive,
+      unreadCount,
+      categoryTag: 'SOS',
+      categoryClass: 'support',
+      lastInfo
+    });
 
     item.addEventListener('click', () => {
       window.openSupportConversationBySenderId(conv.sender_id);
@@ -4753,7 +5459,8 @@ async function loadSalons() {
           sBadge.style.display = 'none';
         }
       }
-      renderSalonsList();
+      renderCurrentActiveTabFeed();
+      updateAllTabsBadges();
     }
   } catch (err) {
     console.error('[-] Error loading salons:', err);
@@ -4767,7 +5474,7 @@ function renderSalonsList() {
   container.innerHTML = '';
   if (state.salons.length === 0) {
     container.innerHTML = `
-      <div style="padding: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
+      <div style="padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;">
         Aucun Salon pour le moment.<br>
         Cliquez sur "Nouveau Salon" ci-dessus pour créer votre premier espace de travail confidentiel.
       </div>
@@ -4775,25 +5482,44 @@ function renderSalonsList() {
     return;
   }
 
-  state.salons.forEach(s => {
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  let salonsToRender = [...state.salons];
+  if (query) {
+    salonsToRender = salonsToRender.filter(s => {
+      const name = (s.name || '').toLowerCase();
+      const lastInfo = getLastMessageInfo('salon', s.id, s);
+      return name.includes(query) || (lastInfo.snippet || '').toLowerCase().includes(query);
+    });
+  }
+
+  salonsToRender.sort((a, b) => {
+    const infoA = getLastMessageInfo('salon', a.id, a);
+    const infoB = getLastMessageInfo('salon', b.id, b);
+    return (infoB.timestamp || 0) - (infoA.timestamp || 0);
+  });
+
+  salonsToRender.forEach(s => {
     const isActive = state.activeSalon && String(state.activeSalon.id) === String(s.id);
     const unreadCount = state.unreadSalonCounts[s.id] || 0;
     const isCreator = s.my_role === 'creator' || s.created_by === (state.user ? state.user.id : '');
     const displayName = formatSalonName(s.name);
+    const lastInfo = getLastMessageInfo('salon', s.id, s);
 
     const card = document.createElement('div');
     card.className = `salon-card ${isActive ? 'active' : ''}`;
-    card.innerHTML = `
-      <div class="salon-icon-box" style="font-weight: 800; color: #10b981; font-size: 1.05rem;">#</div>
-      <div class="salon-details">
-        <div class="salon-title-row">
-          <span class="salon-title">${escapeHtml(displayName)}</span>
-          ${isCreator ? `<span class="salon-creator-tag">Admin</span>` : ''}
-          ${unreadCount > 0 ? `<span class="contact-unread-badge">${unreadCount}</span>` : ''}
-        </div>
-        <div class="salon-desc">${escapeHtml(s.description || `${s.member_count || 1} membre(s)`)}</div>
-      </div>
-    `;
+    card.innerHTML = renderConversationCardHtml({
+      type: 'salon',
+      id: s.id,
+      title: displayName,
+      avatarInitial: '#',
+      isOnline: false,
+      isActive,
+      unreadCount,
+      categoryTag: isCreator ? 'Admin' : '',
+      categoryClass: 'salon',
+      lastInfo
+    });
+
     card.addEventListener('click', () => selectSalon(s));
     container.appendChild(card);
   });
@@ -5257,6 +5983,20 @@ async function openSalonInfoModal(salonId) {
               `;
             }
 
+            const isAlreadyContact = (state.contacts || []).some(c => String(c.id) === String(m.id));
+            let addContactHtml = '';
+            if (!isAlreadyContact && m.id !== (state.user ? state.user.id : '')) {
+              addContactHtml = `
+                <button type="button" class="btn-salon-add-contact" data-user-id="${m.id}" data-username="${escapeHtml(m.username)}" title="Ajouter à mes contacts directs">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  Ajouter
+                </button>
+              `;
+            }
+
             row.innerHTML = `
               <div style="display: flex; align-items: center; gap: 0.65rem; min-width: 0;">
                 <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,168,132,0.15); border: 1px solid rgba(0,168,132,0.3); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.82rem; color: #10b981; flex-shrink: 0;">
@@ -5271,8 +6011,42 @@ async function openSalonInfoModal(salonId) {
                   <div style="font-size: 0.72rem; color: var(--text-dim);">@${escapeHtml(m.username)}</div>
                 </div>
               </div>
-              ${actionsHtml}
+              <div style="display: flex; align-items: center; gap: 6px;">
+                ${addContactHtml}
+                ${actionsHtml}
+              </div>
             `;
+
+            // Attach salon add contact listener
+            const addBtn = row.querySelector('.btn-salon-add-contact');
+            if (addBtn) {
+              addBtn.onclick = async (ev) => {
+                ev.stopPropagation();
+                const uId = addBtn.getAttribute('data-user-id');
+                try {
+                  addBtn.disabled = true;
+                  const reqRes = await authFetch('/api/contacts/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetUserId: uId })
+                  });
+                  const reqData = await reqRes.json();
+                  if (reqRes.ok) {
+                    if (reqData.autoAccepted) {
+                      await loadContacts();
+                      addBtn.outerHTML = '<span class="exact-status-pill" style="color: #10b981;">Ami</span>';
+                    } else {
+                      addBtn.outerHTML = '<span class="exact-status-pill" style="color: #f59e0b;">Envoyé</span>';
+                    }
+                  } else {
+                    alert(reqData.error || 'Erreur');
+                    addBtn.disabled = false;
+                  }
+                } catch(e) {
+                  addBtn.disabled = false;
+                }
+              };
+            }
 
             // Attach action listeners
             const btnBlock = row.querySelector('[data-action="block"]');
