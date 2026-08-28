@@ -146,6 +146,7 @@ async function initTables() {
       user_id TEXT NOT NULL,
       role TEXT DEFAULT 'member',
       is_blocked INTEGER DEFAULT 0,
+      last_read_at DATETIME,
       joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(salon_id, user_id)
     )
@@ -153,8 +154,24 @@ async function initTables() {
   try {
     await run(`ALTER TABLE salon_members ADD COLUMN is_blocked INTEGER DEFAULT 0`);
   } catch (e) {}
+  try {
+    await run(`ALTER TABLE salon_members ADD COLUMN last_read_at DATETIME`);
+  } catch (e) {}
   await run(`CREATE INDEX IF NOT EXISTS idx_salon_members_salon ON salon_members(salon_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_salon_members_user ON salon_members(user_id)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_message_reads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      salon_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(message_id, user_id)
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_msg_reads_msg ON salon_message_reads(message_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_msg_reads_user ON salon_message_reads(salon_id, user_id)`);
 
   console.log('[+] Database tables & indexes initialized successfully.');
 }
@@ -282,8 +299,8 @@ async function getMessageById(messageId) {
 
 async function markSupportMessagesAsRead(senderId) {
   return await run(
-    `UPDATE messages SET is_read = 1 WHERE channel_type = 'support' AND sender_id = ?`,
-    [senderId]
+    `UPDATE messages SET is_read = 1 WHERE channel_type = 'support' AND (sender_id = ? OR receiver_id = ?) AND is_read = 0`,
+    [senderId, senderId]
   );
 }
 
@@ -421,7 +438,8 @@ async function getSupportConversations() {
       MAX(CASE WHEN sender_id NOT LIKE 'admin%' AND sender_id != 'admin' THEN sender_name ELSE '' END) AS sender_name,
       MAX(CASE WHEN context_data IS NOT NULL AND context_data != '' THEN context_data END) AS context_data,
       MAX(timestamp) AS last_activity,
-      COUNT(*) AS message_count
+      COUNT(*) AS message_count,
+      SUM(CASE WHEN (sender_id NOT LIKE 'admin%' AND sender_id != 'admin') AND (is_read = 0 OR is_read IS NULL) THEN 1 ELSE 0 END) AS unread_count
     FROM messages
     WHERE channel_type = 'support'
     GROUP BY 
@@ -458,14 +476,21 @@ async function createSalon({ id, name, description, icon, created_by, memberIds 
 
 async function getSalonsForUser(userId) {
   return await all(
-    `SELECT s.*, sm.role as my_role,
+    `SELECT s.*, sm.role as my_role, sm.last_read_at,
        (SELECT COUNT(*) FROM salon_members WHERE salon_id = s.id) as member_count,
-       (SELECT timestamp FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_activity
+       (SELECT timestamp FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_activity,
+       (SELECT COUNT(*) FROM messages 
+        WHERE channel_type = 'salon' 
+          AND receiver_id = s.id 
+          AND sender_id != ? 
+          AND (deleted_scope IS NULL OR deleted_scope != 'all')
+          AND (sm.last_read_at IS NULL OR timestamp > sm.last_read_at)
+       ) as unread_count
      FROM salons s
      JOIN salon_members sm ON s.id = sm.salon_id
      WHERE sm.user_id = ?
      ORDER BY COALESCE(last_activity, s.created_at) DESC`,
-    [userId]
+    [userId, userId]
   );
 }
 
@@ -533,16 +558,50 @@ async function updateSalonInfo(salonId, { name, description, icon }) {
 }
 
 async function deleteSalon(salonId) {
+  await run(`DELETE FROM salon_message_reads WHERE salon_id = ?`, [salonId]);
   await run(`DELETE FROM messages WHERE channel_type = 'salon' AND receiver_id = ?`, [salonId]);
   await run(`DELETE FROM salon_members WHERE salon_id = ?`, [salonId]);
   await run(`DELETE FROM salons WHERE id = ?`, [salonId]);
 }
 
+async function markSalonMessagesAsRead(salonId, userId) {
+  const now = new Date().toISOString();
+  await run(
+    `UPDATE salon_members SET last_read_at = ? WHERE salon_id = ? AND user_id = ?`,
+    [now, salonId, userId]
+  );
+  await run(
+    `INSERT OR IGNORE INTO salon_message_reads (salon_id, message_id, user_id, read_at)
+     SELECT receiver_id, id, ?, ?
+     FROM messages
+     WHERE channel_type = 'salon' AND receiver_id = ? AND sender_id != ? AND (deleted_scope IS NULL OR deleted_scope != 'all')`,
+    [userId, now, salonId, userId]
+  );
+}
+
+async function markSalonMessageReadByMembers(salonId, messageId, userIds) {
+  if (!Array.isArray(userIds) || userIds.length === 0) return;
+  const now = new Date().toISOString();
+  for (const uid of userIds) {
+    await run(
+      `INSERT OR IGNORE INTO salon_message_reads (salon_id, message_id, user_id, read_at) VALUES (?, ?, ?, ?)`,
+      [salonId, messageId, uid, now]
+    );
+    await run(
+      `UPDATE salon_members SET last_read_at = ? WHERE salon_id = ? AND user_id = ?`,
+      [now, salonId, uid]
+    );
+  }
+}
+
 async function getSalonMessages(salonId, limit = 100) {
   return await all(
-    `SELECT * FROM messages 
-     WHERE channel_type = 'salon' AND receiver_id = ? AND (deleted_scope IS NULL OR deleted_scope != 'all')
-     ORDER BY timestamp ASC LIMIT ?`,
+    `SELECT m.*,
+       CASE WHEN (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) > 0 THEN 1 ELSE 0 END as is_read,
+       (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) as read_count
+     FROM messages m
+     WHERE m.channel_type = 'salon' AND m.receiver_id = ? AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+     ORDER BY m.timestamp ASC LIMIT ?`,
     [salonId, limit]
   );
 }
@@ -587,5 +646,8 @@ module.exports = {
   isSalonMemberBlocked,
   updateSalonInfo,
   deleteSalon,
-  getSalonMessages
+  markSalonMessagesAsRead,
+  markSalonMessageReadByMembers,
+  getSalonMessages,
+  initTables
 };

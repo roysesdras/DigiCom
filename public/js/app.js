@@ -356,6 +356,59 @@ function initSocket() {
     }
   });
 
+  // Real-time Salon Read Receipts (Eye Icon Updates to Orange in Salons)
+  state.socket.on('salon_messages_read', (data) => {
+    if (state.activeSalon && String(state.activeSalon.id) === String(data.salonId)) {
+      const unreadEyes = document.querySelectorAll('.msg-status-eye.unread');
+      unreadEyes.forEach(eye => {
+        eye.className = 'msg-status-eye read';
+        eye.title = 'Message lu';
+        eye.innerHTML = `
+          <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+            <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+          </svg>
+        `;
+      });
+
+      if (state.salonMessages[data.salonId]) {
+        const myId = state.user ? state.user.id : '';
+        state.salonMessages[data.salonId].forEach(m => {
+          if (m.senderId === myId || m.sender_id === myId) {
+            m.is_read = 1;
+            m.isRead = true;
+          }
+        });
+      }
+    }
+  });
+
+  // Real-time Support Read Receipts (Eye Icon Updates to Orange in Support Chat)
+  state.socket.on('support_read_receipt', (data) => {
+    if (state.activeTab === 'support' && state.activeSupportSession && String(state.activeSupportSession) === String(data.senderId)) {
+      const unreadEyes = document.querySelectorAll('.msg-status-eye.unread');
+      unreadEyes.forEach(eye => {
+        eye.className = 'msg-status-eye read';
+        eye.title = 'Message lu';
+        eye.innerHTML = `
+          <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+            <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+          </svg>
+        `;
+      });
+
+      if (state.supportMessages[data.senderId]) {
+        state.supportMessages[data.senderId].forEach(m => {
+          if (m.senderId === 'admin' || m.senderId === state.user.id || m.sender_id === state.user.id) {
+            m.is_read = 1;
+            m.isRead = true;
+          }
+        });
+      }
+    }
+  });
+
   // Support Message (RebOnly SOS Widget & Admin Reply)
   state.socket.on('support_message', (msg) => {
     // Determine the student / target user ID for this support conversation
@@ -375,6 +428,9 @@ function initSocket() {
     const isCurrentActive = state.activeTab === 'support' && state.activeSupportSession === targetId;
 
     if (isCurrentActive) {
+      if (state.socket && isFromOther) {
+        state.socket.emit('support_mark_read', { senderId: targetId });
+      }
       appendMessageToFeed(msg, true);
       scrollToBottom(true);
     } else if (isFromOther) {
@@ -533,6 +589,9 @@ function initSocket() {
     );
 
     if (isSalonActive) {
+      if (state.socket && (msg.senderId !== state.user.id && msg.sender_id !== state.user.id)) {
+        state.socket.emit('salon_mark_read', { salonId });
+      }
       appendMessageToFeed(msg, false, true);
       scrollToBottom(false);
       requestAnimationFrame(() => scrollToBottom(false));
@@ -1101,6 +1160,9 @@ function setupEventListeners() {
       if (state.activeSalon) {
         state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
       }
+      if (state.activeSupportSession) {
+        state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+      }
     } else {
       if (state.activeTab === 'contacts' && state.activeContact) {
         state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
@@ -1108,6 +1170,11 @@ function setupEventListeners() {
       }
       if (state.activeTab === 'salons' && state.activeSalon) {
         state.socket.emit('enter_active_chat', { partnerId: state.activeSalon.id });
+        state.socket.emit('salon_mark_read', { salonId: state.activeSalon.id });
+      }
+      if (state.activeTab === 'support' && state.activeSupportSession) {
+        state.socket.emit('enter_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+        state.socket.emit('support_mark_read', { senderId: state.activeSupportSession });
       }
     }
   });
@@ -1120,6 +1187,9 @@ function setupEventListeners() {
     if (state.activeSalon) {
       state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
     }
+    if (state.activeSupportSession) {
+      state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+    }
   });
 
   window.addEventListener('focus', () => {
@@ -1130,6 +1200,11 @@ function setupEventListeners() {
     }
     if (state.activeTab === 'salons' && state.activeSalon) {
       state.socket.emit('enter_active_chat', { partnerId: state.activeSalon.id });
+      state.socket.emit('salon_mark_read', { salonId: state.activeSalon.id });
+    }
+    if (state.activeTab === 'support' && state.activeSupportSession) {
+      state.socket.emit('enter_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+      state.socket.emit('support_mark_read', { senderId: state.activeSupportSession });
     }
   });
 
@@ -4097,6 +4172,10 @@ async function switchTab(tab) {
     state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
     state.activeContact = null;
   }
+  if (tab !== 'support' && state.activeSupportSession && state.socket) {
+    state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+    state.activeSupportSession = null;
+  }
 
   const mentionsPopover = document.getElementById('mentions-popover');
   if (mentionsPopover) mentionsPopover.style.display = 'none';
@@ -4146,6 +4225,17 @@ async function loadSupportConversations() {
     if (res.ok) {
       const data = await res.json();
       state.supportConversations = data.conversations || [];
+      const totalUnreads = state.supportConversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      const badge = document.getElementById('support-badge');
+      if (badge) {
+        if (totalUnreads > 0 && state.activeTab !== 'support') {
+          badge.textContent = totalUnreads > 99 ? '99+' : totalUnreads;
+          badge.style.display = 'inline-block';
+        } else if (totalUnreads === 0) {
+          badge.textContent = '0';
+          badge.style.display = 'none';
+        }
+      }
       if (state.activeTab === 'support') {
         renderSupportConversations();
       }
@@ -4186,7 +4276,10 @@ function renderSupportConversations() {
       <div class="contact-details">
         <div class="contact-title" style="display: flex; align-items: center; justify-content: space-between;">
           <span>${escapeHtml(studentDisplayName)}</span>
-          <span style="font-size: 0.65rem; background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 1px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase;">SOS</span>
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            ${(conv.unread_count > 0 && state.activeSupportSession !== conv.sender_id) ? `<span class="contact-unread-badge">${conv.unread_count > 99 ? '99+' : conv.unread_count}</span>` : ''}
+            <span style="font-size: 0.65rem; background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 1px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase;">SOS</span>
+          </span>
         </div>
         <div class="contact-desc">${escapeHtml(ctxTitle || 'Assistance SOS')}</div>
       </div>
@@ -4201,14 +4294,34 @@ function renderSupportConversations() {
 }
 
 window.openSupportConversationBySenderId = async function(senderId) {
+  if (state.socket) {
+    if (state.activeContact) {
+      state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
+    }
+    if (state.activeSalon) {
+      state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
+    }
+    if (state.activeSupportSession && String(state.activeSupportSession) !== String(senderId)) {
+      state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
+    }
+    state.socket.emit('enter_active_chat', { partnerId: 'admin_' + senderId });
+    state.socket.emit('support_mark_read', { senderId });
+  }
+
   switchTab('support');
   state.activeSupportSession = senderId;
+  state.activeContact = null;
+  state.activeSalon = null;
   document.body.classList.add('mobile-chat-open');
 
   const mainChat = document.getElementById('main-chat');
   if (mainChat) mainChat.classList.add('mobile-active');
 
   let conv = (state.supportConversations || []).find(c => c.sender_id === senderId);
+  if (conv) {
+    conv.unread_count = 0;
+  }
+  renderSupportConversations();
   let studentName = conv ? conv.sender_name : (senderId || 'Formateur / Étudiant');
   let ctxTitle = 'Assistance SOS';
   if (conv && conv.context_data) {
@@ -4621,6 +4734,25 @@ async function loadSalons() {
     if (res.ok) {
       const data = await res.json();
       state.salons = data.salons || [];
+      let totalSalonUnreads = 0;
+      state.salons.forEach(s => {
+        if (s.unread_count !== undefined && (!state.activeSalon || String(state.activeSalon.id) !== String(s.id))) {
+          state.unreadSalonCounts[s.id] = s.unread_count;
+        } else if (state.activeSalon && String(state.activeSalon.id) === String(s.id)) {
+          state.unreadSalonCounts[s.id] = 0;
+        }
+        totalSalonUnreads += (state.unreadSalonCounts[s.id] || 0);
+      });
+      const sBadge = document.getElementById('salons-badge');
+      if (sBadge) {
+        if (totalSalonUnreads > 0 && state.activeTab !== 'salons') {
+          sBadge.textContent = totalSalonUnreads > 99 ? '99+' : totalSalonUnreads;
+          sBadge.style.display = 'inline-block';
+        } else if (totalSalonUnreads === 0) {
+          sBadge.textContent = '0';
+          sBadge.style.display = 'none';
+        }
+      }
       renderSalonsList();
     }
   } catch (err) {
@@ -4705,6 +4837,7 @@ async function selectSalon(salon) {
       state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
     }
     state.socket.emit('enter_active_chat', { partnerId: salon.id });
+    state.socket.emit('salon_mark_read', { salonId: salon.id });
   }
 
   hideMentionsPopover();
@@ -4792,6 +4925,8 @@ async function loadSalonHistory(salonId) {
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];
+      state.unreadSalonCounts[salonId] = 0;
+      renderSalonsList();
       const messages = state.salonMessages[salonId];
 
       if (messages.length === 0) {

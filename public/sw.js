@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1088';
+const CACHE_NAME = 'digicom-pwa-v1090';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

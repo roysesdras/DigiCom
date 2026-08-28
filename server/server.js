@@ -450,6 +450,12 @@ app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
     if (!isMember.some(m => m.id === req.user.id) && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Accès non autorisé à ce Salon' });
     }
+    await db.markSalonMessagesAsRead(id, req.user.id);
+    io.to(`salon_${id}`).emit('salon_messages_read', {
+      salonId: id,
+      readerId: req.user.id,
+      readerName: req.user.displayName || req.user.username
+    });
     const messages = await db.getSalonMessages(id);
     res.json({ messages });
   } catch (err) {
@@ -905,6 +911,9 @@ app.get('/api/history/support', async (req, res) => {
     if (!senderId || senderId === 'undefined' || senderId === 'null' || String(senderId).trim() === '') {
       return res.json({ messages: [] });
     }
+    await db.markSupportMessagesAsRead(senderId);
+    io.to(`support_${senderId}`).emit('support_read_receipt', { senderId });
+    io.to('admin_room').emit('support_read_receipt', { senderId });
     const messages = await db.getMessages({
       channelType: 'support',
       limit: 200,
@@ -1136,9 +1145,13 @@ io.on('connection', (socket) => {
     if (currentUserId && partnerId) {
       if (socket.activeChatPartner && socket.activeChatPartner !== partnerId) {
         socket.leave(`active_chat_${currentUserId}_${socket.activeChatPartner}`);
+        socket.leave(`active_chat_${socket.activeChatPartner}`);
       }
       socket.activeChatPartner = partnerId;
       socket.join(`active_chat_${currentUserId}_${partnerId}`);
+      if (partnerId.startsWith('admin_')) {
+        socket.join(`active_chat_${partnerId}`);
+      }
       console.log(`[+] Socket ${socket.id} (user ${currentUserId}) entered active chat with ${partnerId}`);
     }
   });
@@ -1150,9 +1163,15 @@ io.on('connection', (socket) => {
     if (currentUserId) {
       if (targetPartner) {
         socket.leave(`active_chat_${currentUserId}_${targetPartner}`);
+        if (targetPartner.startsWith('admin_')) {
+          socket.leave(`active_chat_${targetPartner}`);
+        }
       }
       if (socket.activeChatPartner) {
         socket.leave(`active_chat_${currentUserId}_${socket.activeChatPartner}`);
+        if (socket.activeChatPartner.startsWith('admin_')) {
+          socket.leave(`active_chat_${socket.activeChatPartner}`);
+        }
       }
       socket.activeChatPartner = null;
       console.log(`[+] Socket ${socket.id} (user ${currentUserId}) left active chat with ${targetPartner}`);
@@ -1169,6 +1188,24 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('[-] Error handling mark_read:', err);
+    }
+  });
+
+  socket.on('salon_mark_read', async (data) => {
+    try {
+      const { salonId } = data || {};
+      const currentUserId = socket.userId || (socket.user ? socket.user.id : null) || (currentUser ? currentUser.id : null);
+      if (salonId && currentUserId) {
+        await db.markSalonMessagesAsRead(salonId, currentUserId);
+        const currentUserName = (currentUser && (currentUser.displayName || currentUser.username)) || 'Membre';
+        io.to(`salon_${salonId}`).emit('salon_messages_read', {
+          salonId,
+          readerId: currentUserId,
+          readerName: currentUserName
+        });
+      }
+    } catch (err) {
+      console.error('[-] Error handling salon_mark_read:', err);
     }
   });
 
@@ -1220,6 +1257,20 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Deliver directly to each salon member room & send push if not actively viewing
+      const salonMembers = await db.getSalonMembers(salonId);
+      const activeMemberIds = [];
+      for (const member of salonMembers) {
+        if (member.id !== senderId) {
+          const activeSalonRoom = io.sockets.adapter.rooms.get(`active_chat_${member.id}_${salonId}`);
+          if (activeSalonRoom && activeSalonRoom.size > 0) {
+            activeMemberIds.push(member.id);
+          }
+        }
+      }
+
+      const isReadByActiveMembers = activeMemberIds.length > 0;
+
       const messageRecord = {
         id: msgId,
         channelType: 'salon',
@@ -1228,16 +1279,25 @@ io.on('connection', (socket) => {
         receiverId: salonId,
         content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
         contextData: data.contextData || null,
+        is_read: isReadByActiveMembers ? 1 : 0,
+        read_count: activeMemberIds.length,
         timestamp: new Date().toISOString()
       };
 
       await db.saveMessage(messageRecord);
 
+      if (isReadByActiveMembers) {
+        await db.markSalonMessageReadByMembers(salonId, messageRecord.id, activeMemberIds);
+        io.to(`salon_${salonId}`).emit('salon_messages_read', {
+          salonId,
+          readerId: activeMemberIds[0],
+          readerName: 'Membre actif'
+        });
+      }
+
       // Broadcast message to all members currently in the salon room
       io.to(`salon_${salonId}`).emit('new_salon_message', messageRecord);
 
-      // Deliver directly to each salon member room & send push if not actively viewing
-      const salonMembers = await db.getSalonMembers(salonId);
       const salonData = await db.getSalonById(salonId);
       const rawSalonName = salonData ? salonData.name : 'Salon';
       const formattedSalonName = '#' + rawSalonName.replace(/^#+/, '');
@@ -1267,9 +1327,7 @@ io.on('connection', (socket) => {
 
       for (const member of salonMembers) {
         if (member.id !== senderId) {
-          // Check if recipient is actively inside this specific salon chat
-          const activeSalonRoom = io.sockets.adapter.rooms.get(`active_chat_${member.id}_${salonId}`);
-          const isMemberActiveInSalon = Boolean(activeSalonRoom && activeSalonRoom.size > 0);
+          const isMemberActiveInSalon = activeMemberIds.includes(member.id);
 
           // Send Push ONLY if member is not actively viewing this salon chat
           if (!isMemberActiveInSalon) {
@@ -1325,8 +1383,9 @@ io.on('connection', (socket) => {
       await db.saveMessage(messageRecord);
 
       if (isRecipientActiveInChat) {
-        await db.markMessagesAsRead('admin', senderId);
-        io.to(`user_${senderId}`).emit('messages_read_by_recipient', { readerId: 'admin' });
+        await db.markSupportMessagesAsRead(senderId);
+        io.to(`support_${senderId}`).emit('support_read_receipt', { senderId });
+        io.to('admin_room').emit('support_read_receipt', { senderId });
       }
 
       // Join the session room for direct replies
@@ -1383,8 +1442,9 @@ io.on('connection', (socket) => {
       await db.saveMessage(messageRecord);
 
       if (isRecipientActiveInChat) {
-        await db.markMessagesAsRead(targetUserId, currentAdminId);
-        io.to(`user_${currentAdminId}`).emit('messages_read_by_recipient', { readerId: targetUserId });
+        await db.markSupportMessagesAsRead(targetUserId);
+        io.to(`support_${targetUserId}`).emit('support_read_receipt', { senderId: targetUserId });
+        io.to('admin_room').emit('support_read_receipt', { senderId: targetUserId });
       }
 
       // Deliver to specific support session and admin rooms
