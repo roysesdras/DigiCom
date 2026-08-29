@@ -171,6 +171,34 @@ class DigiPushClient {
     }
     return false;
   }
+
+  async unsubscribeUser() {
+    try {
+      if (!this.swRegistration && ('serviceWorker' in navigator)) {
+        try {
+          this.swRegistration = await navigator.serviceWorker.ready;
+        } catch (e) {}
+      }
+      if (this.swRegistration && this.swRegistration.pushManager) {
+        const subscription = await this.swRegistration.pushManager.getSubscription();
+        if (subscription) {
+          const endpoint = subscription.endpoint;
+          await fetch('/api/unsubscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: endpoint })
+          }).catch(() => {});
+          await subscription.unsubscribe().catch(() => {});
+        }
+      }
+      this.isSubscribed = false;
+      console.log('[+] Web Push subscription unsubscribed clean.');
+      return true;
+    } catch (err) {
+      console.warn('[-] Error during push unsubscribe:', err);
+      return false;
+    }
+  }
 }
 
 window.DigiPushClient = DigiPushClient;

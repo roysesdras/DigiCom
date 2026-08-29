@@ -106,6 +106,7 @@ app.get('/uploads/:filename', async (req, res) => {
   }
 
   if (fs.existsSync(localFile)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return res.sendFile(localFile);
   } else {
     return res.status(404).send('File not found');
@@ -156,6 +157,121 @@ app.get('/api/status', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// 1b. Link Preview (Open Graph metadata scraper with Server-side Caching)
+const linkPreviewServerCache = new Map();
+const LINK_PREVIEW_CACHE_TTL = 3600 * 2000; // 2 hours
+
+app.get('/api/link-preview', authenticateToken, async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'Missing url param' });
+
+  // Basic URL validation
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ error: 'Invalid protocol' });
+    }
+    // Block private/internal IPs (SSRF protection)
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
+    if (blocked.includes(hostname) || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) {
+      return res.status(403).json({ error: 'Forbidden URL' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+
+  const normalizedUrl = parsedUrl.toString();
+  const cached = linkPreviewServerCache.get(normalizedUrl);
+  if (cached && (Date.now() - cached.timestamp < LINK_PREVIEW_CACHE_TTL)) {
+    return res.json(cached.data);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    const fetchRes = await fetch(normalizedUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      },
+      redirect: 'follow'
+    });
+    clearTimeout(timeout);
+
+    const contentType = fetchRes.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) {
+      const fallback = { url: normalizedUrl, title: parsedUrl.hostname, description: null, image: null, domain: parsedUrl.hostname };
+      linkPreviewServerCache.set(normalizedUrl, { data: fallback, timestamp: Date.now() });
+      return res.json(fallback);
+    }
+
+    const html = await fetchRes.text();
+
+    const decodeEntities = (str) => {
+      if (!str) return null;
+      return str
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .trim();
+    };
+
+    // Parse Open Graph & Twitter & meta tags
+    const getMeta = (property) => {
+      const match = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, 'i'))
+        || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, 'i'));
+      return match ? decodeEntities(match[1]) : null;
+    };
+
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const rawTitle = getMeta('og:title') || getMeta('twitter:title') || (titleMatch ? titleMatch[1] : parsedUrl.hostname);
+    const title = decodeEntities(rawTitle);
+    const description = getMeta('og:description') || getMeta('twitter:description') || getMeta('description');
+    let image = getMeta('og:image') || getMeta('twitter:image') || getMeta('image');
+
+    // Convert relative image URL to absolute
+    if (image && !image.startsWith('http')) {
+      try {
+        image = new URL(image, parsedUrl.origin).toString();
+      } catch (e) {
+        image = null;
+      }
+    }
+
+    const result = {
+      url: normalizedUrl,
+      title: title || parsedUrl.hostname,
+      description: description ? description.substring(0, 200) : null,
+      image: image || null,
+      domain: parsedUrl.hostname.replace(/^www\./, '')
+    };
+
+    linkPreviewServerCache.set(normalizedUrl, { data: result, timestamp: Date.now() });
+    if (linkPreviewServerCache.size > 500) {
+      const firstKey = linkPreviewServerCache.keys().next().value;
+      linkPreviewServerCache.delete(firstKey);
+    }
+
+    return res.json(result);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      return res.status(408).json({ error: 'Timeout fetching URL' });
+    }
+    const fallback = { url: normalizedUrl, title: parsedUrl.hostname, description: null, image: null, domain: parsedUrl.hostname };
+    return res.json(fallback);
+  }
+});
+
+
 
 // 2. Initial Setup (Create first Admin)
 app.post('/api/setup', async (req, res) => {
@@ -306,9 +422,6 @@ app.post('/api/auth/register', async (req, res) => {
 // 3c. Contact Management Endpoints
 app.get('/api/contacts/search', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
-    }
     const query = req.query.q || '';
     if (!query.trim()) {
       return res.json({ users: [] });
@@ -639,6 +752,7 @@ app.post('/api/salons/create', authenticateToken, async (req, res) => {
 app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const { limit, before } = req.query;
     const isMember = await db.getSalonMembers(id);
     if (!isMember.some(m => m.id === req.user.id) && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Accès non autorisé à ce Salon' });
@@ -649,7 +763,7 @@ app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
       readerId: req.user.id,
       readerName: req.user.displayName || req.user.username
     });
-    const messages = await db.getSalonMessages(id);
+    const messages = await db.getSalonMessages(id, limit || 50, before || null);
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -854,7 +968,13 @@ app.get('/api/me', authenticateToken, async (req, res) => {
 });
 
 // 5. Logout
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (endpoint) {
+      await db.deleteSubscriptionByEndpoint(endpoint);
+    }
+  } catch (e) {}
   res.clearCookie('digicom_token');
   res.json({ success: true });
 });
@@ -977,7 +1097,20 @@ app.post('/api/subscribe', async (req, res) => {
       return res.status(400).json({ error: 'Données de souscription invalides.' });
     }
 
-    const subUserId = userId || (req.user && req.user.id) || 'guest';
+    // Try extracting authenticated user token if present in headers or cookies
+    let subUserId = userId;
+    const authHeader = req.headers['authorization'];
+    const token = (authHeader && authHeader.split(' ')[1]) || (req.cookies && req.cookies.digicom_token);
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && decoded.id) subUserId = decoded.id;
+      } catch (e) {}
+    }
+
+    if (!subUserId) {
+      subUserId = 'guest';
+    }
 
     await db.saveSubscription({
       userId: subUserId,
@@ -986,6 +1119,19 @@ app.post('/api/subscribe', async (req, res) => {
       auth: subscription.keys.auth
     });
 
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8b. Unsubscribe Push Endpoint (Call on logout or toggle off)
+app.post('/api/unsubscribe', async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (endpoint) {
+      await db.deleteSubscriptionByEndpoint(endpoint);
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1006,9 +1152,10 @@ app.get('/api/contacts', authenticateToken, async (req, res) => {
 app.get('/api/history/direct/:targetUserId', authenticateToken, async (req, res) => {
   try {
     const { targetUserId } = req.params;
+    const { limit, before } = req.query;
     await db.markMessagesAsRead(req.user.id, targetUserId);
     io.to(`user_${targetUserId}`).emit('messages_read_by_recipient', { readerId: req.user.id });
-    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, 300);
+    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, limit || 50, before || null);
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1100,7 +1247,7 @@ app.patch('/api/messages/:messageId', authenticateToken, async (req, res) => {
 
 app.get('/api/history/support', async (req, res) => {
   try {
-    const { senderId } = req.query;
+    const { senderId, limit, before } = req.query;
     if (!senderId || senderId === 'undefined' || senderId === 'null' || String(senderId).trim() === '') {
       return res.json({ messages: [] });
     }
@@ -1109,7 +1256,8 @@ app.get('/api/history/support', async (req, res) => {
     io.to('admin_room').emit('support_read_receipt', { senderId });
     const messages = await db.getMessages({
       channelType: 'support',
-      limit: 200,
+      limit: limit || 50,
+      before: before || null,
       senderId
     });
     res.json({ messages });
@@ -1238,10 +1386,17 @@ io.on('connection', (socket) => {
       }
     }).catch(err => console.error('[-] Error auto-joining salon rooms:', err));
 
-    io.emit('presence_update', {
+    socket.emit('presence_initial', {
+      onlineUserIds: Array.from(onlineUsers.keys())
+    });
+    socket.emit('presence_update', {
       userId: userData.id,
       status: 'online',
       onlineUserIds: Array.from(onlineUsers.keys())
+    });
+    socket.broadcast.emit('presence_delta', {
+      userId: userData.id,
+      status: 'online'
     });
 
     console.log(`[+] User connected: ${userData.username || userData.id} (${socket.id})`);
@@ -1796,6 +1951,21 @@ io.on('connection', (socket) => {
         callType: data.callType || 'audio',
         offer: data.offer
       });
+
+      // Send high-priority Web Push Notification for background call alert
+      pushService.sendNotificationToUser(data.targetUserId, {
+        title: `Appel ${data.callType === 'video' ? 'Vidéo' : 'Vocal'} Entrant`,
+        body: `${callerName} vous appelle... Touchez pour répondre.`,
+        icon: '/img/icon-192.png',
+        badge: '/img/badge-72.png',
+        data: {
+          type: 'call_incoming',
+          callerId: callerId,
+          callerName: callerName,
+          callType: data.callType || 'audio',
+          url: `/?contact=${encodeURIComponent(callerId)}`
+        }
+      }).catch(e => console.error('[-] Push error for call_incoming:', e));
     }
   });
 
@@ -1809,9 +1979,23 @@ io.on('connection', (socket) => {
 
   socket.on('call_rejected', (data) => {
     if (data && data.targetUserId) {
+      const callerId = socket.user ? socket.user.id : socket.userId;
+      const callerName = socket.user ? (socket.user.displayName || socket.user.username) : 'Membre';
+
       io.to(`user_${data.targetUserId}`).emit('call_rejected', {
         reason: data.reason || 'Appel refusé'
       });
+
+      // Send Missed Call Push Notification if call was missed/unanswered
+      if (data.isMissed) {
+        pushService.sendNotificationToUser(data.targetUserId, {
+          title: 'Appel Manqué',
+          body: `Appel ${data.callType === 'video' ? 'vidéo' : 'vocal'} manqué de ${callerName}.`,
+          icon: '/img/icon-192.png',
+          badge: '/img/badge-72.png',
+          data: { url: `/?contact=${encodeURIComponent(callerId)}` }
+        }).catch(e => console.error('[-] Push error for missed call:', e));
+      }
     }
   });
 
@@ -1835,6 +2019,10 @@ io.on('connection', (socket) => {
       userSockets.delete(socket.id);
       if (userSockets.size === 0) {
         onlineUsers.delete(currentUser.id);
+        io.emit('presence_delta', {
+          userId: currentUser.id,
+          status: 'offline'
+        });
         io.emit('presence_update', {
           userId: currentUser.id,
           status: 'offline',
@@ -1845,6 +2033,14 @@ io.on('connection', (socket) => {
     console.log(`[-] Socket disconnected: ${socket.id}`);
   });
 });
+
+// Automatic Asset Minification (AST-based, 100% loss-free)
+const buildMinifiedAssets = require('./build-minify');
+try {
+  buildMinifiedAssets();
+} catch (e) {
+  console.warn('[-] Error during asset minification on startup:', e);
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);

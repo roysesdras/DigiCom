@@ -147,26 +147,41 @@ class DigiStore {
     });
   }
 
-  async getMessages(currentUserId, targetUserId) {
+  async getMessages(currentUserId, targetUserId, limit = 50, beforeTimestamp = null) {
     if (!this.db) await this.init();
     return new Promise((resolve, reject) => {
       const tx = this.db.transaction('messages', 'readonly');
       const store = tx.objectStore('messages');
-      const request = store.getAll();
+      const index = store.index('timestamp');
+      const cId = String(currentUserId);
+      const tId = String(targetUserId);
 
-      request.onsuccess = () => {
-        const all = request.result || [];
-        const filtered = all.filter(m => {
-          const sId = String(m.senderId || m.sender_id);
-          const rId = String(m.receiverId || m.receiver_id);
-          const cId = String(currentUserId);
-          const tId = String(targetUserId);
-          return (sId === cId && rId === tId) || (sId === tId && rId === cId);
-        });
-        filtered.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        resolve(filtered);
+      let keyRange = null;
+      if (beforeTimestamp) {
+        keyRange = IDBKeyRange.upperBound(beforeTimestamp, true);
+      }
+
+      const results = [];
+      const cursorRequest = index.openCursor(keyRange, 'prev');
+
+      cursorRequest.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (cursor && results.length < limit) {
+          const m = cursor.value;
+          const sId = String(m.senderId || m.sender_id || '');
+          const rId = String(m.receiverId || m.receiver_id || '');
+          if ((sId === cId && rId === tId) || (sId === tId && rId === cId)) {
+            results.push(m);
+          }
+          cursor.continue();
+        } else {
+          // Sort ascending chronologically
+          results.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          resolve(results);
+        }
       };
-      request.onerror = (e) => reject(e.target.error);
+
+      cursorRequest.onerror = (e) => reject(e.target.error);
     });
   }
 
@@ -201,6 +216,57 @@ class DigiStore {
       store.delete(id);
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async pruneOldMessages(maxPerConversation = 500) {
+    if (!this.db) await this.init();
+    try {
+      const tx = this.db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      const countReq = store.count();
+      countReq.onsuccess = () => {
+        if (countReq.result > maxPerConversation * 4) {
+          const index = store.index('timestamp');
+          let deleted = 0;
+          const toDelete = countReq.result - (maxPerConversation * 2);
+          const cursorReq = index.openCursor(); // Ascending (oldest first)
+          cursorReq.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor && deleted < toDelete) {
+              cursor.delete();
+              deleted++;
+              cursor.continue();
+            }
+          };
+        }
+      };
+    } catch (e) {
+      console.warn('[-] DigiStore prune warning:', e);
+    }
+  }
+
+  async clearAllStores() {
+    if (!this.db) {
+      try { await this.init(); } catch (e) {}
+    }
+    if (!this.db) return false;
+
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db.transaction(['contacts', 'messages', 'outbox'], 'readwrite');
+        tx.objectStore('contacts').clear();
+        tx.objectStore('messages').clear();
+        tx.objectStore('outbox').clear();
+        tx.oncomplete = () => {
+          console.log('[+] DigiStore cleared successfully on logout.');
+          resolve(true);
+        };
+        tx.onerror = () => resolve(false);
+      } catch (e) {
+        console.warn('[-] Error clearing DigiStore:', e);
+        resolve(false);
+      }
     });
   }
 }

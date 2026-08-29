@@ -13,6 +13,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('[-] Failed to connect to SQLite database:', err.message);
   } else {
     console.log('[+] Connected to SQLite database at:', dbPath);
+    db.serialize(() => {
+      db.run('PRAGMA journal_mode = WAL;');
+      db.run('PRAGMA synchronous = NORMAL;');
+      db.run('PRAGMA busy_timeout = 5000;');
+      db.run('PRAGMA cache_size = -20000;');
+      db.run('PRAGMA temp_store = MEMORY;');
+    });
     initTables();
   }
 });
@@ -250,15 +257,16 @@ async function saveSubscription({ userId, endpoint, p256dh, auth }) {
 }
 
 async function getSubscriptionsByUserId(userId) {
-  return await all(`SELECT DISTINCT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ? OR user_id = 'admin' OR user_id = 'guest'`, [userId]);
+  if (!userId) return [];
+  return await all(`SELECT DISTINCT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?`, [userId]);
 }
 
 async function getAdminSubscriptions() {
   return await all(`
     SELECT DISTINCT ps.endpoint, ps.p256dh, ps.auth
     FROM push_subscriptions ps
-    LEFT JOIN users u ON ps.user_id = u.id
-    WHERE u.role = 'admin' OR ps.user_id = 'admin' OR ps.user_id = 'guest'
+    INNER JOIN users u ON ps.user_id = u.id
+    WHERE u.role = 'admin'
   `);
 }
 
@@ -271,33 +279,39 @@ async function saveMessage({ id, channelType, senderId, senderName, receiverId, 
   const contextStr = contextData ? (typeof contextData === 'string' ? contextData : JSON.stringify(contextData)) : null;
   const finalTs = timestamp ? (new Date(timestamp).toISOString()) : (new Date().toISOString());
   return await run(
-    `INSERT INTO messages (id, channel_type, sender_id, sender_name, receiver_id, content, context_data, timestamp)
+    `INSERT OR IGNORE INTO messages (id, channel_type, sender_id, sender_name, receiver_id, content, context_data, timestamp)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, channelType, senderId, senderName, receiverId || null, content, contextStr, finalTs]
   );
 }
 
-async function getMessages({ channelType, limit = 300, senderId = null, receiverId = null }) {
+async function getMessages({ channelType, limit = 50, before = null, senderId = null, receiverId = null }) {
+  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 100));
+  const beforeClause = before ? 'AND timestamp < ?' : '';
   if (channelType === 'private') {
+    const params = before ? [before, safeLimit] : [safeLimit];
     return await all(
       `SELECT * FROM (
          SELECT * FROM messages
          WHERE channel_type = 'private'
+         ${beforeClause}
          ORDER BY timestamp DESC
          LIMIT ?
        ) ORDER BY timestamp ASC`,
-      [limit]
+      params
     );
   } else if (channelType === 'support') {
     if (senderId && senderId !== 'undefined' && senderId !== 'null' && String(senderId).trim() !== '') {
+      const params = before ? [senderId, senderId, before, safeLimit] : [senderId, senderId, safeLimit];
       return await all(
         `SELECT * FROM (
            SELECT * FROM messages
            WHERE channel_type = 'support' AND (sender_id = ? OR receiver_id = ?)
+           ${beforeClause}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`,
-        [senderId, senderId, limit]
+        params
       );
     }
     return [];
@@ -347,32 +361,39 @@ async function editMessage(messageId, senderId, newContent) {
   return await get('SELECT * FROM messages WHERE id = ?', [messageId]);
 }
 
-async function getDirectMessages(userA, userB, userRole = 'family', limit = 300) {
+async function getDirectMessages(userA, userB, userRole = 'family', limit = 50, before = null) {
+  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 100));
+  const beforeClause = before ? 'AND timestamp < ?' : '';
+  const baseParams = [userA, userB, userB, userA];
   if (userRole === 'admin') {
     // Admin sees all messages, including soft-deleted ones with audit flag
+    const params = before ? [...baseParams, before, safeLimit] : [...baseParams, safeLimit];
     return await all(
       `SELECT * FROM (
          SELECT * FROM messages
          WHERE channel_type = 'private'
            AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
            AND (deleted_scope IS NULL OR deleted_scope != 'all')
+           ${beforeClause}
          ORDER BY timestamp DESC
          LIMIT ?
        ) ORDER BY timestamp ASC`,
-      [userA, userB, userB, userA, limit]
+      params
     );
   } else {
     // Members see active messages + messages not deleted for current user
+    const params = before ? [userA, userB, userB, userA, userA, userA, before, safeLimit] : [userA, userB, userB, userA, userA, userA, safeLimit];
     return await all(
       `SELECT * FROM (
          SELECT * FROM messages
          WHERE channel_type = 'private'
            AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
            AND (deleted_scope IS NULL OR (deleted_scope = 'sender_only' AND sender_id != ?) OR (deleted_scope = 'receiver_only' AND receiver_id != ?))
+           ${beforeClause}
          ORDER BY timestamp DESC
          LIMIT ?
        ) ORDER BY timestamp ASC`,
-      [userA, userB, userB, userA, userA, userA, limit]
+      params
     );
   }
 }
@@ -538,44 +559,46 @@ async function getContactsForUser(currentUserId, currentUserRole = 'family') {
 }
 
 async function getSupportConversations() {
-  const rows = await all(`
-    SELECT 
-      CASE 
-        WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
-        ELSE sender_id 
-      END AS sender_id,
-      MAX(CASE WHEN sender_id NOT LIKE 'admin%' AND sender_id != 'admin' THEN sender_name ELSE '' END) AS sender_name,
-      MAX(CASE WHEN context_data IS NOT NULL AND context_data != '' THEN context_data END) AS context_data,
-      MAX(timestamp) AS last_activity,
-      COUNT(*) AS message_count,
-      SUM(CASE WHEN (sender_id NOT LIKE 'admin%' AND sender_id != 'admin') AND (is_read = 0 OR is_read IS NULL) THEN 1 ELSE 0 END) AS unread_count
-    FROM messages
-    WHERE channel_type = 'support'
-    GROUP BY 
-      CASE 
-        WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
-        ELSE sender_id 
-      END
-    ORDER BY last_activity DESC
-  `);
-
-  for (const r of rows) {
-    const lastMsg = await get(`
-      SELECT content, timestamp, sender_id, is_read
+  return await all(`
+    WITH latest_support AS (
+      SELECT 
+        CASE 
+          WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
+          ELSE sender_id 
+        END AS thread_id,
+        MAX(CASE WHEN sender_id NOT LIKE 'admin%' AND sender_id != 'admin' THEN sender_name ELSE '' END) AS sender_name,
+        MAX(CASE WHEN context_data IS NOT NULL AND context_data != '' THEN context_data END) AS context_data,
+        MAX(timestamp) AS last_activity,
+        COUNT(*) AS message_count,
+        SUM(CASE WHEN (sender_id NOT LIKE 'admin%' AND sender_id != 'admin') AND (is_read = 0 OR is_read IS NULL) THEN 1 ELSE 0 END) AS unread_count
       FROM messages
-      WHERE channel_type = 'support' AND (sender_id = ? OR receiver_id = ?)
-      ORDER BY timestamp DESC
+      WHERE channel_type = 'support'
+      GROUP BY 
+        CASE 
+          WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
+          ELSE sender_id 
+        END
+    )
+    SELECT 
+      ls.thread_id AS sender_id,
+      ls.sender_name,
+      ls.context_data,
+      ls.last_activity,
+      ls.message_count,
+      ls.unread_count,
+      m.content AS last_message,
+      m.timestamp AS last_message_at,
+      m.sender_id AS last_sender_id,
+      m.is_read AS last_is_read
+    FROM latest_support ls
+    LEFT JOIN messages m ON m.id = (
+      SELECT id FROM messages 
+      WHERE channel_type = 'support' AND (sender_id = ls.thread_id OR receiver_id = ls.thread_id)
+      ORDER BY timestamp DESC 
       LIMIT 1
-    `, [r.sender_id, r.sender_id]);
-    if (lastMsg) {
-      r.last_message = lastMsg.content;
-      r.last_message_at = lastMsg.timestamp;
-      r.last_sender_id = lastMsg.sender_id;
-      r.last_is_read = lastMsg.is_read;
-    }
-  }
-
-  return rows;
+    )
+    ORDER BY ls.last_activity DESC
+  `);
 }
 
 async function createSalon({ id, name, description, icon, created_by, memberIds = [] }) {
@@ -717,15 +740,21 @@ async function markSalonMessageReadByMembers(salonId, messageId, userIds) {
   }
 }
 
-async function getSalonMessages(salonId, limit = 100) {
+async function getSalonMessages(salonId, limit = 50, before = null) {
+  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 100));
+  const beforeClause = before ? 'AND m.timestamp < ?' : '';
+  const params = before ? [salonId, before, safeLimit] : [salonId, safeLimit];
   return await all(
-    `SELECT m.*,
-       CASE WHEN (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) > 0 THEN 1 ELSE 0 END as is_read,
-       (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) as read_count
-     FROM messages m
-     WHERE m.channel_type = 'salon' AND m.receiver_id = ? AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
-     ORDER BY m.timestamp ASC LIMIT ?`,
-    [salonId, limit]
+    `SELECT * FROM (
+       SELECT m.*,
+         CASE WHEN (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) > 0 THEN 1 ELSE 0 END as is_read,
+         (SELECT COUNT(*) FROM salon_message_reads smr WHERE smr.message_id = m.id) as read_count
+       FROM messages m
+       WHERE m.channel_type = 'salon' AND m.receiver_id = ? AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+       ${beforeClause}
+       ORDER BY m.timestamp DESC LIMIT ?
+     ) ORDER BY timestamp ASC`,
+    params
   );
 }
 

@@ -67,16 +67,27 @@ async function sendNotificationToSubscription(subscription, payload) {
       }
     };
 
+    const payloadObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
     const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    // Topic for notification grouping and collapse
+    let topic = 'digicom-msg';
+    if (payloadObj.data) {
+      if (payloadObj.data.salonId) topic = 'salon-' + payloadObj.data.salonId;
+      else if (payloadObj.data.senderId) topic = 'user-' + payloadObj.data.senderId;
+    }
+
+    // 15 minutes (900s) TTL: Real-time chat messages expire if not delivered within 15 min
     await webpush.sendNotification(pushSubscription, payloadString, {
-      TTL: 86400,
-      urgency: 'high'
+      TTL: 900,
+      urgency: 'high',
+      topic: topic
     });
     return true;
   } catch (err) {
     console.error(`[-] Push error for endpoint ${subscription.endpoint.substring(0, 30)}...:`, err.statusCode || err.message);
-    if (err.statusCode === 410 || err.statusCode === 404) {
-      console.log('[*] Subscription expired or gone, removing from DB.');
+    if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 400) {
+      console.log('[*] Invalid/expired subscription removed from DB:', subscription.endpoint.substring(0, 40));
       await db.deleteSubscriptionByEndpoint(subscription.endpoint);
     }
     return false;

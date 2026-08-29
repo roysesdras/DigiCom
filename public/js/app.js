@@ -133,7 +133,13 @@ async function authFetch(url, options = {}) {
   return res;
 }
 
+let isAppInitializing = false;
+let isAppInitialized = false;
+
 async function checkAuthAndInit() {
+  if (isAppInitializing) return;
+  isAppInitializing = true;
+
   const cachedUserStr = localStorage.getItem('digicom_user');
 
   // Instant restoration: immediately render app interface with 0ms latency!
@@ -155,10 +161,15 @@ async function checkAuthAndInit() {
       }
       localStorage.setItem('digicom_user', JSON.stringify(data.user));
       hideModals();
-      await initAppInterface();
+      if (!isAppInitialized) {
+        await initAppInterface();
+      } else {
+        updateCurrentUserUI();
+      }
     } else {
       localStorage.removeItem('digicom_user');
       localStorage.removeItem('digicom_token');
+      isAppInitialized = false;
       showModal('login-modal');
     }
   } catch (err) {
@@ -166,10 +177,12 @@ async function checkAuthAndInit() {
     if (!state.user) {
       showModal('login-modal');
     }
+  } finally {
+    isAppInitializing = false;
   }
 }
 
-async function initAppInterface() {
+function updateCurrentUserUI() {
   if (!state.user) return;
   const username = state.user.displayName || state.user.username;
   const usernameEl = document.getElementById('current-username');
@@ -192,6 +205,13 @@ async function initAppInterface() {
   if (chatAdmin) {
     chatAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
+}
+
+async function initAppInterface() {
+  if (!state.user) return;
+  isAppInitialized = true;
+  updateCurrentUserUI();
+  if (typeof updatePWAInstallUI === 'function') updatePWAInstallUI();
 
   // Auto-activate & Auto-heal push subscription if permission already granted
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -220,12 +240,66 @@ async function initAppInterface() {
 
   // Render initial active tab
   await switchTab(state.activeTab || 'all');
+
+  // Check for incoming call deep link in URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('openCall') === 'true' || urlParams.get('callerId')) {
+    const callerId = urlParams.get('callerId');
+    const callerName = urlParams.get('callerName') || 'Correspondant';
+    const callType = urlParams.get('callType') || 'audio';
+    const act = urlParams.get('action');
+
+    setTimeout(() => {
+      if (window.triggerIncomingCallUI) {
+        window.triggerIncomingCallUI({
+          callerId,
+          callerName,
+          callType,
+          autoAnswer: act === 'answer',
+          autoReject: act === 'reject'
+        });
+      }
+    }, 600);
+  }
+
+  // Trigger Guided Tour on first visit or if requested
+  if (typeof DigiComTour !== 'undefined') {
+    setTimeout(() => {
+      DigiComTour.start(false);
+    }, 1200);
+  }
+}
+
+function updateOnlineIndicatorsInLists(userId, isOnline) {
+  const contactItem = document.querySelector(`.contact-card[data-user-id="${userId}"], .contact-item[data-user-id="${userId}"]`);
+  if (contactItem) {
+    const badge = contactItem.querySelector('.contact-online-badge, .status-indicator');
+    if (badge) {
+      badge.className = isOnline ? 'contact-online-badge online' : 'contact-online-badge offline';
+    }
+  }
+  if (state.activeContact && String(state.activeContact.id) === String(userId)) {
+    updateActiveContactStatus();
+  }
 }
 
 function initSocket() {
   if (typeof io === 'undefined') {
     console.warn('[!] Socket.io library not available offline. Operating in local store mode.');
     return;
+  }
+  if (state.socket && state.socket.connected) {
+    if (state.user) {
+      state.socket.emit('authenticate', state.user);
+    }
+    return;
+  }
+  if (state.socket) {
+    try {
+      state.socket.off();
+      state.socket.disconnect();
+    } catch (e) {}
+    state.socket = null;
   }
   state.socket = io({
     transports: ['websocket', 'polling'],
@@ -256,8 +330,29 @@ function initSocket() {
     flushOutbox();
   });
 
-  state.socket.on('presence_update', (data) => {
+  state.socket.on('presence_initial', (data) => {
     state.onlineUserIds = data.onlineUserIds || [];
+    renderCurrentActiveTabFeed();
+    updateActiveContactStatus();
+  });
+
+  state.socket.on('presence_delta', (data) => {
+    if (!data || !data.userId) return;
+    if (data.status === 'online') {
+      if (!state.onlineUserIds.includes(data.userId)) {
+        state.onlineUserIds.push(data.userId);
+      }
+    } else if (data.status === 'offline') {
+      state.onlineUserIds = state.onlineUserIds.filter(id => String(id) !== String(data.userId));
+    }
+    updateActiveContactStatus();
+    updateOnlineIndicatorsInLists(data.userId, data.status === 'online');
+  });
+
+  state.socket.on('presence_update', (data) => {
+    if (data.onlineUserIds) {
+      state.onlineUserIds = data.onlineUserIds;
+    }
     renderCurrentActiveTabFeed();
     updateActiveContactStatus();
   });
@@ -998,6 +1093,15 @@ function getMessagePreviewText(content) {
 }
 
 function setupEventListeners() {
+  const btnStartTour = document.getElementById('btn-start-tour');
+  if (btnStartTour) {
+    btnStartTour.addEventListener('click', () => {
+      if (typeof window.startDigiComTour === 'function') {
+        window.startDigiComTour();
+      }
+    });
+  }
+
   const btnTabAll = document.getElementById('tab-btn-all');
   if (btnTabAll) btnTabAll.addEventListener('click', () => switchTab('all'));
   const btnTabContacts = document.getElementById('tab-btn-contacts');
@@ -1128,29 +1232,246 @@ function setupEventListeners() {
     });
   }
 
-  if (feed && scrollBtn) {
-    feed.addEventListener('scroll', () => {
-      const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
-      if (distFromBottom > 180) {
-        scrollBtn.style.display = 'flex';
-      } else {
+  if (feed) {
+    if (scrollBtn) {
+      feed.addEventListener('scroll', () => {
+        const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+        if (distFromBottom > 180) {
+          scrollBtn.style.display = 'flex';
+        } else {
+          scrollBtn.style.display = 'none';
+          const badge = document.getElementById('scroll-unread-badge');
+          if (badge) {
+            badge.textContent = '0';
+            badge.style.display = 'none';
+          }
+        }
+
+        // Infinite scroll upward to load older messages
+        if (feed.scrollTop <= 60) {
+          if (state.activeTab === 'contacts' && state.activeContact) {
+            loadDirectHistory(state.activeContact.id, true);
+          } else if (state.activeTab === 'salons' && state.activeSalon) {
+            loadSalonHistory(state.activeSalon.id, true);
+          } else if (state.activeTab === 'support' && state.activeSupportSession) {
+            loadSupportHistory(state.activeSupportSession, true);
+          }
+        }
+      }, { passive: true });
+
+      scrollBtn.addEventListener('click', () => {
+        scrollToBottom(true);
         scrollBtn.style.display = 'none';
         const badge = document.getElementById('scroll-unread-badge');
         if (badge) {
           badge.textContent = '0';
           badge.style.display = 'none';
         }
+      });
+    }
+
+    // 1. Single click delegation for Reply and Delete buttons
+    feed.addEventListener('click', (e) => {
+      const replyBtn = e.target.closest('.msg-btn-reply');
+      if (replyBtn) {
+        e.stopPropagation();
+        const row = replyBtn.closest('.message-row');
+        if (row) {
+          startReply(row.dataset.msgId || row.id, row.dataset.sender, row._msgContent);
+        }
+        return;
+      }
+      const delBtn = e.target.closest('.msg-btn-del');
+      if (delBtn) {
+        e.stopPropagation();
+        const row = delBtn.closest('.message-row');
+        if (row) {
+          deleteMessage(row.dataset.msgId || row.id);
+        }
+        return;
+      }
+    });
+
+    // 2. Single context menu delegation (desktop right-click & long-press fallback)
+    feed.addEventListener('contextmenu', (e) => {
+      const bubble = e.target.closest('.msg-bubble');
+      if (bubble) {
+        const row = bubble.closest('.message-row');
+        if (row) {
+          e.preventDefault();
+          openMessageContextMenu(
+            row.dataset.msgId || row.id,
+            row.dataset.sender || 'Contact',
+            row._msgContent,
+            row.dataset.canDelete === 'true',
+            row.dataset.timestamp
+          );
+        }
+      }
+    });
+
+    // 3. Global single gesture delegator for Swipe-to-Reply & Long-Press (Touch & Mouse)
+    let activeGestureRow = null;
+    let gestureStartX = 0;
+    let gestureStartY = 0;
+    let isGestureSwiping = false;
+    let gestureDirLocked = null;
+    let hasGestureVibrated = false;
+    let gestureLongPressTimer = null;
+    let gestureIndicatorEl = null;
+
+    const onGlobalGestureStart = (target, clientX, clientY) => {
+      if (!target) return;
+      if (target.closest('button') || target.closest('a') || target.closest('audio') || target.closest('.chat-video-player') || target.closest('input')) return;
+      const row = target.closest('.message-row');
+      if (!row) return;
+
+      activeGestureRow = row;
+      gestureStartX = clientX;
+      gestureStartY = clientY;
+      isGestureSwiping = false;
+      gestureDirLocked = null;
+      hasGestureVibrated = false;
+      activeGestureRow.style.transition = 'none';
+
+      gestureIndicatorEl = activeGestureRow.querySelector('.swipe-reply-indicator');
+      if (!gestureIndicatorEl) {
+        gestureIndicatorEl = document.createElement('div');
+        gestureIndicatorEl.className = 'swipe-reply-indicator';
+        gestureIndicatorEl.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>`;
+        activeGestureRow.insertBefore(gestureIndicatorEl, activeGestureRow.firstChild);
+      }
+
+      clearTimeout(gestureLongPressTimer);
+      gestureLongPressTimer = setTimeout(() => {
+        if (activeGestureRow && !isGestureSwiping) {
+          if (navigator.vibrate) {
+            try { navigator.vibrate(40); } catch (err) {}
+          }
+          openMessageContextMenu(
+            activeGestureRow.dataset.msgId || activeGestureRow.id,
+            activeGestureRow.dataset.sender || 'Contact',
+            activeGestureRow._msgContent,
+            activeGestureRow.dataset.canDelete === 'true',
+            activeGestureRow.dataset.timestamp
+          );
+          activeGestureRow = null;
+        }
+      }, 520);
+    };
+
+    const onGlobalGestureMove = (clientX, clientY) => {
+      if (!activeGestureRow) return;
+      const deltaX = clientX - gestureStartX;
+      const deltaY = clientY - gestureStartY;
+
+      if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
+        clearTimeout(gestureLongPressTimer);
+      }
+
+      if (gestureDirLocked === null) {
+        if (Math.abs(deltaY) > Math.abs(deltaX) || deltaX < -5) {
+          gestureDirLocked = true;
+        } else if (deltaX > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          clearTimeout(gestureLongPressTimer);
+          gestureDirLocked = false;
+          isGestureSwiping = true;
+        }
+      }
+
+      if (gestureDirLocked === true) return;
+
+      if (isGestureSwiping && deltaX > 0) {
+        clearTimeout(gestureLongPressTimer);
+        const dampedX = Math.min(deltaX * 0.55, 75);
+        activeGestureRow.style.transform = `translateX(${dampedX}px)`;
+
+        if (gestureIndicatorEl) {
+          const opacity = Math.min(dampedX / 30, 1);
+          const scale = Math.min(0.5 + (dampedX / 75), 1.0);
+          gestureIndicatorEl.style.opacity = opacity;
+          gestureIndicatorEl.style.transform = `translateY(-50%) scale(${scale})`;
+
+          if (dampedX >= 48) {
+            gestureIndicatorEl.classList.add('swipe-active');
+            if (!hasGestureVibrated) {
+              hasGestureVibrated = true;
+              if (navigator.vibrate) {
+                try { navigator.vibrate(30); } catch (err) {}
+              }
+            }
+          } else {
+            gestureIndicatorEl.classList.remove('swipe-active');
+            hasGestureVibrated = false;
+          }
+        }
+      }
+    };
+
+    const onGlobalGestureEnd = () => {
+      clearTimeout(gestureLongPressTimer);
+      if (!activeGestureRow) return;
+
+      const currentRow = activeGestureRow;
+      const shouldReply = hasGestureVibrated;
+      const msgId = currentRow.dataset.msgId || currentRow.id;
+      const sender = currentRow.dataset.sender;
+      const content = currentRow._msgContent;
+
+      if (isGestureSwiping) {
+        currentRow.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.25)';
+        currentRow.style.transform = 'translateX(0px)';
+
+        if (gestureIndicatorEl) {
+          gestureIndicatorEl.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+          gestureIndicatorEl.style.opacity = '0';
+          gestureIndicatorEl.style.transform = 'translateY(-50%) scale(0.5)';
+          gestureIndicatorEl.classList.remove('swipe-active');
+        }
+
+        if (shouldReply) {
+          startReply(msgId, sender, content);
+        }
+
+        setTimeout(() => {
+          currentRow.style.transition = '';
+          currentRow.style.transform = '';
+        }, 260);
+      }
+
+      activeGestureRow = null;
+      isGestureSwiping = false;
+      gestureDirLocked = null;
+      hasGestureVibrated = false;
+      gestureIndicatorEl = null;
+    };
+
+    feed.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches[0]) {
+        onGlobalGestureStart(e.target, e.touches[0].clientX, e.touches[0].clientY);
       }
     }, { passive: true });
 
-    scrollBtn.addEventListener('click', () => {
-      scrollToBottom(true);
-      scrollBtn.style.display = 'none';
-      const badge = document.getElementById('scroll-unread-badge');
-      if (badge) {
-        badge.textContent = '0';
-        badge.style.display = 'none';
+    feed.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches[0]) {
+        onGlobalGestureMove(e.touches[0].clientX, e.touches[0].clientY);
       }
+    }, { passive: true });
+
+    feed.addEventListener('touchend', onGlobalGestureEnd, { passive: true });
+    feed.addEventListener('touchcancel', onGlobalGestureEnd, { passive: true });
+
+    feed.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      onGlobalGestureStart(e.target, e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      onGlobalGestureMove(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseup', () => {
+      onGlobalGestureEnd();
     });
   }
 
@@ -1201,6 +1522,21 @@ function setupEventListeners() {
     navigator.serviceWorker.addEventListener('message', async (event) => {
       if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
         const notifData = event.data.data || {};
+        const act = event.data.action;
+
+        if (notifData.type === 'call_incoming' || notifData.callerId) {
+          if (window.triggerIncomingCallUI) {
+            window.triggerIncomingCallUI({
+              callerId: notifData.callerId,
+              callerName: notifData.callerName || 'Correspondant',
+              callType: notifData.callType || 'audio',
+              autoAnswer: act === 'answer',
+              autoReject: act === 'reject'
+            });
+          }
+          return;
+        }
+
         if (notifData.openRequests || notifData.type === 'contact_request' || (notifData.url && notifData.url.includes('openRequests=true'))) {
           await switchTab('contacts');
           showModal('add-contact-modal');
@@ -1230,62 +1566,52 @@ function setupEventListeners() {
     });
   }
 
-  // Page Visibility & Tab Focus Handler (Leaves active chat when app is in background)
-  document.addEventListener('visibilitychange', () => {
-    if (!state.socket) return;
+  // Page Visibility & Tab Focus Handler (Debounced, eliminates duplicate socket spam)
+  let currentActiveRoomId = null;
+  let activeRoomSyncTimeout = null;
 
-    if (document.hidden) {
-      if (state.activeContact) {
-        state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
-      }
-      if (state.activeSalon) {
-        state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
-      }
-      if (state.activeSupportSession) {
-        state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
-      }
-    } else {
-      if (state.activeTab === 'contacts' && state.activeContact) {
-        state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
-        state.socket.emit('mark_read', { senderId: state.activeContact.id });
-      }
-      if (state.activeTab === 'salons' && state.activeSalon) {
-        state.socket.emit('enter_active_chat', { partnerId: state.activeSalon.id });
-        state.socket.emit('salon_mark_read', { salonId: state.activeSalon.id });
-      }
-      if (state.activeTab === 'support' && state.activeSupportSession) {
-        state.socket.emit('enter_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
-        state.socket.emit('support_mark_read', { senderId: state.activeSupportSession });
-      }
-    }
-  });
+  function syncActiveChatPresence() {
+    if (activeRoomSyncTimeout) clearTimeout(activeRoomSyncTimeout);
+    activeRoomSyncTimeout = setTimeout(() => {
+      if (!state.socket || !state.socket.connected) return;
 
-  window.addEventListener('blur', () => {
-    if (!state.socket) return;
-    if (state.activeContact) {
-      state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
-    }
-    if (state.activeSalon) {
-      state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
-    }
-    if (state.activeSupportSession) {
-      state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
-    }
-  });
+      let targetRoomId = null;
+      let targetSenderId = null;
+      const isVisible = !document.hidden && document.visibilityState === 'visible';
 
-  window.addEventListener('focus', () => {
-    if (!state.socket || document.hidden) return;
-    if (state.activeTab === 'contacts' && state.activeContact) {
-      state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
-      state.socket.emit('mark_read', { senderId: state.activeContact.id });
-    }
-    if (state.activeTab === 'salons' && state.activeSalon) {
-      state.socket.emit('enter_active_chat', { partnerId: state.activeSalon.id });
-      state.socket.emit('salon_mark_read', { salonId: state.activeSalon.id });
-    }
-    if (state.activeTab === 'support' && state.activeSupportSession) {
-      state.socket.emit('enter_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
-      state.socket.emit('support_mark_read', { senderId: state.activeSupportSession });
+      if (isVisible) {
+        if (state.activeTab === 'contacts' && state.activeContact) {
+          targetRoomId = String(state.activeContact.id);
+          targetSenderId = state.activeContact.id;
+        } else if (state.activeTab === 'salons' && state.activeSalon) {
+          targetRoomId = String(state.activeSalon.id);
+        } else if (state.activeTab === 'support' && state.activeSupportSession) {
+          targetRoomId = 'admin_' + state.activeSupportSession;
+        }
+      }
+
+      if (currentActiveRoomId && currentActiveRoomId !== targetRoomId) {
+        state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
+      }
+
+      if (targetRoomId && targetRoomId !== currentActiveRoomId) {
+        state.socket.emit('enter_active_chat', { partnerId: targetRoomId });
+        if (targetSenderId) {
+          state.socket.emit('mark_read', { senderId: targetSenderId });
+        }
+      }
+
+      currentActiveRoomId = targetRoomId;
+    }, 200);
+  }
+
+  document.addEventListener('visibilitychange', syncActiveChatPresence);
+  window.addEventListener('blur', syncActiveChatPresence);
+  window.addEventListener('focus', syncActiveChatPresence);
+  window.addEventListener('pagehide', () => {
+    if (state.socket && currentActiveRoomId) {
+      state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
+      currentActiveRoomId = null;
     }
   });
 
@@ -2072,15 +2398,28 @@ function setupEventListeners() {
   }
 
   // Logout
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    try {
-      await authFetch('/api/logout', { method: 'POST' });
-    } catch (e) {}
-    localStorage.removeItem('digicom_token');
-    localStorage.removeItem('digicom_user');
-    localStorage.removeItem('digicom_active_contact');
-    window.location.reload();
-  });
+  const logoutBtn = document.getElementById('btn-logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        if (window.digiPushClient) {
+          await window.digiPushClient.unsubscribeUser().catch(() => {});
+        }
+      } catch (e) {}
+      try {
+        if (window.digiStore) {
+          await window.digiStore.clearAllStores().catch(() => {});
+        }
+      } catch (e) {}
+      try {
+        await authFetch('/api/logout', { method: 'POST' });
+      } catch (e) {}
+      localStorage.removeItem('digicom_token');
+      localStorage.removeItem('digicom_user');
+      localStorage.removeItem('digicom_active_contact');
+      window.location.reload();
+    });
+  }
 }
 
 // ---------------- CLIENT-SIDE IMAGE COMPRESSION ----------------
@@ -2333,70 +2672,26 @@ async function uploadFile(file) {
   return data;
 }
 
-// ---------------- UNIVERSAL WAV AUDIO RECORDER (Ultra-Lightweight 16kHz PCM) ----------------
+// ---------------- COMPRESSED OPUS/WEBM VOICE RECORDER (24 kbps Ultra-Lightweight) ----------------
 
-function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
-  if (outputSampleRate >= inputSampleRate) {
-    return buffer;
-  }
-  const sampleRateRatio = inputSampleRate / outputSampleRate;
-  const newLength = Math.round(buffer.length / sampleRateRatio);
-  const result = new Float32Array(newLength);
-  let offsetResult = 0;
-  let offsetBuffer = 0;
-  while (offsetResult < result.length) {
-    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-    let accum = 0, count = 0;
-    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-      accum += buffer[i];
-      count++;
-    }
-    result[offsetResult] = count > 0 ? accum / count : 0;
-    offsetResult++;
-    offsetBuffer = nextOffsetBuffer;
-  }
-  return result;
-}
+let mediaRecorder = null;
+let recordedAudioChunks = [];
 
-function encodeWAV(samples, sampleRate) {
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buffer);
-
-  function writeString(offset, string) {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
+function getSupportedAudioMimeType() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+    'audio/aac'
+  ];
+  for (const t of types) {
+    if (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(t)) {
+      return t;
     }
   }
-
-  // RIFF header
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + samples.length * 2, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true); // SubChunk1Size (16 for PCM)
-  view.setUint16(20, 1, true);  // AudioFormat (1 for PCM)
-  view.setUint16(22, 1, true);  // NumChannels (1 = Mono)
-  view.setUint32(24, sampleRate, true); // SampleRate (16000 Hz)
-  view.setUint32(28, sampleRate * 2, true); // ByteRate (16000 * 2)
-  view.setUint16(32, 2, true);  // BlockAlign
-  view.setUint16(34, 16, true); // BitsPerSample (16 bits)
-  writeString(36, 'data');
-  view.setUint32(40, samples.length * 2, true); // SubChunk2Size
-
-  // 16-bit PCM audio samples
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-
-  return new Blob([view], { type: 'audio/wav' });
+  return '';
 }
-
-let audioRecordCtx = null;
-let scriptNode = null;
-let micSource = null;
-let pcmBuffers = [];
 
 async function startVoiceRecording() {
   try {
@@ -2408,23 +2703,25 @@ async function startVoiceRecording() {
       }
     });
 
-    audioRecordCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioRecordCtx.state === 'suspended') {
-      await audioRecordCtx.resume();
+    const mimeType = getSupportedAudioMimeType();
+    const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 };
+
+    if (window.MediaRecorder) {
+      try {
+        mediaRecorder = new MediaRecorder(stream, recorderOptions);
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream);
+      }
+      recordedAudioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedAudioChunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.start(250); // collect chunks every 250ms
     }
-
-    micSource = audioRecordCtx.createMediaStreamSource(stream);
-    scriptNode = audioRecordCtx.createScriptProcessor(4096, 1, 1);
-    pcmBuffers = [];
-
-    scriptNode.onaudioprocess = (e) => {
-      if (!voiceRecorder.isRecording) return;
-      const input = e.inputBuffer.getChannelData(0);
-      pcmBuffers.push(new Float32Array(input));
-    };
-
-    micSource.connect(scriptNode);
-    scriptNode.connect(audioRecordCtx.destination);
 
     voiceRecorder.stream = stream;
     voiceRecorder.isRecording = true;
@@ -2452,23 +2749,15 @@ function cancelVoiceRecording() {
   if (voiceRecorder.isRecording) {
     clearInterval(voiceRecorder.timerInterval);
     voiceRecorder.isRecording = false;
-    if (scriptNode) {
-      scriptNode.disconnect();
-      scriptNode = null;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch (e) {}
     }
-    if (micSource) {
-      micSource.disconnect();
-      micSource = null;
-    }
+    mediaRecorder = null;
     if (voiceRecorder.stream) {
       voiceRecorder.stream.getTracks().forEach(t => t.stop());
       voiceRecorder.stream = null;
     }
-    if (audioRecordCtx) {
-      audioRecordCtx.close().catch(() => {});
-      audioRecordCtx = null;
-    }
-    pcmBuffers = [];
+    recordedAudioChunks = [];
   }
   document.getElementById('voice-recording-panel').style.display = 'none';
   document.getElementById('normal-composer-pill').style.display = 'flex';
@@ -2482,41 +2771,32 @@ async function stopAndSendVoiceRecording() {
   voiceRecorder.isRecording = false;
 
   try {
-    if (scriptNode) {
-      scriptNode.disconnect();
-      scriptNode = null;
-    }
-    if (micSource) {
-      micSource.disconnect();
-      micSource = null;
-    }
+    const audioBlob = await new Promise((resolve, reject) => {
+      if (!mediaRecorder) return reject(new Error('MediaRecorder non initialisé'));
+
+      mediaRecorder.onstop = () => {
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(recordedAudioChunks, { type: mimeType });
+        resolve(blob);
+      };
+
+      mediaRecorder.onerror = (err) => reject(err);
+
+      if (mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    });
+
     if (voiceRecorder.stream) {
       voiceRecorder.stream.getTracks().forEach(t => t.stop());
       voiceRecorder.stream = null;
     }
 
-    // Merge PCM audio buffers
-    let totalLength = 0;
-    for (const buf of pcmBuffers) totalLength += buf.length;
-    const mergedPcm = new Float32Array(totalLength);
-    let offset = 0;
-    for (const buf of pcmBuffers) {
-      mergedPcm.set(buf, offset);
-      offset += buf.length;
-    }
+    const isMp4 = audioBlob.type.includes('mp4') || audioBlob.type.includes('aac');
+    const ext = isMp4 ? 'm4a' : 'webm';
+    const audioFile = new File([audioBlob], `voice_${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' });
 
-    const inputSampleRate = audioRecordCtx ? audioRecordCtx.sampleRate : 44100;
-    if (audioRecordCtx) {
-      audioRecordCtx.close().catch(() => {});
-      audioRecordCtx = null;
-    }
-
-    // Downsample to 16kHz mono for ultra-lightweight and instant transmission
-    const targetSampleRate = 16000;
-    const downsampledPcm = downsampleBuffer(mergedPcm, inputSampleRate, targetSampleRate);
-
-    const wavBlob = encodeWAV(downsampledPcm, targetSampleRate);
-    const audioFile = new File([wavBlob], `voice_${Date.now()}.wav`, { type: 'audio/wav' });
+    console.log(`[+] Voice note compressed: ${(audioFile.size / 1024).toFixed(1)} KB for ${durationSec}s`);
 
     const uploaded = await uploadFile(audioFile);
 
@@ -2528,6 +2808,8 @@ async function stopAndSendVoiceRecording() {
   } catch (err) {
     alert('Erreur lors de l\'envoi de la note vocale : ' + err.message);
   } finally {
+    recordedAudioChunks = [];
+    mediaRecorder = null;
     document.getElementById('voice-recording-panel').style.display = 'none';
     document.getElementById('normal-composer-pill').style.display = 'flex';
   }
@@ -3618,15 +3900,54 @@ function updateActiveContactStatus() {
   }
 }
 
-async function loadDirectHistory(targetUserId) {
+async function loadDirectHistory(targetUserId, loadMore = false) {
   const feed = document.getElementById('messages-feed');
 
-  // 1. Instant local offline load from IndexedDB
+  if (!state.feedPagination) {
+    state.feedPagination = {};
+  }
+  const pag = state.feedPagination[targetUserId] || { hasMore: true, isLoading: false, oldestTimestamp: null };
+  state.feedPagination[targetUserId] = pag;
+
+  if (loadMore) {
+    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+    pag.isLoading = true;
+    try {
+      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const olderMsgs = data.messages || [];
+        if (olderMsgs.length < 50) {
+          pag.hasMore = false;
+        }
+        if (olderMsgs.length > 0) {
+          pag.oldestTimestamp = olderMsgs[0].timestamp;
+          state.directMessages[targetUserId] = [...olderMsgs, ...(state.directMessages[targetUserId] || [])];
+          if (window.digiStore) {
+            window.digiStore.saveMessagesBatch(olderMsgs).catch(() => {});
+          }
+          prependOlderMessagesToFeed(olderMsgs);
+        }
+      }
+    } catch (e) {
+      console.error('[-] Error loading older direct messages:', e);
+    } finally {
+      pag.isLoading = false;
+    }
+    return;
+  }
+
+  // Initial load of 50 messages
+  pag.hasMore = true;
+  pag.isLoading = false;
+
+  // 1. Instant local offline load from IndexedDB (first 50)
   if (window.digiStore && state.user) {
     try {
-      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId);
+      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 50);
       if (cachedMsgs && cachedMsgs.length > 0) {
         state.directMessages[targetUserId] = cachedMsgs;
+        pag.oldestTimestamp = cachedMsgs[0].timestamp;
         if (state.activeContact && String(state.activeContact.id) === String(targetUserId)) {
           renderDirectFeed(targetUserId);
         }
@@ -3639,16 +3960,30 @@ async function loadDirectHistory(targetUserId) {
   }
 
   try {
-    const res = await authFetch(`/api/history/direct/${targetUserId}`);
+    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50`);
     if (res.ok) {
       const data = await res.json();
-      state.directMessages[targetUserId] = data.messages || [];
+      const newMsgs = data.messages || [];
+
+      // Reconcile: compare message IDs to avoid destroying and rebuilding DOM if identical
+      const currentIds = (state.directMessages[targetUserId] || []).map(m => m.id).join(',');
+      const incomingIds = newMsgs.map(m => m.id).join(',');
+      const hasChanged = currentIds !== incomingIds;
+
+      state.directMessages[targetUserId] = newMsgs;
       state.unreadCounts[targetUserId] = 0;
+      if (newMsgs.length > 0) {
+        pag.oldestTimestamp = newMsgs[0].timestamp;
+        if (newMsgs.length < 50) pag.hasMore = false;
+      } else {
+        pag.hasMore = false;
+      }
       if (window.digiStore) {
-        window.digiStore.saveMessagesBatch(state.directMessages[targetUserId]).catch(() => {});
+        window.digiStore.saveMessagesBatch(newMsgs).catch(() => {});
+        window.digiStore.pruneOldMessages().catch(() => {});
       }
       renderContactsList();
-      if (state.activeContact && String(state.activeContact.id) === String(targetUserId)) {
+      if (hasChanged && state.activeContact && String(state.activeContact.id) === String(targetUserId)) {
         renderDirectFeed(targetUserId);
         updateActiveContactStatus();
       }
@@ -3959,6 +4294,117 @@ function linkifyText(text) {
   return escaped.replace(/\n/g, '<br>');
 }
 
+// ---- Link Preview Engine (with Promise Caching & Hotlink Protection) ----
+const _linkPreviewCache = new Map(); // url -> Promise<data>
+
+function extractFirstUrl(text) {
+  if (!text) return null;
+  const m = String(text).match(/https?:\/\/[^\s<>"]+/i);
+  if (!m) return null;
+  let url = m[0];
+  // Strip trailing punctuation attached to url
+  url = url.replace(/[.,;:!?)\]>]+$/, '');
+  return url;
+}
+
+async function fetchLinkPreview(url) {
+  if (!url) return null;
+  if (_linkPreviewCache.has(url)) {
+    return await _linkPreviewCache.get(url);
+  }
+
+  const promise = (async () => {
+    try {
+      const res = await authFetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data && (data.title || data.image || data.description)) ? data : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  _linkPreviewCache.set(url, promise);
+  return await promise;
+}
+
+function buildLinkPreviewCard(data) {
+  if (!data || (!data.title && !data.image && !data.description)) return null;
+  const card = document.createElement('a');
+  card.href = data.url;
+  card.target = '_blank';
+  card.rel = 'noopener noreferrer';
+  card.className = 'link-preview-card';
+
+  let imageHtml = '';
+  if (data.image) {
+    imageHtml = `<img class="link-preview-image" src="${escapeHtml(data.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
+  }
+
+  card.innerHTML = `
+    ${imageHtml}
+    <div class="link-preview-body">
+      ${data.domain ? `<span class="link-preview-domain">${escapeHtml(data.domain)}</span>` : ''}
+      ${data.title ? `<span class="link-preview-title">${escapeHtml(data.title)}</span>` : ''}
+      ${data.description ? `<span class="link-preview-desc">${escapeHtml(data.description)}</span>` : ''}
+    </div>
+  `;
+  return card;
+}
+
+async function attachLinkPreviews(rowEl) {
+  if (!rowEl) return;
+  const bubble = rowEl.querySelector('.msg-bubble');
+  if (!bubble) return;
+
+  // Only text bubbles (skip media and voice notes)
+  if (bubble.classList.contains('media-bubble') || bubble.classList.contains('image-bubble') ||
+      bubble.classList.contains('video-bubble') || bubble.classList.contains('file-bubble') ||
+      bubble.classList.contains('audio-bubble')) return;
+  if (bubble.querySelector('.link-preview-card') || bubble.querySelector('.link-preview-loading')) return;
+
+  const linkEl = bubble.querySelector('a.chat-link');
+  let url = linkEl ? linkEl.getAttribute('href') : null;
+  if (!url) {
+    const metaEl = bubble.querySelector('.msg-meta');
+    const tempText = metaEl ? bubble.innerText.replace(metaEl.innerText, '') : bubble.innerText;
+    url = extractFirstUrl(tempText);
+  }
+  if (!url || !url.startsWith('http')) return;
+
+  // If already resolved in cache, render immediately without any loading spinner
+  if (_linkPreviewCache.has(url)) {
+    const cachedData = await _linkPreviewCache.get(url);
+    if (cachedData && !bubble.querySelector('.link-preview-card')) {
+      const card = buildLinkPreviewCard(cachedData);
+      if (card) bubble.appendChild(card);
+      return;
+    }
+  }
+
+  // Not in cache: show subtle spinner and fetch
+  const loader = document.createElement('div');
+  loader.className = 'link-preview-loading';
+  loader.innerHTML = `<div class="link-preview-spinner"></div><span>Aperçu du lien…</span>`;
+  bubble.appendChild(loader);
+
+  const data = await fetchLinkPreview(url);
+  loader.remove();
+
+  if (data && !bubble.querySelector('.link-preview-card')) {
+    const card = buildLinkPreviewCard(data);
+    if (card) {
+      bubble.appendChild(card);
+      const feed = document.getElementById('messages-feed');
+      if (feed && (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 400)) {
+        scrollToBottom(false);
+      }
+    }
+  }
+}
+
+
+
 function getOnlyEmojisCount(str) {
   if (!str) return 0;
   const trimmed = String(str).trim();
@@ -3972,29 +4418,21 @@ function getOnlyEmojisCount(str) {
   return matches ? matches.length : 0;
 }
 
-function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSep = true) {
-  const feed = document.getElementById('messages-feed');
-  if (!feed) return;
-
-  if (insertDateSep) {
-    const dateKey = formatMessageDateGroup(msg.timestamp);
-    const dateSeps = feed.querySelectorAll('.chat-date-separator');
-    const lastDateKey = dateSeps.length > 0 ? dateSeps[dateSeps.length - 1].dataset.dateKey : null;
-    if (dateKey && dateKey !== lastDateKey) {
-      const sep = document.createElement('div');
-      sep.className = 'chat-date-separator';
-      sep.dataset.dateKey = dateKey;
-      sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
-      feed.appendChild(sep);
-    }
-  }
-
+function createMessageRowElement(msg, isSos = false) {
   const currentUserId = state.user ? String(state.user.id || '') : '';
   const msgSenderId = String(msg.senderId || msg.sender_id || '');
   const isMe = currentUserId !== '' && msgSenderId !== '' && currentUserId === msgSenderId;
   const row = document.createElement('div');
   const msgId = msg.id || 'msg_' + Date.now();
   row.id = msgId;
+  row.dataset.msgId = msgId;
+  const rawSender = msg.senderName || msg.sender_name || 'Contact';
+  row.dataset.sender = rawSender;
+  row.dataset.timestamp = msg.timestamp || '';
+  row._msgContent = msg.content;
+
+  const canDelete = isMe || (state.user && state.user.role === 'admin');
+  row.dataset.canDelete = canDelete ? 'true' : 'false';
   row.className = `message-row ${isMe ? 'me' : 'other'} ${isSos ? 'sos' : ''}`;
 
   let parsedContent = null;
@@ -4048,38 +4486,58 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
   let textContent = '';
 
   if (parsedContent && parsedContent.type === 'image') {
+    const fn = escapeHtml(parsedContent.fileName || 'Image');
     bodyHtml = `
-      <div class="chat-image-card" onclick="openLightbox('${parsedContent.url}')">
-        <img src="${parsedContent.url}" alt="${escapeHtml(parsedContent.fileName || 'Image')}" loading="lazy">
+      <div class="chat-image-card" onclick="openLightbox('${parsedContent.url}', '${fn}')" style="position: relative;">
+        <img src="${parsedContent.url}" alt="${fn}" loading="lazy">
+        ${!isMe ? `
+        <a href="${parsedContent.url}" download="${fn}" class="media-download-overlay" onclick="handleMediaDownload(event, this);" title="Télécharger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </a>` : ''}
       </div>
     `;
   } else if (parsedContent && parsedContent.type === 'video') {
+    const fn = escapeHtml(parsedContent.fileName || 'Video');
     bodyHtml = `
-      <div class="chat-video-card">
+      <div class="chat-video-card" style="position: relative;">
         <video src="${parsedContent.url}" controls preload="metadata" playsinline class="chat-video-player"></video>
+        ${!isMe ? `
+        <a href="${parsedContent.url}" download="${fn}" class="media-download-overlay" onclick="handleMediaDownload(event, this);" title="Télécharger la vidéo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </a>` : ''}
       </div>
     `;
   } else if (parsedContent && parsedContent.type === 'file') {
-    const isPdf = (parsedContent.fileName || '').toLowerCase().endsWith('.pdf') || (parsedContent.mimeType || '').includes('pdf');
+    const fn = escapeHtml(parsedContent.fileName || 'Document');
     bodyHtml = `
-      <a href="${parsedContent.url}" download="${escapeHtml(parsedContent.fileName || 'fichier')}" class="chat-file-card" target="_blank" rel="noopener">
-        <div class="file-icon-box ${isPdf ? 'pdf' : ''}">
+      <a href="${parsedContent.url}" download="${fn}" class="chat-file-card" target="_blank" rel="noopener">
+        <div class="file-icon-box">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
           </svg>
         </div>
         <div class="file-meta">
-          <div class="file-name">${escapeHtml(parsedContent.fileName || 'Document')}</div>
+          <div class="file-name">${fn}</div>
           <div class="file-size">${formatBytes(parsedContent.fileSize)}</div>
         </div>
-        <div class="file-download-btn">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        ${!isMe ? `
+        <div class="file-download-btn" onclick="handleMediaDownload(event, this);" title="Télécharger le fichier">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-        </div>
+          <span>Télécharger</span>
+        </div>` : ''}
       </a>
     `;
   } else if (parsedContent && parsedContent.type === 'audio') {
@@ -4087,7 +4545,7 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
     const durationFormatted = parsedContent.duration ? formatDuration(parsedContent.duration) : '0:00';
     bodyHtml = `
       <div class="chat-voice-note" id="box_${audioId}">
-        <audio id="${audioId}" src="${parsedContent.url}" preload="metadata" playsinline webkit-playsinline
+        <audio id="${audioId}" src="${parsedContent.url}" preload="none" playsinline webkit-playsinline
           onloadedmetadata="if(this.duration){ var el=document.getElementById('time_${audioId}'); if(el) el.textContent = '0:00 / ' + formatDuration(this.duration); }"
           ontimeupdate="updateAudioProgress('${audioId}')"
           onended="resetAudioPlayback('${audioId}')">
@@ -4151,13 +4609,9 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
   }
 
   const timeStr = msg.timestamp ? safeParseDate(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-  const isImage = parsedContent && parsedContent.type === 'image';
-  const rawSender = msg.senderName || msg.sender_name || 'Contact';
-
   const isDeletedAudit = (msg.deleted_scope === 'sender_only' || msg.deletedScope === 'sender_only') && state.user && state.user.role === 'admin';
   const auditBadgeHtml = isDeletedAudit ? `<div class="msg-deleted-badge"><span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>Supprimé par le membre</span></div>` : '';
 
-  const canDelete = isMe || (state.user && state.user.role === 'admin');
   const deleteBtnHtml = canDelete ? `
     <button type="button" class="msg-action-btn msg-btn-del" title="Supprimer ce message">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -4247,178 +4701,71 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
     </div>
   `;
 
-  const replyBtn = row.querySelector('.msg-btn-reply');
-  if (replyBtn) {
-    replyBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startReply(msgId, rawSender, msg.content);
-    });
+  if (parsedContent && parsedContent.type === 'audio') {
+    const audioEl = row.querySelector('audio');
+    if (audioEl) {
+      setupAudioPlayer(audioEl.id);
+    }
   }
 
-  const delBtn = row.querySelector('.msg-btn-del');
-  if (delBtn) {
-    delBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteMessage(msgId);
-    });
+  return row;
+}
+
+function prependOlderMessagesToFeed(olderMsgs) {
+  const feed = document.getElementById('messages-feed');
+  if (!feed || !olderMsgs || olderMsgs.length === 0) return;
+
+  const previousScrollHeight = feed.scrollHeight;
+  const previousScrollTop = feed.scrollTop;
+
+  const fragment = document.createDocumentFragment();
+  let lastDateKey = null;
+
+  olderMsgs.forEach(msg => {
+    const dateKey = formatMessageDateGroup(msg.timestamp);
+    if (dateKey && dateKey !== lastDateKey) {
+      const sep = document.createElement('div');
+      sep.className = 'chat-date-separator';
+      sep.dataset.dateKey = dateKey;
+      sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
+      fragment.appendChild(sep);
+      lastDateKey = dateKey;
+    }
+    const row = createMessageRowElement(msg, false);
+    if (row) {
+      fragment.appendChild(row);
+      attachLinkPreviews(row);
+    }
+  });
+
+  feed.insertBefore(fragment, feed.firstChild);
+
+  // Maintain precise scroll position
+  const newScrollHeight = feed.scrollHeight;
+  feed.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
+}
+
+function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSep = true) {
+  const feed = document.getElementById('messages-feed');
+  if (!feed) return;
+
+  if (insertDateSep) {
+    const dateKey = formatMessageDateGroup(msg.timestamp);
+    const dateSeps = feed.querySelectorAll('.chat-date-separator');
+    const lastDateKey = dateSeps.length > 0 ? dateSeps[dateSeps.length - 1].dataset.dateKey : null;
+    if (dateKey && dateKey !== lastDateKey) {
+      const sep = document.createElement('div');
+      sep.className = 'chat-date-separator';
+      sep.dataset.dateKey = dateKey;
+      sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
+      feed.appendChild(sep);
+    }
   }
 
-  // Long press timer & Fluid Swipe-to-Reply Gesture (Touch & Desktop Mouse Drag)
-  let startX = 0;
-  let startY = 0;
-  let isSwiping = false;
-  let swipeDirectionLocked = null; // null = undecided, true = locked to vertical scroll, false = locked to horizontal swipe
-  let hasVibrated = false;
-  let longPressTimer = null;
-  let indicatorEl = null;
+  const row = createMessageRowElement(msg, isSos);
+  if (!row) return;
 
-  const bubbleEl = row.querySelector('.msg-bubble');
-
-  const onGestureStart = (clientX, clientY) => {
-    startX = clientX;
-    startY = clientY;
-    isSwiping = false;
-    swipeDirectionLocked = null;
-    hasVibrated = false;
-    row.style.transition = 'none';
-
-    if (!indicatorEl) {
-      indicatorEl = document.createElement('div');
-      indicatorEl.className = 'swipe-reply-indicator';
-      indicatorEl.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>`;
-      row.insertBefore(indicatorEl, row.firstChild);
-    }
-
-    longPressTimer = setTimeout(() => {
-      if (!isSwiping) {
-        if (navigator.vibrate) {
-          try { navigator.vibrate(40); } catch (err) {}
-        }
-        openMessageContextMenu(msgId, rawSender, msg.content, canDelete, msg.timestamp);
-      }
-    }, 520);
-  };
-
-  const onGestureMove = (clientX, clientY) => {
-    const deltaX = clientX - startX;
-    const deltaY = clientY - startY;
-
-    // Immediately cancel long-press menu timer if user starts scrolling or moving
-    if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
-      clearTimeout(longPressTimer);
-    }
-
-    if (swipeDirectionLocked === null) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) || deltaX < -5) {
-        swipeDirectionLocked = true;
-      } else if (deltaX > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        clearTimeout(longPressTimer);
-        swipeDirectionLocked = false;
-        isSwiping = true;
-      }
-    }
-
-    if (swipeDirectionLocked === true) return;
-
-    if (isSwiping && deltaX > 0) {
-      clearTimeout(longPressTimer);
-      const dampedX = Math.min(deltaX * 0.55, 75);
-      row.style.transform = `translateX(${dampedX}px)`;
-
-      if (indicatorEl) {
-        const opacity = Math.min(dampedX / 30, 1);
-        const scale = Math.min(0.5 + (dampedX / 75), 1.0);
-        indicatorEl.style.opacity = opacity;
-        indicatorEl.style.transform = `translateY(-50%) scale(${scale})`;
-
-        if (dampedX >= 48) {
-          indicatorEl.classList.add('swipe-active');
-          if (!hasVibrated) {
-            hasVibrated = true;
-            if (navigator.vibrate) {
-              try { navigator.vibrate(30); } catch (err) {}
-            }
-          }
-        } else {
-          indicatorEl.classList.remove('swipe-active');
-          hasVibrated = false;
-        }
-      }
-    }
-  };
-
-  const onGestureEnd = () => {
-    clearTimeout(longPressTimer);
-    if (!isSwiping) return;
-
-    row.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.25)';
-    row.style.transform = 'translateX(0px)';
-
-    if (indicatorEl) {
-      indicatorEl.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-      indicatorEl.style.opacity = '0';
-      indicatorEl.style.transform = 'translateY(-50%) scale(0.5)';
-      indicatorEl.classList.remove('swipe-active');
-    }
-
-    if (hasVibrated) {
-      startReply(msgId, rawSender, msg.content);
-    }
-
-    setTimeout(() => {
-      row.style.transition = '';
-      row.style.transform = '';
-      if (indicatorEl) {
-        indicatorEl.style.transition = '';
-      }
-      isSwiping = false;
-      swipeDirectionLocked = null;
-      hasVibrated = false;
-    }, 260);
-  };
-
-  // Touch Event Listeners (Mobile)
-  row.addEventListener('touchstart', (e) => {
-    if (e.touches && e.touches[0]) {
-      onGestureStart(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  }, { passive: true });
-
-  row.addEventListener('touchmove', (e) => {
-    if (e.touches && e.touches[0]) {
-      onGestureMove(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  }, { passive: true });
-
-  row.addEventListener('touchend', onGestureEnd, { passive: true });
-  row.addEventListener('touchcancel', onGestureEnd, { passive: true });
-
-  // Mouse Drag Event Listeners (Desktop)
-  let isMouseDown = false;
-  row.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('img')) return;
-    isMouseDown = true;
-    onGestureStart(e.clientX, e.clientY);
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!isMouseDown) return;
-    onGestureMove(e.clientX, e.clientY);
-  });
-  window.addEventListener('mouseup', () => {
-    if (!isMouseDown) return;
-    isMouseDown = false;
-    onGestureEnd();
-  });
-
-  // Context menu on right-click (desktop) / true long press (mobile)
-  if (bubbleEl) {
-    bubbleEl.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      openMessageContextMenu(msgId, rawSender, msg.content, canDelete, msg.timestamp);
-    });
-  }
-
+  const parsedContent = typeof msg.content === 'object' ? msg.content : null;
   if (parsedContent && parsedContent.type === 'image') {
     const imgEl = row.querySelector('.chat-image-card img');
     if (imgEl) {
@@ -4426,19 +4773,12 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
         if (autoScroll || (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 500)) {
           scrollToBottom(false);
         }
-      });
+      }, { once: true });
     }
   }
 
   feed.appendChild(row);
-
-  // Bind audio element events
-  if (parsedContent && parsedContent.type === 'audio') {
-    const audioEl = row.querySelector('audio');
-    if (audioEl) {
-      setupAudioPlayer(audioEl.id);
-    }
-  }
+  attachLinkPreviews(row);
 
   if (autoScroll) {
     scrollToBottom(false);
@@ -4495,16 +4835,32 @@ function setupAudioPlayer(audioId) {
 let globalAudioCtx = null;
 let currentBufferSource = null;
 
+window.handleMediaDownload = function(event, btnEl) {
+  if (event) event.stopPropagation();
+  if (btnEl) {
+    btnEl.classList.add('downloaded');
+    const span = btnEl.querySelector('span');
+    if (span) span.textContent = 'Téléchargé';
+    setTimeout(() => {
+      btnEl.style.opacity = '0.35';
+      btnEl.style.pointerEvents = 'none';
+    }, 1500);
+  }
+};
+
 window.toggleAudioPlay = async function(audioId) {
   const audio = document.getElementById(audioId);
   const playIcon = document.getElementById('icon_play_' + audioId);
   const pauseIcon = document.getElementById('icon_pause_' + audioId);
-  const fill = document.getElementById('fill_' + audioId);
-  const timeEl = document.getElementById('time_' + audioId);
 
   if (!audio) return;
 
-  if (audio.paused && !currentBufferSource) {
+  if (audio.paused) {
+    // Reset currentTime if audio ended or reached near end to allow seamless replay on mobile WebKit/Chrome
+    if (audio.ended || (audio.duration && audio.currentTime >= audio.duration - 0.1)) {
+      try { audio.currentTime = 0; } catch (e) {}
+    }
+
     // Pause any other playing audios and reset their icons
     document.querySelectorAll('audio').forEach(a => {
       if (a !== audio && !a.paused) {
@@ -4517,71 +4873,14 @@ window.toggleAudioPlay = async function(audioId) {
       }
     });
 
-    if (currentBufferSource) {
-      try { currentBufferSource.stop(); } catch (e) {}
-      currentBufferSource = null;
-    }
-
     try {
       await audio.play();
       if (playIcon) playIcon.style.display = 'none';
       if (pauseIcon) pauseIcon.style.display = 'block';
     } catch (err) {
-      console.warn('Native HTML5 audio playback failed, falling back to Web Audio decoder:', err);
-      // Fallback: Fetch audio buffer and decode in memory via Web Audio API
-      try {
-        if (!globalAudioCtx) {
-          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (globalAudioCtx.state === 'suspended') {
-          await globalAudioCtx.resume();
-        }
-
-        const res = await fetch(audio.src);
-        const arrayBuf = await res.arrayBuffer();
-        const decodedBuffer = await globalAudioCtx.decodeAudioData(arrayBuf);
-
-        const source = globalAudioCtx.createBufferSource();
-        source.buffer = decodedBuffer;
-        source.connect(globalAudioCtx.destination);
-
-        const startTime = globalAudioCtx.currentTime;
-        const totalDuration = decodedBuffer.duration;
-
-        source.onended = () => {
-          if (playIcon) playIcon.style.display = 'block';
-          if (pauseIcon) pauseIcon.style.display = 'none';
-          if (fill) fill.style.width = '0%';
-          if (timeEl) timeEl.textContent = formatDuration(totalDuration);
-          currentBufferSource = null;
-        };
-
-        source.start(0);
-        currentBufferSource = source;
-
-        if (playIcon) playIcon.style.display = 'none';
-        if (pauseIcon) pauseIcon.style.display = 'block';
-
-        const progressTimer = setInterval(() => {
-          if (!currentBufferSource) {
-            clearInterval(progressTimer);
-            return;
-          }
-          const elapsed = globalAudioCtx.currentTime - startTime;
-          const pct = Math.min(100, (elapsed / totalDuration) * 100);
-          if (fill) fill.style.width = pct + '%';
-          if (timeEl) timeEl.textContent = formatDuration(elapsed);
-        }, 100);
-
-      } catch (fallbackErr) {
-        console.error('All playback methods failed:', fallbackErr);
-      }
+      console.warn('Native HTML5 audio playback error:', err);
     }
   } else {
-    if (currentBufferSource) {
-      try { currentBufferSource.stop(); } catch (e) {}
-      currentBufferSource = null;
-    }
     audio.pause();
     if (playIcon) playIcon.style.display = 'block';
     if (pauseIcon) pauseIcon.style.display = 'none';
@@ -4612,6 +4911,10 @@ window.resetAudioPlayback = function(audioId) {
   const fill = document.getElementById('fill_' + audioId);
   const thumb = document.getElementById('thumb_' + audioId);
   const timeEl = document.getElementById('time_' + audioId);
+
+  if (audio) {
+    try { audio.currentTime = 0; } catch (e) {}
+  }
 
   if (playIcon) playIcon.style.display = 'block';
   if (pauseIcon) pauseIcon.style.display = 'none';
@@ -4654,11 +4957,16 @@ window.seekAudio = function(event, audioId) {
   updateAudioProgress(audioId);
 };
 
-window.openLightbox = function(url) {
+window.openLightbox = function(url, fileName = '') {
   const lightbox = document.getElementById('image-lightbox');
   const img = document.getElementById('lightbox-img');
+  const downloadBtn = document.getElementById('btn-download-lightbox');
   if (lightbox && img) {
     img.src = url;
+    if (downloadBtn) {
+      downloadBtn.href = url;
+      downloadBtn.download = fileName || 'image_' + Date.now();
+    }
     lightbox.style.display = 'flex';
   }
 };
@@ -5059,17 +5367,54 @@ window.openSupportConversationBySenderId = async function(senderId) {
 
 
 
-async function loadSupportHistory(senderId) {
+async function loadSupportHistory(senderId, loadMore = false) {
   try {
+    if (!state.supportPagination) {
+      state.supportPagination = {};
+    }
+    const pag = state.supportPagination[senderId] || { hasMore: true, isLoading: false, oldestTimestamp: null };
+    state.supportPagination[senderId] = pag;
+
+    if (loadMore) {
+      if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+      pag.isLoading = true;
+      try {
+        const res = await fetch(`/api/history/support?senderId=${senderId}&limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const olderMsgs = data.messages || [];
+          if (olderMsgs.length < 50) pag.hasMore = false;
+          if (olderMsgs.length > 0) {
+            pag.oldestTimestamp = olderMsgs[0].timestamp;
+            prependOlderMessagesToFeed(olderMsgs);
+          }
+        }
+      } catch (e) {
+        console.error('[-] Error loading older support messages:', e);
+      } finally {
+        pag.isLoading = false;
+      }
+      return;
+    }
+
+    pag.hasMore = true;
+    pag.isLoading = false;
+
     if (state.socket) {
       state.socket.emit('support_mark_read', { senderId });
     }
-    const res = await fetch(`/api/history/support?senderId=${senderId}`);
+    const res = await fetch(`/api/history/support?senderId=${senderId}&limit=50`);
     if (res.ok) {
       const data = await res.json();
       const feed = document.getElementById('messages-feed');
       feed.innerHTML = '';
       const msgs = data.messages || [];
+      if (msgs.length > 0) {
+        pag.oldestTimestamp = msgs[0].timestamp;
+        if (msgs.length < 50) pag.hasMore = false;
+      } else {
+        pag.hasMore = false;
+      }
       msgs.forEach(m => appendMessageToFeed(m, true, false));
       feed.scrollTop = feed.scrollHeight;
     }
@@ -5223,12 +5568,57 @@ function formatSalonName(name) {
   return `#${clean}`;
 }
 
+// Helper to detect if the PWA is installed / running in standalone mode
+function isPWAInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true ||
+         document.referrer.includes('android-app://') ||
+         localStorage.getItem('digicom_pwa_installed') === 'true';
+}
+
+function updatePWAInstallUI() {
+  const installBtn = document.getElementById('btn-pwa-install');
+  const floatingBanner = document.getElementById('pwa-floating-banner');
+  const installed = isPWAInstalled();
+
+  if (installBtn) {
+    installBtn.style.display = installed ? 'none' : 'flex';
+  }
+  if (floatingBanner && installed) {
+    floatingBanner.classList.remove('pwa-banner-visible');
+    floatingBanner.style.display = 'none';
+  }
+}
+
 // PWA Direct Install & Cross-Platform Installation Guide Handling
 let deferredInstallPrompt = null;
+let pwaBannerTimeoutId = null;
+
+function showFloatingInstallBanner(autoHideMs = 7000) {
+  if (isPWAInstalled()) return;
+  const banner = document.getElementById('pwa-floating-banner');
+  if (!banner) return;
+
+  banner.style.display = 'flex';
+  banner.classList.add('pwa-banner-visible');
+
+  if (pwaBannerTimeoutId) {
+    clearTimeout(pwaBannerTimeoutId);
+  }
+  if (autoHideMs > 0) {
+    pwaBannerTimeoutId = setTimeout(() => {
+      banner.classList.remove('pwa-banner-visible');
+    }, autoHideMs);
+  }
+}
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
+  if (!isPWAInstalled()) {
+    updatePWAInstallUI();
+    showFloatingInstallBanner(7000);
+  }
 });
 
 async function handlePWAInstallAction() {
@@ -5244,21 +5634,16 @@ async function handlePWAInstallAction() {
     const choiceResult = await deferredInstallPrompt.userChoice;
     if (choiceResult.outcome === 'accepted') {
       localStorage.setItem('digicom_pwa_installed', 'true');
-      if (installBtn) installBtn.style.display = 'none';
-      if (banner) banner.style.display = 'none';
+      updatePWAInstallUI();
       showInAppToast({ title: 'Application installée !', body: 'DigiCom a été ajouté avec succès.', type: 'private' });
     }
     deferredInstallPrompt = null;
     return;
   }
 
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const isInstalled = localStorage.getItem('digicom_pwa_installed') === 'true';
-
-  // 2. Check if already installed & running as standalone PWA
-  if (isStandalone || isInstalled) {
-    if (installBtn) installBtn.style.display = 'none';
-    if (banner) banner.style.display = 'none';
+  // 2. Check if already running as standalone PWA or installed
+  if (isPWAInstalled()) {
+    updatePWAInstallUI();
     showInAppToast({ title: 'Déjà installée !', body: 'L\'application DigiCom est déjà installée sur cet appareil.', type: 'private' });
     return;
   }
@@ -5341,23 +5726,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const floatingBanner = document.getElementById('pwa-floating-banner');
   const bannerBtn = document.getElementById('btn-pwa-banner-action');
 
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const isInstalled = localStorage.getItem('digicom_pwa_installed') === 'true';
+  updatePWAInstallUI();
 
-  if (installBtn && (isStandalone || isInstalled)) {
-    installBtn.style.display = 'none';
+  if (installBtn) {
+    installBtn.addEventListener('click', handlePWAInstallAction);
   }
 
-  if (floatingBanner && (isStandalone || isInstalled)) {
-    floatingBanner.style.display = 'none';
+  if (floatingBanner) {
+    floatingBanner.addEventListener('click', () => {
+      handlePWAInstallAction();
+    });
   }
 
   if (closeBtn) {
     closeBtn.addEventListener('click', hideModals);
-  }
-
-  if (installBtn) {
-    installBtn.addEventListener('click', handlePWAInstallAction);
   }
 
   if (bannerBtn) {
@@ -5367,42 +5749,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (floatingBanner) {
-    floatingBanner.addEventListener('click', () => {
-      handlePWAInstallAction();
-    });
-  }
-
-  // Floating banner appearance: show after 2.5s, stay for 7s, then auto-hide
-  if (floatingBanner && !isStandalone && !isInstalled) {
-    const hasSeenBanner = sessionStorage.getItem('digicom_banner_shown');
-    if (!hasSeenBanner) {
-      setTimeout(() => {
-        const stillNotInstalled = localStorage.getItem('digicom_pwa_installed') !== 'true';
-        const isStillBrowser = !window.matchMedia('(display-mode: standalone)').matches && window.navigator.standalone !== true;
-        if (stillNotInstalled && isStillBrowser) {
-          floatingBanner.classList.add('pwa-banner-visible');
-          sessionStorage.setItem('digicom_banner_shown', 'true');
-
-          // Auto-hide after 7 seconds smoothly
-          setTimeout(() => {
-            floatingBanner.classList.remove('pwa-banner-visible');
-          }, 7000);
-        }
-      }, 2500);
-    }
+  // Floating banner appearance: show after 1.5s if not installed, auto-hide after 7s
+  if (!isPWAInstalled()) {
+    setTimeout(() => {
+      showFloatingInstallBanner(7000);
+    }, 1500);
   }
 });
 
 window.addEventListener('appinstalled', () => {
   localStorage.setItem('digicom_pwa_installed', 'true');
-  const installBtn = document.getElementById('btn-pwa-install');
-  const floatingBanner = document.getElementById('pwa-floating-banner');
-  if (installBtn) installBtn.style.display = 'none';
-  if (floatingBanner) {
-    floatingBanner.classList.remove('pwa-banner-visible');
-    floatingBanner.style.display = 'none';
-  }
+  updatePWAInstallUI();
   console.log('[+] DigiCom PWA was installed successfully!');
 });
 
@@ -5641,13 +5998,45 @@ async function selectSalon(salon) {
   }
 }
 
-async function loadSalonHistory(salonId) {
+async function loadSalonHistory(salonId, loadMore = false) {
   const feed = document.getElementById('messages-feed');
   if (!feed) return;
+
+  if (!state.salonPagination) {
+    state.salonPagination = {};
+  }
+  const pag = state.salonPagination[salonId] || { hasMore: true, isLoading: false, oldestTimestamp: null };
+  state.salonPagination[salonId] = pag;
+
+  if (loadMore) {
+    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+    pag.isLoading = true;
+    try {
+      const res = await authFetch(`/api/salons/${salonId}/messages?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const olderMsgs = data.messages || [];
+        if (olderMsgs.length < 50) pag.hasMore = false;
+        if (olderMsgs.length > 0) {
+          pag.oldestTimestamp = olderMsgs[0].timestamp;
+          state.salonMessages[salonId] = [...olderMsgs, ...(state.salonMessages[salonId] || [])];
+          prependOlderMessagesToFeed(olderMsgs);
+        }
+      }
+    } catch (e) {
+      console.error('[-] Error loading older salon messages:', e);
+    } finally {
+      pag.isLoading = false;
+    }
+    return;
+  }
+
+  pag.hasMore = true;
+  pag.isLoading = false;
   feed.innerHTML = '';
 
   try {
-    const res = await authFetch(`/api/salons/${salonId}/messages`);
+    const res = await authFetch(`/api/salons/${salonId}/messages?limit=50`);
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];
@@ -5656,6 +6045,7 @@ async function loadSalonHistory(salonId) {
       const messages = state.salonMessages[salonId];
 
       if (messages.length === 0) {
+        pag.hasMore = false;
         feed.innerHTML = `
           <div style="padding: 2rem; text-align: center; color: var(--text-dim); font-size: 0.85rem;">
             Début du Salon Confidentiel <strong>${escapeHtml(formatSalonName(state.activeSalon ? state.activeSalon.name : ''))}</strong>.<br>
@@ -5664,6 +6054,9 @@ async function loadSalonHistory(salonId) {
         `;
         return;
       }
+
+      pag.oldestTimestamp = messages[0].timestamp;
+      if (messages.length < 50) pag.hasMore = false;
 
       let currentDateGroup = '';
       messages.forEach(msg => {
