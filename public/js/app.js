@@ -293,6 +293,11 @@ function updateCurrentUserUI() {
     tabSupport.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
   }
 
+  const btnAdminManage = document.getElementById('btn-admin-manage');
+  if (btnAdminManage) {
+    btnAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+  }
+
   const btnChatAdminManage = document.getElementById('btn-chat-admin-manage');
   if (btnChatAdminManage) {
     btnChatAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
@@ -301,6 +306,11 @@ function updateCurrentUserUI() {
   const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
   if (btnSuperAdmin) {
     btnSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+  }
+
+  const menuSuperAdmin = document.getElementById('menu-item-superadmin');
+  if (menuSuperAdmin) {
+    menuSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 }
 
