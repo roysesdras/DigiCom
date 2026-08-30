@@ -73,7 +73,8 @@ async function buildMinifiedAssets() {
     'js/idb-store.js',
     'js/push-client.js',
     'js/guided-tour.js',
-    'js/qrcode.js'
+    'js/qrcode.js',
+    'js/admin-dashboard.js'
   ];
 
   for (const relPath of jsFiles) {

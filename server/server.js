@@ -1386,6 +1386,142 @@ app.delete('/api/users/:userId', authenticateToken, async (req, res) => {
   }
 });
 
+// ----------------------------------------------------
+// SuperAdmin Control API Endpoints
+// ----------------------------------------------------
+app.get('/api/admin/metrics', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const metrics = await db.getAdminMetrics();
+    const onlineSocketsCount = onlineUsers.size;
+    const onlineUserIds = Array.from(new Set(Array.from(onlineUsers.values())));
+    
+    const mem = process.memoryUsage();
+    const memoryMb = Math.round(mem.rss / (1024 * 1024));
+    const uptimeHours = Math.round((process.uptime() / 3600) * 10) / 10;
+
+    res.json({
+      success: true,
+      metrics: {
+        ...metrics,
+        online_sockets: onlineSocketsCount,
+        online_users_count: onlineUserIds.length,
+        server_memory_mb: memoryMb,
+        server_uptime_hours: uptimeHours
+      },
+      online_user_ids: onlineUserIds
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const users = await db.getAllUsersForAdmin();
+    const onlineUserIds = Array.from(new Set(Array.from(onlineUsers.values())));
+    
+    const enrichedUsers = users.map(u => ({
+      ...u,
+      is_online: onlineUserIds.includes(u.id)
+    }));
+
+    res.json({ success: true, users: enrichedUsers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/users/ban', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const { userId, banState } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId requis.' });
+    if (userId === req.user.id) return res.status(400).json({ error: 'Vous ne pouvez pas vous bannir vous-même.' });
+
+    await db.banUser(userId, banState);
+
+    if (banState) {
+      for (const [sockId, uid] of onlineUsers.entries()) {
+        if (uid === userId) {
+          const socketInstance = io.sockets.sockets.get(sockId);
+          if (socketInstance) {
+            socketInstance.emit('force_disconnect', { reason: 'Votre compte a été banni par le SuperAdmin.' });
+            socketInstance.disconnect(true);
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, is_banned: banState ? 1 : 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/users/nuke/:userId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const { userId } = req.params;
+    if (userId === req.user.id) return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte SuperAdmin.' });
+
+    for (const [sockId, uid] of onlineUsers.entries()) {
+      if (uid === userId) {
+        const socketInstance = io.sockets.sockets.get(sockId);
+        if (socketInstance) {
+          socketInstance.emit('force_disconnect', { reason: 'Votre compte et vos données ont été définitivement supprimés.' });
+          socketInstance.disconnect(true);
+        }
+      }
+    }
+
+    const nukeResult = await db.nukeUser(userId);
+
+    if (nukeResult.filesToUnlink && nukeResult.filesToUnlink.length > 0) {
+      nukeResult.filesToUnlink.forEach(relPath => {
+        try {
+          const fullPath = path.join(__dirname, '../public', relPath);
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+          }
+        } catch (e) {}
+      });
+    }
+
+    res.json({ success: true, message: 'Utilisateur et l\'ensemble de ses données purgés avec succès.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/broadcast', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const { message } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Message d\'annonce requis.' });
+
+    io.emit('admin_announcement', {
+      content: message.trim(),
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({ success: true, message: 'Annonce diffusée à tous les utilisateurs connectés.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. VAPID Public Key
 app.get(['/vapid-public-key', '/api/vapid-public-key'], (req, res) => {
   res.json({ publicKey: pushService.getPublicKey() });

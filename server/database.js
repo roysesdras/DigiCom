@@ -111,6 +111,9 @@ async function initTables() {
   try {
     await run(`ALTER TABLE messages ADD COLUMN is_edited INTEGER DEFAULT 0`);
   } catch (e) {}
+  try {
+    await run(`ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0`);
+  } catch (e) {}
   await run(`
     CREATE TABLE IF NOT EXISTS user_contacts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,11 +238,11 @@ async function getUserByUsername(username) {
 }
 
 async function getUserById(id) {
-  return await get(`SELECT id, username, display_name, role, created_at FROM users WHERE id = ?`, [id]);
+  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at FROM users WHERE id = ?`, [id]);
 }
 
 async function getAllUsers() {
-  return await all(`SELECT id, username, display_name, role, created_at FROM users ORDER BY created_at ASC`);
+  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at FROM users ORDER BY created_at ASC`);
 }
 
 async function updateUser(id, { username, displayName, passwordHash, role }) {
@@ -904,6 +907,61 @@ async function getSalonMediaFiles(salonId) {
   return files;
 }
 
+// ----------------------------------------------------
+// SuperAdmin Control Functions
+// ----------------------------------------------------
+async function banUser(userId, banState = 1) {
+  await run(`UPDATE users SET is_banned = ? WHERE id = ?`, [banState ? 1 : 0, userId]);
+  return { success: true, userId, is_banned: banState ? 1 : 0 };
+}
+
+async function getAllUsersForAdmin() {
+  return await all(`
+    SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at
+    FROM users
+    ORDER BY created_at DESC
+  `);
+}
+
+async function getAdminMetrics() {
+  const userCount = await get(`SELECT COUNT(*) as total FROM users`);
+  const salonCount = await get(`SELECT COUNT(*) as total FROM salons`);
+  const msgCount = await get(`SELECT COUNT(*) as total FROM messages`);
+  const todayMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE datetime(timestamp) >= datetime('now', 'start of day')`);
+  return {
+    total_users: userCount ? userCount.total : 0,
+    total_salons: salonCount ? salonCount.total : 0,
+    total_messages: msgCount ? msgCount.total : 0,
+    today_messages: todayMsgCount ? todayMsgCount.total : 0
+  };
+}
+
+async function nukeUser(userId) {
+  const msgs = await all(`
+    SELECT content, context_data FROM messages 
+    WHERE sender_id = ? OR receiver_id = ?
+  `, [userId, userId]);
+  
+  const filesToUnlink = [];
+  msgs.forEach(m => {
+    if (m.content && m.content.includes('/uploads/')) {
+      const matches = m.content.match(/\/uploads\/[a-zA-Z0-9_\-.]+/g);
+      if (matches) filesToUnlink.push(...matches);
+    }
+    if (m.context_data && m.context_data.includes('/uploads/')) {
+      const matches = m.context_data.match(/\/uploads\/[a-zA-Z0-9_\-.]+/g);
+      if (matches) filesToUnlink.push(...matches);
+    }
+  });
+
+  await run(`DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?`, [userId, userId]);
+  await run(`DELETE FROM salon_members WHERE user_id = ?`, [userId]);
+  await run(`DELETE FROM contact_requests WHERE sender_id = ? OR receiver_id = ?`, [userId, userId]);
+  await run(`DELETE FROM users WHERE id = ?`, [userId]);
+
+  return { success: true, userId, filesToUnlink };
+}
+
 module.exports = {
   db,
   getUserCount,
@@ -963,5 +1021,10 @@ module.exports = {
   getContactRequestById,
   acceptContactRequest,
   rejectContactRequest,
+  // SuperAdmin exports
+  banUser,
+  getAllUsersForAdmin,
+  getAdminMetrics,
+  nukeUser,
   initTables
 };

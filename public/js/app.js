@@ -297,6 +297,11 @@ function updateCurrentUserUI() {
   if (btnChatAdminManage) {
     btnChatAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
+
+  const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
+  if (btnSuperAdmin) {
+    btnSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+  }
 }
 
 async function initAppInterface() {
@@ -480,6 +485,17 @@ function initSocket() {
     }
     renderCurrentActiveTabFeed();
     updateActiveContactStatus();
+  });
+
+  state.socket.on('admin_announcement', (data) => {
+    if (data && data.content) {
+      alert(`[ANNONCE DE L'ADMINISTRATION]\n\n${data.content}`);
+    }
+  });
+
+  state.socket.on('force_disconnect', (data) => {
+    alert(data && data.reason ? data.reason : 'Votre connexion a été interrompue par l\'administration.');
+    window.location.reload();
   });
 
   // Direct 1-to-1 Message Received
@@ -2538,6 +2554,22 @@ function setupEventListeners() {
     btnChatAdmin.addEventListener('click', () => {
       document.getElementById('admin-modal').style.display = 'flex';
       loadAdminUsers();
+    });
+  }
+
+  const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
+  if (btnSuperAdmin) {
+    btnSuperAdmin.addEventListener('click', () => {
+      if (window.AdminDashboard) {
+        window.AdminDashboard.open();
+      } else {
+        const script = document.createElement('script');
+        script.src = '/js/admin-dashboard.min.js?v=1136';
+        script.onload = () => {
+          if (window.AdminDashboard) window.AdminDashboard.open();
+        };
+        document.body.appendChild(script);
+      }
     });
   }
 

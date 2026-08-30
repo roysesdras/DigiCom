@@ -2505,6 +2505,11 @@ body {
    MOBILE FIRST OPTIMIZATIONS (Complete Dedicated Layout)
    ========================================================= */
 @media (max-width: 768px) {
+  #btn-superadmin-dashboard,
+  .btn-admin-dashboard {
+    display: none !important;
+  }
+
   .bento-app {
     padding: 0;
     gap: 0;
