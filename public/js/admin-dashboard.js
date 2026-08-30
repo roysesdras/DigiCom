@@ -325,6 +325,7 @@
       const data = await res.json();
       if (data.success) {
         state.metrics = data.metrics;
+        state.onlineUsersList = data.online_users_list || [];
       }
     } catch (e) {
       console.error('[Admin] Error fetching metrics:', e);
@@ -417,22 +418,30 @@
 
     if (state.activeTab === 'metrics') {
       const m = state.metrics || {};
+      const onlineList = state.onlineUsersList || [];
+      const onlineNames = onlineList.map(u => `${escapeHtml(u.displayName || u.username)} (${u.activeTabs} onglet${u.activeTabs > 1 ? 's' : ''})`).join(', ');
+
       container.innerHTML = `
         <div class="admin-grid-metrics">
           <div class="metric-card">
             <span class="metric-label">Connectés Direct</span>
             <span class="metric-val" style="color: #10b981;">${m.online_users_count || 0}</span>
-            <span class="metric-sub">${m.online_sockets || 0} sockets WebSockets</span>
+            <span class="metric-sub">${m.online_sockets || 0} connexions (${onlineNames || 'Aucun'})</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Total Utilisateurs</span>
-            <span class="metric-val">${m.total_users || 0}</span>
-            <span class="metric-sub">Comptes enregistrés</span>
+            <span class="metric-label">Tickets Support SOS</span>
+            <span class="metric-val" style="color: #f43f5e;">${m.sos_tickets_count || 0}</span>
+            <span class="metric-sub">${m.support_messages || 0} messages SOS au total</span>
           </div>
           <div class="metric-card">
             <span class="metric-label">Salons Actifs</span>
             <span class="metric-val">${m.total_salons || 0}</span>
-            <span class="metric-sub">Groupes de discussion</span>
+            <span class="metric-sub">Groupes de discussion officiels</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Utilisateurs Enregistrés</span>
+            <span class="metric-val">${m.total_users || 0}</span>
+            <span class="metric-sub">${m.banned_users || 0} banni(s)</span>
           </div>
           <div class="metric-card">
             <span class="metric-label">Messages Aujourd'hui</span>
@@ -443,6 +452,24 @@
             <span class="metric-label">Mémoire Serveur VPS</span>
             <span class="metric-val">${m.server_memory_mb || 0} MB</span>
             <span class="metric-sub">Uptime: ${m.server_uptime_hours || 0} heures</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; padding: 1.1rem; background: #1f2c34; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;">
+          <h4 style="margin: 0 0 0.85rem 0; font-size: 0.95rem; color: #f8fafc;">Répartition des Échanges & Cannaux</h4>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; font-size: 0.85rem;">
+            <div>
+              <span style="color: #94a3b8;">Discussions 1-à-1 :</span>
+              <strong style="color: #f8fafc; display: block; font-size: 1.1rem; margin-top: 0.2rem;">${m.direct_messages || 0} messages</strong>
+            </div>
+            <div>
+              <span style="color: #94a3b8;">Messages de Salons :</span>
+              <strong style="color: #f8fafc; display: block; font-size: 1.1rem; margin-top: 0.2rem;">${m.salon_messages || 0} messages</strong>
+            </div>
+            <div>
+              <span style="color: #94a3b8;">Assistance Support SOS :</span>
+              <strong style="color: #f43f5e; display: block; font-size: 1.1rem; margin-top: 0.2rem;">${m.support_messages || 0} messages</strong>
+            </div>
           </div>
         </div>
       `;

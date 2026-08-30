@@ -1396,7 +1396,27 @@ app.get('/api/admin/metrics', authenticateToken, async (req, res) => {
     }
     const metrics = await db.getAdminMetrics();
     const onlineSocketsCount = onlineUsers.size;
-    const onlineUserIds = Array.from(new Set(Array.from(onlineUsers.values())));
+
+    const userTabCounts = {};
+    for (const uid of onlineUsers.values()) {
+      userTabCounts[uid] = (userTabCounts[uid] || 0) + 1;
+    }
+
+    const onlineUserIds = Object.keys(userTabCounts);
+    const onlineUsersList = [];
+
+    for (const uid of onlineUserIds) {
+      const u = await db.getUserById(uid);
+      if (u) {
+        onlineUsersList.push({
+          id: u.id,
+          username: u.username,
+          displayName: u.display_name,
+          role: u.role,
+          activeTabs: userTabCounts[uid]
+        });
+      }
+    }
     
     const mem = process.memoryUsage();
     const memoryMb = Math.round(mem.rss / (1024 * 1024));
@@ -1411,7 +1431,7 @@ app.get('/api/admin/metrics', authenticateToken, async (req, res) => {
         server_memory_mb: memoryMb,
         server_uptime_hours: uptimeHours
       },
-      online_user_ids: onlineUserIds
+      online_users_list: onlineUsersList
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

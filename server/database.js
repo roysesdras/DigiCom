@@ -924,15 +924,31 @@ async function getAllUsersForAdmin() {
 }
 
 async function getAdminMetrics() {
-  const userCount = await get(`SELECT COUNT(*) as total FROM users`);
-  const salonCount = await get(`SELECT COUNT(*) as total FROM salons`);
+  const userCount = await get(`SELECT COUNT(*) as total FROM users WHERE COALESCE(is_banned, 0) = 0`);
+  const bannedCount = await get(`SELECT COUNT(*) as total FROM users WHERE is_banned = 1`);
+  const salonCount = await get(`SELECT COUNT(*) as total FROM salons WHERE id NOT LIKE 'test_salon_%'`);
+  const totalSalonsRaw = await get(`SELECT COUNT(*) as total FROM salons`);
+  
   const msgCount = await get(`SELECT COUNT(*) as total FROM messages`);
   const todayMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE datetime(timestamp) >= datetime('now', 'start of day')`);
+  
+  const directMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'direct'`);
+  const salonMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'salon'`);
+  const supportMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'support'`);
+  
+  const sosTicketsCount = await get(`SELECT COUNT(DISTINCT sender_id) as total FROM messages WHERE channel_type = 'support'`);
+
   return {
     total_users: userCount ? userCount.total : 0,
+    banned_users: bannedCount ? bannedCount.total : 0,
     total_salons: salonCount ? salonCount.total : 0,
+    total_salons_raw: totalSalonsRaw ? totalSalonsRaw.total : 0,
     total_messages: msgCount ? msgCount.total : 0,
-    today_messages: todayMsgCount ? todayMsgCount.total : 0
+    today_messages: todayMsgCount ? todayMsgCount.total : 0,
+    direct_messages: directMsgCount ? directMsgCount.total : 0,
+    salon_messages: salonMsgCount ? salonMsgCount.total : 0,
+    support_messages: supportMsgCount ? supportMsgCount.total : 0,
+    sos_tickets_count: sosTicketsCount ? sosTicketsCount.total : 0
   };
 }
 
