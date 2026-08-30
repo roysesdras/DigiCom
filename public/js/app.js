@@ -2574,7 +2574,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1136';
+        script.src = '/js/admin-dashboard.min.js?v=1137';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
