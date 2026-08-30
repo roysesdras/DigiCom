@@ -224,7 +224,7 @@
       background: #1e293b;
       color: #f1f5f9;
       border-bottom-left-radius: 2px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: none;
     }
     .rebonly-bubble-row.me .rebonly-bubble {
       background: #005c4b;
@@ -402,7 +402,7 @@
         </div>
         <div class="rebonly-feed" id="rebonly-feed">
           <div class="rebonly-bubble-row other">
-            <div class="rebonly-bubble">Bonjour ${escapeText(config.trainerName)} ! Un problème sur votre cours ? Décrivez-nous votre besoin ou envoyez une note vocale, l'équipe support reçoit votre alerte en direct.</div>
+            <div class="rebonly-bubble">Bonjour ${escapeText(config.trainerName)}. En quoi pouvons-nous vous aider ? Écrivez votre message ou envoyez une note vocale. Le support vous répond en direct sous 15 secondes, ou accédez directement à <a href="https://chat.digiroys.com/?invite=roys" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: underline;">chat.digiroys.com</a>.</div>
           </div>
         </div>
 
@@ -523,7 +523,7 @@
         }
         try {
           textarea.focus();
-        } catch (err) {}
+        } catch (err) { }
       }
     });
 
@@ -680,7 +680,7 @@
                 });
               }
             }
-          }).catch(err => {});
+          }).catch(err => { });
       });
 
       socket.on('support_message', (msg) => {
@@ -719,7 +719,7 @@
                 try {
                   const inner = JSON.parse(textSnippet.replace(/&quot;/g, '"'));
                   textSnippet = inner.text || 'Nouveau message';
-                } catch(e) {}
+                } catch (e) { }
               }
               toastBody.textContent = textSnippet;
               toast.style.display = 'block';
@@ -820,7 +820,7 @@
           parsedText = data.text;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     bubble.innerHTML = (parsedText ? escapeText(parsedText) : '') + mediaHtml;
     row.appendChild(bubble);
@@ -829,10 +829,10 @@
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const meta = document.createElement('div');
     meta.className = 'rebonly-msg-meta';
-    
+
     const checkSvg = `<svg class="rebonly-read-receipt" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
     const eyeSvg = `<svg class="rebonly-read-receipt read" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-    
+
     let statusIcon = `<span class="rebonly-read-receipt-wrapper">${isRead ? eyeSvg : checkSvg}</span>`;
     meta.innerHTML = `<span>${timeStr}</span> ${type === 'me' ? statusIcon : ''}`;
     row.appendChild(meta);
@@ -855,7 +855,7 @@
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.25);
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function escapeText(str) {

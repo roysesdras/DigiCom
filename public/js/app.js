@@ -68,6 +68,95 @@ const STICKERS = [
   '🚀 C\'est parti !', '⭐ Parfait !', '😊 Avec plaisir !', '🤝 D\'accord !'
 ];
 
+// Dynamic On-Demand Script Loader (Zero Initial Overhead)
+function loadDynamicScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"], script[src^="${src.split('?')[0]}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true' || window.DigiQR || window.DigiComTour) {
+        return resolve();
+      }
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', (e) => reject(e));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = (err) => reject(err);
+    document.head.appendChild(script);
+  });
+}
+
+// Guided Tour On-Demand Loader & Auto-Trigger
+async function triggerGuidedTour(force = false) {
+  if (!force && localStorage.getItem('digicom_tour_done_v1') === 'true') return;
+  try {
+    if (typeof window.startDigiComTour !== 'function') {
+      await loadDynamicScript('/js/guided-tour.min.js?v=1131');
+    }
+    if (typeof window.startDigiComTour === 'function') {
+      window.startDigiComTour(force);
+    }
+  } catch (e) {
+    console.warn('[-] Unable to load guided tour script:', e);
+  }
+}
+window.triggerGuidedTour = triggerGuidedTour;
+
+// Client-Side Image Compressor (WebP / Canvas scaling before upload)
+async function compressImageForUpload(file, maxDimension = 1920, quality = 0.82) {
+  if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/gif' || file.type === 'image/svg+xml') {
+    return file;
+  }
+  if (file.size < 200 * 1024) {
+    return file;
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const exportType = 'image/webp';
+      canvas.toBlob((blob) => {
+        if (blob && blob.size < file.size) {
+          const newName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+          const compressedFile = new File([blob], newName, { type: exportType, lastModified: Date.now() });
+          console.log(`[+] Image optimized before upload: ${(file.size / 1024).toFixed(1)} KB -> ${(compressedFile.size / 1024).toFixed(1)} KB (-${((1 - compressedFile.size / file.size) * 100).toFixed(0)}%)`);
+          resolve(compressedFile);
+        } else {
+          resolve(file);
+        }
+      }, exportType, quality);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   if (window.digiStore) {
     await window.digiStore.init().catch(err => console.warn('DigiStore init error:', err));
@@ -110,27 +199,35 @@ function hideMentionsPopover() {
 }
 window.hideMentionsPopover = hideMentionsPopover;
 
-async function authFetch(url, options = {}) {
+async function authFetch(url, options = {}, retries = 1) {
   const token = localStorage.getItem('digicom_token');
   const headers = { ...(options.headers || {}) };
   if (token && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include'
-  });
-  if ((res.status === 401 || res.status === 403) && url !== '/api/login' && url !== '/api/setup') {
-    if (token) {
-      console.warn('[!] Session token invalid or expired. Prompting login.');
-      localStorage.removeItem('digicom_token');
-      localStorage.removeItem('digicom_user');
-      state.user = null;
-      showModal('login-modal');
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include'
+    });
+    if ((res.status === 401 || res.status === 403) && url !== '/api/login' && url !== '/api/setup') {
+      if (token) {
+        console.warn('[!] Session token invalid or expired. Prompting login.');
+        localStorage.removeItem('digicom_token');
+        localStorage.removeItem('digicom_user');
+        state.user = null;
+        showModal('login-modal');
+      }
     }
+    return res;
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 600));
+      return authFetch(url, options, retries - 1);
+    }
+    throw err;
   }
-  return res;
 }
 
 let isAppInitializing = false;
@@ -196,14 +293,9 @@ function updateCurrentUserUI() {
     tabSupport.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
   }
 
-  const btnAdminManage = document.getElementById('btn-admin-manage');
-  if (btnAdminManage) {
-    btnAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
-  }
-
-  const chatAdmin = document.getElementById('chat-header-admin-actions');
-  if (chatAdmin) {
-    chatAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
+  const btnChatAdminManage = document.getElementById('btn-chat-admin-manage');
+  if (btnChatAdminManage) {
+    btnChatAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 }
 
@@ -262,24 +354,57 @@ async function initAppInterface() {
     }, 600);
   }
 
-  // Trigger Guided Tour on first visit or if requested
-  if (typeof DigiComTour !== 'undefined') {
+  // Trigger Guided Tour on first visit for new users only (Zero initial JS footprint for returning users)
+  if (localStorage.getItem('digicom_tour_done_v1') !== 'true') {
     setTimeout(() => {
-      DigiComTour.start(false);
-    }, 1200);
+      triggerGuidedTour(false);
+    }, 1500);
   }
 }
 
+function isUserOnline(userId) {
+  if (!userId || !Array.isArray(state.onlineUserIds)) return false;
+  const strId = String(userId);
+  return state.onlineUserIds.some(id => String(id) === strId);
+}
+
 function updateOnlineIndicatorsInLists(userId, isOnline) {
-  const contactItem = document.querySelector(`.contact-card[data-user-id="${userId}"], .contact-item[data-user-id="${userId}"]`);
-  if (contactItem) {
+  const strId = String(userId);
+  const contactItems = document.querySelectorAll(`.contact-card[data-user-id="${strId}"], .contact-item[data-user-id="${strId}"]`);
+  contactItems.forEach(contactItem => {
+    let microDot = contactItem.querySelector('.micro-dot');
+    const avatarBox = contactItem.querySelector('.contact-avatar-box, .salon-icon-box');
+    if (isOnline) {
+      if (!microDot && avatarBox && !contactItem.querySelector('.salon-icon-box')) {
+        microDot = document.createElement('div');
+        microDot.className = 'micro-dot online';
+        microDot.title = 'En ligne';
+        avatarBox.appendChild(microDot);
+      } else if (microDot) {
+        microDot.classList.add('online');
+        microDot.style.display = 'block';
+        microDot.title = 'En ligne';
+      }
+    } else {
+      if (microDot) {
+        microDot.remove();
+      }
+    }
     const badge = contactItem.querySelector('.contact-online-badge, .status-indicator');
     if (badge) {
       badge.className = isOnline ? 'contact-online-badge online' : 'contact-online-badge offline';
     }
-  }
-  if (state.activeContact && String(state.activeContact.id) === String(userId)) {
+  });
+
+  if (state.activeContact && String(state.activeContact.id) === strId) {
     updateActiveContactStatus();
+  }
+  if (state.activeSupportSession && String(state.activeSupportSession) === strId) {
+    const statusEl = document.getElementById('active-contact-status');
+    if (statusEl) {
+      statusEl.style.display = 'none';
+      statusEl.textContent = '';
+    }
   }
 }
 
@@ -973,6 +1098,24 @@ function initSocket() {
       }
     }
   });
+
+  // Universal Message Pinning Updates
+  state.socket.on('chat_pinned_update', (data) => {
+    let currentTargetId = null;
+    if (state.activeTab === 'salons' && state.activeSalon) currentTargetId = state.activeSalon.id;
+    else if (state.activeContact) currentTargetId = state.activeContact.id;
+    else if (state.activeTab === 'support') currentTargetId = state.activeSupportSession || (state.user ? state.user.id : null);
+
+    if (currentTargetId === data.targetId) {
+      updatePinnedMessageBanner(data.channelType, data.targetId, data.pinnedMessages || []);
+    }
+  });
+
+  state.socket.on('salon_pinned_update', (data) => {
+    if (state.activeSalon && state.activeSalon.id === data.salonId) {
+      updatePinnedMessageBanner('salon', data.salonId, data.pinnedMessages || []);
+    }
+  });
 }
 
 function playNotificationSound() {
@@ -991,13 +1134,13 @@ function showLocalNotification(title, body) {
       navigator.serviceWorker.ready.then(reg => {
         reg.showNotification(title, {
           body: body,
-          icon: '/img/icon-192.png',
-          badge: '/img/badge-72.png',
+          icon: '/img/icon-192.webp',
+          badge: '/img/badge-72.webp',
           vibrate: [200, 100, 200]
         });
       });
     } else {
-      new Notification(title, { body, icon: '/img/icon-192.png' });
+      new Notification(title, { body, icon: '/img/icon-192.webp' });
     }
   }
 }
@@ -1096,9 +1239,7 @@ function setupEventListeners() {
   const btnStartTour = document.getElementById('btn-start-tour');
   if (btnStartTour) {
     btnStartTour.addEventListener('click', () => {
-      if (typeof window.startDigiComTour === 'function') {
-        window.startDigiComTour();
-      }
+      triggerGuidedTour(true);
     });
   }
 
@@ -1201,6 +1342,16 @@ function setupEventListeners() {
     btnCtxDelete.addEventListener('click', () => {
       if (window.currentActiveCtxMessage) {
         deleteMessage(window.currentActiveCtxMessage.id);
+      }
+      closeMessageContextMenu();
+    });
+  }
+
+  const btnCtxPin = document.getElementById('ctx-action-pin');
+  if (btnCtxPin) {
+    btnCtxPin.addEventListener('click', () => {
+      if (window.currentActiveCtxMessage) {
+        window.pinCurrentChatMessage(window.currentActiveCtxMessage.id);
       }
       closeMessageContextMenu();
     });
@@ -2655,10 +2806,19 @@ function hideUploadProgress() {
   if (banner) banner.style.display = 'none';
 }
 
-// ---------------- MULTIPART FILE UPLOADER ----------------
+// ---------------- MULTIPART FILE UPLOADER (With Client-Side Image Pre-Compression) ----------------
 async function uploadFile(file) {
+  let fileToUpload = file;
+  if (file && file.type && file.type.startsWith('image/')) {
+    try {
+      fileToUpload = await compressImageForUpload(file);
+    } catch (e) {
+      console.warn('[-] Client image compression error, sending original:', e);
+    }
+  }
+
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', fileToUpload);
 
   const res = await fetch('/api/upload', {
     method: 'POST',
@@ -2828,7 +2988,9 @@ async function loadContacts() {
       state.contacts = await window.digiStore.getContacts();
     }
   } catch (err) {
-    console.error('[-] Error loading contacts from network, using offline store:', err);
+    if (err.name !== 'AbortError') {
+      console.warn('[-] Error loading contacts from network, using offline store:', err.message || err);
+    }
     if (window.digiStore) {
       try {
         state.contacts = await window.digiStore.getContacts();
@@ -2958,13 +3120,25 @@ async function loadContacts() {
   }
 }
 
-function renderMyQrCode() {
+async function renderMyQrCode() {
   const qrBox = document.getElementById('user-qr-code-box');
   const myTag = document.getElementById('my-username-tag');
   if (!qrBox || !state.user) return;
   const username = state.user.username;
   if (myTag) myTag.textContent = `@${username}`;
   const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(username)}`;
+
+  if (typeof window.DigiQR === 'undefined') {
+    qrBox.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:0.85rem;"><div class="inline-spinner" style="width:20px;height:20px;border:2px solid rgba(16,185,129,0.2);border-top-color:#10b981;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:8px;"></div> Chargement du QR Code...</div>';
+    try {
+      await loadDynamicScript('/js/qrcode.min.js?v=1131');
+    } catch (e) {
+      console.warn('[-] Unable to load QR code engine:', e);
+      qrBox.innerHTML = '<div style="color:#ef4444;font-size:0.85rem;padding:20px;">Erreur de chargement du QR Code</div>';
+      return;
+    }
+  }
+
   if (window.DigiQR && typeof window.DigiQR.renderTo === 'function') {
     window.DigiQR.renderTo(qrBox, inviteUrl, 200, '#00a884', '#ffffff');
   }
@@ -3488,14 +3662,14 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, 
   const previewClass = isUnreadMsg ? 'contact-preview-box unread-text' : 'contact-preview-box';
 
   let avatarClass = 'contact-avatar-box';
-  let badgeOnline = `<div class="micro-dot ${isOnline ? 'online' : ''}"></div>`;
+  let badgeOnline = isOnline ? `<div class="micro-dot online" title="En ligne"></div>` : '';
 
   if (type === 'salon') {
     avatarClass = 'salon-icon-box';
     badgeOnline = '';
   } else if (type === 'support') {
     avatarClass = 'contact-avatar-box sos';
-    badgeOnline = `<span class="micro-dot online" style="background: #f43f5e; box-shadow: 0 0 6px #f43f5e;" title="Ticket SOS Actif"></span>`;
+    badgeOnline = isOnline ? `<div class="micro-dot online" title="En ligne (Widget actif)"></div>` : '';
   }
 
   const categoryTagHtml = categoryTag ? `<span class="conversation-category-tag ${categoryClass}">${categoryTag}</span>` : '';
@@ -3605,13 +3779,14 @@ function renderAllConversationsList() {
       const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
       const unreadCount = conv.unread_count || 0;
       const title = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
+      const isOnline = isUserOnline(conv.sender_id);
       allItems.push({
         type: 'support',
         id: conv.sender_id,
         title,
         rawItem: conv,
         avatarInitial: title.charAt(0).toUpperCase(),
-        isOnline: true,
+        isOnline,
         unreadCount,
         categoryTag: 'SOS',
         categoryClass: 'support',
@@ -3652,6 +3827,7 @@ function renderAllConversationsList() {
 
     const card = document.createElement('div');
     card.className = `contact-card ${isActive ? 'active' : ''}`;
+    card.dataset.userId = item.id;
     card.innerHTML = renderConversationCardHtml({
       type: item.type,
       id: item.id,
@@ -3758,6 +3934,7 @@ function renderContactsList() {
 
     const item = document.createElement('div');
     item.className = `contact-card ${isActive ? 'active' : ''}`;
+    item.dataset.userId = c.id;
     item.innerHTML = renderConversationCardHtml({
       type: 'contact',
       id: c.id,
@@ -3876,14 +4053,26 @@ function selectContact(contact) {
     inputEl.placeholder = `Écrire à ${contact.display_name || contact.username}...`;
   }
 
-  // Show composer and call actions
+  // Show composer and 1-on-1 call actions
   const composer = document.getElementById('chat-input-area');
   if (composer) composer.style.display = 'block';
   const callActions = document.getElementById('chat-header-call-actions');
   if (callActions) callActions.style.display = 'flex';
 
+  // Strictly hide all Salon-specific tools in 1-on-1 private chat
+  const btnCreatePoll = document.getElementById('btn-create-poll');
+  if (btnCreatePoll) btnCreatePoll.style.display = 'none';
+
+  const itemMeeting = document.getElementById('menu-item-meeting');
+  const itemFiles = document.getElementById('menu-item-files');
+  const itemMembers = document.getElementById('menu-item-members');
+  if (itemMeeting) itemMeeting.style.display = 'none';
+  if (itemFiles) itemFiles.style.display = 'none';
+  if (itemMembers) itemMembers.style.display = 'none';
+
   renderContactsList();
   loadDirectHistory(contact.id);
+  loadPinnedMessageForActiveChat();
 }
 
 function updateActiveContactStatus() {
@@ -4175,6 +4364,7 @@ window.openMessageContextMenu = function(msgId, senderName, content, canDelete, 
   const modal = document.getElementById('msg-context-modal');
   const delBtn = document.getElementById('ctx-action-delete');
   const editBtn = document.getElementById('ctx-action-edit');
+  const pinBtn = document.getElementById('ctx-action-pin');
   
   const row = document.getElementById(msgId);
   const isMe = row && row.classList.contains('me');
@@ -4191,6 +4381,7 @@ window.openMessageContextMenu = function(msgId, senderName, content, canDelete, 
 
   if (delBtn) delBtn.style.display = canDelete ? 'flex' : 'none';
   if (editBtn) editBtn.style.display = canEdit ? 'flex' : 'none';
+  if (pinBtn) pinBtn.style.display = 'flex';
 
   if (modal) modal.style.display = 'flex';
   if (navigator.vibrate) {
@@ -4585,6 +4776,26 @@ function createMessageRowElement(msg, isSos = false) {
         <button type="button" class="voice-speed-badge" id="speed_${audioId}" onclick="cycleAudioSpeed('${audioId}')" title="Vitesse de lecture">1x</button>
       </div>
     `;
+  } else if (parsedContent && parsedContent.type === 'meeting') {
+    const roomName = parsedContent.roomName || `DigiCom_Salon_${msg.receiverId || msg.receiver_id}`;
+    const startedBy = parsedContent.startedBy || msg.senderName || 'un membre';
+    bodyHtml = `
+      <div class="meeting-card" style="display:flex; flex-direction:column; gap:8px; padding:6px 0;">
+        <div style="font-weight:700; font-size:0.9rem; color:#ffffff;">Réunion vidéo de Salon</div>
+        <div style="font-size:0.8rem; color:rgba(255,255,255,0.7);">Démarrée par ${escapeHtml(startedBy)}</div>
+        <button type="button" class="btn-join-salon-meeting-card" onclick="window.joinJitsiSalonMeeting('${escapeHtml(roomName)}')" style="background:rgba(16,185,129,0.2); border:1px solid rgba(16,185,129,0.4); color:#10b981; padding:8px 14px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-top:4px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+          Rejoindre la réunion
+        </button>
+      </div>
+    `;
+  } else if (msg.pollId || (parsedContent && parsedContent.pollId)) {
+    const pollId = msg.pollId || parsedContent.pollId;
+    bodyHtml = `<div class="poll-container-placeholder" id="poll-container-${pollId}">Chargement du sondage...</div>`;
+    setTimeout(() => loadAndRenderPollCard(pollId), 50);
   } else {
     if (parsedContent && typeof parsedContent.text === 'string') {
       textContent = parsedContent.text;
@@ -5278,20 +5489,22 @@ function renderSupportConversations() {
   }
 
   supportToRender.forEach(conv => {
-    const studentDisplayName = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
+    const studentDisplayName = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Formateur / Étudiant');
     const initial = studentDisplayName.charAt(0).toUpperCase();
-    const isActive = state.activeSupportSession === conv.sender_id;
+    const isActive = String(state.activeSupportSession) === String(conv.sender_id);
+    const isOnline = isUserOnline(conv.sender_id);
     const unreadCount = conv.unread_count || 0;
     const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
 
     const item = document.createElement('div');
     item.className = `contact-card ${isActive ? 'active' : ''}`;
+    item.dataset.userId = conv.sender_id;
     item.innerHTML = renderConversationCardHtml({
       type: 'support',
       id: conv.sender_id,
       title: studentDisplayName,
       avatarInitial: initial,
-      isOnline: true,
+      isOnline,
       isActive,
       unreadCount,
       categoryTag: 'SOS',
@@ -5358,11 +5571,15 @@ window.openSupportConversationBySenderId = async function(senderId) {
   const nameEl = document.getElementById('active-contact-name');
   if (nameEl) nameEl.textContent = studentName;
   const statusEl = document.getElementById('active-contact-status');
-  if (statusEl) statusEl.textContent = ctxTitle ? ctxTitle : 'Ticket SOS';
+  if (statusEl) {
+    statusEl.style.display = 'none';
+    statusEl.textContent = '';
+  }
   const composer = document.getElementById('chat-input-area');
   if (composer) composer.style.display = 'block';
 
   loadSupportHistory(senderId);
+  loadPinnedMessageForActiveChat();
 };
 
 
@@ -5967,11 +6184,26 @@ async function selectSalon(salon) {
   // Reset composer state
   updateSalonBlockedComposerState(false, formattedName);
 
-  // Show composer and hide standard call buttons (calls are 1-to-1)
+  // Show composer and hide 1-on-1 call buttons (calls are 1-to-1)
   const composer = document.getElementById('chat-input-area');
   if (composer) composer.style.display = 'block';
   const callActions = document.getElementById('chat-header-call-actions');
   if (callActions) callActions.style.display = 'none';
+
+  // Show poll button in composer
+  const btnCreatePoll = document.getElementById('btn-create-poll');
+  if (btnCreatePoll) btnCreatePoll.style.display = 'flex';
+
+  // Show Salon items in 3-dots options menu
+  const itemMeeting = document.getElementById('menu-item-meeting');
+  const itemFiles = document.getElementById('menu-item-files');
+  const itemMembers = document.getElementById('menu-item-members');
+  if (itemMeeting) itemMeeting.style.display = 'flex';
+  if (itemFiles) itemFiles.style.display = 'flex';
+  if (itemMembers) itemMembers.style.display = 'flex';
+
+  // Load universal pinned message banner
+  loadPinnedMessageForActiveChat();
 
   // Clear feed container before loading
   const feed = document.getElementById('messages-feed');
@@ -6522,3 +6754,585 @@ if (activeContactHeaderUser) {
     }
   });
 }
+
+// ==========================================
+// COLLABORATIVE SALON EXTENSIONS
+// ==========================================
+
+// 1. Salon Jitsi Meeting
+window.joinJitsiSalonMeeting = async function(roomName) {
+  if (typeof window.startJitsiCall === 'function') {
+    window.startJitsiCall(roomName, 'video');
+  } else {
+    const incomingModal = document.getElementById('call-incoming-modal');
+    const activeModal = document.getElementById('active-call-modal');
+    const container = document.getElementById('jitsi-container');
+    if (incomingModal) incomingModal.style.display = 'none';
+    if (activeModal) activeModal.style.display = 'flex';
+    if (container) {
+      if (typeof JitsiMeetExternalAPI === 'undefined' && typeof window.loadJitsiScript === 'function') {
+        container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:0.95rem;gap:12px;"><div class="inline-spinner" style="width:28px;height:28px;border:3px solid rgba(16,185,129,0.2);border-top-color:#10b981;border-radius:50%;animation:spin 0.8s linear infinite;"></div><span>Connexion à la réunion...</span></div>';
+        try {
+          await window.loadJitsiScript();
+        } catch (e) {
+          alert('Module Jitsi Meet indisponible sur le serveur.');
+          if (activeModal) activeModal.style.display = 'none';
+          return;
+        }
+      }
+      if (typeof JitsiMeetExternalAPI !== 'undefined') {
+        container.innerHTML = '';
+        const domain = 'meet.digiroys.com';
+        const myDisplayName = (state.user) ? (state.user.display_name || state.user.username) : 'Membre DigiCom';
+        const options = {
+          roomName: roomName,
+          width: '100%',
+          height: '100%',
+          parentNode: container,
+          userInfo: { displayName: myDisplayName },
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            disableThirdPartyRequests: true,
+            enableWelcomePage: false,
+            enableClosePage: false
+          },
+          interfaceConfigOverwrite: {
+            SHOW_JITSI_WATERMARK: false,
+            MOBILE_APP_PROMO: false
+          }
+        };
+        const api = new JitsiMeetExternalAPI(domain, options);
+        api.addEventListener('videoConferenceLeft', () => {
+          try { api.dispose(); } catch(e) {}
+          if (activeModal) activeModal.style.display = 'none';
+        });
+      }
+    }
+  }
+};
+
+async function startSalonMeeting() {
+  if (!state.activeSalon) return;
+  const salonId = state.activeSalon.id;
+  try {
+    const res = await authFetch(`/api/salons/${salonId}/meeting/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success && data.roomName) {
+      window.joinJitsiSalonMeeting(data.roomName);
+    }
+  } catch (e) {
+    console.error('[-] Error starting salon meeting:', e);
+  }
+}
+
+// 2. Salon Files Drawer
+async function openSalonFilesDrawer() {
+  if (!state.activeSalon) return;
+  const drawerOverlay = document.getElementById('salon-files-drawer-overlay');
+  const filesList = document.getElementById('salon-files-list');
+  if (drawerOverlay) drawerOverlay.style.display = 'flex';
+  if (filesList) filesList.innerHTML = '<div class="drawer-empty-state">Chargement des fichiers...</div>';
+
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/files`);
+    if (res.ok) {
+      const data = await res.json();
+      window.currentSalonFiles = data.files || [];
+      renderSalonFilesList('all');
+    }
+  } catch (e) {
+    if (filesList) filesList.innerHTML = '<div class="drawer-empty-state">Erreur lors de la récupération des fichiers</div>';
+  }
+}
+
+function closeSalonFilesDrawer() {
+  const drawerOverlay = document.getElementById('salon-files-drawer-overlay');
+  if (drawerOverlay) drawerOverlay.style.display = 'none';
+}
+
+function renderSalonFilesList(filterTab = 'all') {
+  const filesList = document.getElementById('salon-files-list');
+  if (!filesList) return;
+  const files = window.currentSalonFiles || [];
+  if (files.length === 0) {
+    filesList.innerHTML = '<div class="drawer-empty-state">Aucun fichier partagé dans ce salon</div>';
+    return;
+  }
+
+  const filtered = files.filter(f => {
+    if (filterTab === 'all') return true;
+    if (filterTab === 'image') return f.file_type && f.file_type.startsWith('image');
+    if (filterTab === 'video') return f.file_type && f.file_type.startsWith('video');
+    if (filterTab === 'audio') return f.file_type && f.file_type.startsWith('audio');
+    if (filterTab === 'doc') return f.file_type && (f.file_type.includes('pdf') || f.file_type.includes('word') || f.file_type.includes('document') || f.file_type.includes('sheet') || f.file_type.includes('zip'));
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    filesList.innerHTML = `<div class="drawer-empty-state">Aucun fichier dans la catégorie "${filterTab}"</div>`;
+    return;
+  }
+
+  filesList.innerHTML = filtered.map(f => {
+    const fname = f.file_name || f.content || 'Fichier';
+    const fsize = f.file_size ? (Math.round(f.file_size / 1024) + ' Ko') : '';
+    const dateStr = new Date(f.timestamp).toLocaleDateString('fr-FR');
+    return `
+      <div class="drawer-file-card">
+        <div class="drawer-file-info">
+          <div class="drawer-file-name" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
+          <div class="drawer-file-meta">${escapeHtml(f.sender_name)} • ${dateStr} ${fsize ? '• ' + fsize : ''}</div>
+        </div>
+        <a href="${escapeHtml(f.file_url)}" download="${escapeHtml(fname)}" target="_blank" rel="noopener" class="btn-lightbox-download" style="padding:6px 10px; font-size:0.75rem; border-radius:6px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#10b981; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Télécharger
+        </a>
+      </div>
+    `;
+  }).join('');
+}
+
+// 3. Mentions Autocomplete Popup
+function handleMentionInput(e) {
+  if (!state.activeSalon || state.activeTab !== 'salons') {
+    hideMentionsPopover();
+    return;
+  }
+  const input = e.target;
+  const val = input.value;
+  const cursorPos = input.selectionStart;
+  const textBefore = val.slice(0, cursorPos);
+  const match = textBefore.match(/@([a-zA-Z0-9_\-]*)$/);
+
+  if (match) {
+    const query = match[1].toLowerCase();
+    const members = state.activeSalonMembers || [];
+    const filtered = members.filter(m => {
+      const uname = (m.username || '').toLowerCase();
+      const dname = (m.display_name || '').toLowerCase();
+      return uname.includes(query) || dname.includes(query);
+    });
+
+    if (filtered.length > 0) {
+      showMentionsPopover(filtered, match.index, cursorPos);
+    } else {
+      hideMentionsPopover();
+    }
+  } else {
+    hideMentionsPopover();
+  }
+}
+
+function showMentionsPopover(members, matchIndex, cursorPos) {
+  const popup = document.getElementById('mention-autocomplete-popup');
+  const itemsContainer = document.getElementById('mention-list-items');
+  if (!popup || !itemsContainer) return;
+
+  itemsContainer.innerHTML = members.map((m, idx) => `
+    <div class="mention-item ${idx === 0 ? 'selected' : ''}" data-username="${escapeHtml(m.display_name || m.username)}">
+      <div class="mention-item-name">${escapeHtml(m.display_name || m.username)}</div>
+      <div class="mention-item-user">@${escapeHtml(m.username)}</div>
+    </div>
+  `).join('');
+
+  popup.style.display = 'block';
+
+  itemsContainer.querySelectorAll('.mention-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const username = item.dataset.username;
+      insertMention(username);
+      hideMentionsPopover();
+    });
+  });
+}
+
+function insertMention(username) {
+  const input = document.getElementById('message-input');
+  if (!input) return;
+  const val = input.value;
+  const cursorPos = input.selectionStart;
+  const textBefore = val.slice(0, cursorPos);
+  const textAfter = val.slice(cursorPos);
+  const newBefore = textBefore.replace(/@([a-zA-Z0-9_\-]*)$/, `@${username} `);
+  input.value = newBefore + textAfter;
+  input.focus();
+  input.setSelectionRange(newBefore.length, newBefore.length);
+}
+
+function hideMentionsPopover() {
+  const popup = document.getElementById('mention-autocomplete-popup');
+  if (popup) popup.style.display = 'none';
+}
+
+// 4. Polls Handling
+async function loadAndRenderPollCard(pollId) {
+  const container = document.getElementById(`poll-container-${pollId}`);
+  if (!container) return;
+
+  try {
+    const res = await authFetch(`/api/polls/${pollId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.poll) {
+        renderPollCard(container, data.poll);
+      }
+    }
+  } catch (e) {
+    container.innerHTML = '<div style="font-size:0.8rem; color:rgba(255,255,255,0.5);">Impossible de charger le sondage</div>';
+  }
+}
+
+function renderPollCard(container, poll) {
+  if (!container || !poll) return;
+  const currentUserId = state.user ? String(state.user.id || '') : '';
+  const votes = poll.votes || [];
+  const totalVotes = votes.length;
+
+  const myVote = votes.find(v => String(v.user_id) === currentUserId);
+  const myVotedOptionIndex = myVote ? parseInt(myVote.option_index, 10) : -1;
+
+  const options = poll.options || [];
+  const optionVotes = options.map((_, idx) => votes.filter(v => parseInt(v.option_index, 10) === idx).length);
+
+  const optionsHtml = options.map((opt, idx) => {
+    const voteCount = optionVotes[idx] || 0;
+    const percent = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+    const isMyChoice = myVotedOptionIndex === idx;
+
+    return `
+      <div class="poll-option-row">
+        <button type="button" class="poll-option-btn ${isMyChoice ? 'voted' : ''}" onclick="window.submitPollVote('${poll.id}', ${idx})">
+          <span>${escapeHtml(opt)}</span>
+          <span style="font-size:0.75rem; font-weight:700;">${percent}% (${voteCount})</span>
+        </button>
+        <div class="poll-bar-container">
+          <div class="poll-bar-fill" style="width: ${percent}%;"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="poll-card">
+      <div class="poll-question">${escapeHtml(poll.question)}</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        ${optionsHtml}
+      </div>
+      <div class="poll-meta-text">${totalVotes} vote${totalVotes > 1 ? 's' : ''} au total</div>
+    </div>
+  `;
+}
+
+window.submitPollVote = async function(pollId, optionIndex) {
+  try {
+    const res = await authFetch(`/api/polls/${pollId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ optionIndex })
+    });
+    const data = await res.json();
+    if (data.success && data.poll) {
+      const container = document.getElementById(`poll-container-${pollId}`);
+      if (container) renderPollCard(container, data.poll);
+    }
+  } catch (e) {
+    console.error('[-] Error submitting poll vote:', e);
+  }
+};
+
+// Global Window Exports for Collaborative Salon Helpers
+window.startSalonMeeting = startSalonMeeting;
+window.openSalonFilesDrawer = openSalonFilesDrawer;
+window.closeSalonFilesDrawer = closeSalonFilesDrawer;
+window.openCreatePollModal = function() {
+  const modal = document.getElementById('modal-create-poll');
+  if (modal) modal.style.display = 'flex';
+};
+window.closeCreatePollModal = function() {
+  const modal = document.getElementById('modal-create-poll');
+  if (modal) modal.style.display = 'none';
+};
+window.toggleChatMoreMenu = function(e) {
+  if (e) e.stopPropagation();
+  const dropdown = document.getElementById('chat-more-dropdown-menu');
+  if (!dropdown) return;
+  const isShown = dropdown.style.display === 'flex';
+  dropdown.style.display = isShown ? 'none' : 'flex';
+};
+window.closeChatMoreMenu = function() {
+  const dropdown = document.getElementById('chat-more-dropdown-menu');
+  if (dropdown) dropdown.style.display = 'none';
+};
+
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('chat-more-dropdown-menu');
+  const btn = document.getElementById('btn-chat-more-menu');
+  if (dropdown && dropdown.style.display === 'flex') {
+    if (btn && btn.contains(e.target)) return;
+    if (!dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  }
+});
+
+// Bind Collaborative UI Buttons
+const btnSalonMeeting = document.getElementById('btn-start-salon-meeting');
+if (btnSalonMeeting) {
+  btnSalonMeeting.onclick = startSalonMeeting;
+  btnSalonMeeting.ontouchend = (e) => { e.preventDefault(); startSalonMeeting(); };
+}
+
+const btnSalonFiles = document.getElementById('btn-toggle-salon-files');
+if (btnSalonFiles) {
+  btnSalonFiles.onclick = openSalonFilesDrawer;
+  btnSalonFiles.ontouchend = (e) => { e.preventDefault(); openSalonFilesDrawer(); };
+}
+
+const btnCloseSalonFiles = document.getElementById('btn-close-salon-files');
+if (btnCloseSalonFiles) {
+  btnCloseSalonFiles.onclick = closeSalonFilesDrawer;
+  btnCloseSalonFiles.ontouchend = (e) => { e.preventDefault(); closeSalonFilesDrawer(); };
+}
+
+const drawerOverlay = document.getElementById('salon-files-drawer-overlay');
+if (drawerOverlay) {
+  drawerOverlay.addEventListener('click', (e) => {
+    if (e.target === drawerOverlay) closeSalonFilesDrawer();
+  });
+}
+
+document.querySelectorAll('.drawer-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    renderSalonFilesList(tab.dataset.tab);
+  });
+});
+
+const msgInput = document.getElementById('message-input');
+if (msgInput) {
+  msgInput.addEventListener('input', handleMentionInput);
+  msgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideMentionsPopover();
+  });
+}
+
+const btnCreatePoll = document.getElementById('btn-create-poll');
+const modalCreatePoll = document.getElementById('modal-create-poll');
+const btnClosePollModal = document.getElementById('btn-close-poll-modal');
+const btnAddPollOption = document.getElementById('btn-add-poll-option');
+const formCreatePoll = document.getElementById('form-create-poll');
+
+if (btnCreatePoll) {
+  btnCreatePoll.onclick = window.openCreatePollModal;
+  btnCreatePoll.ontouchend = (e) => { e.preventDefault(); window.openCreatePollModal(); };
+}
+
+if (btnClosePollModal) {
+  btnClosePollModal.onclick = window.closeCreatePollModal;
+  btnClosePollModal.ontouchend = (e) => { e.preventDefault(); window.closeCreatePollModal(); };
+}
+
+if (btnAddPollOption) {
+  btnAddPollOption.addEventListener('click', () => {
+    const container = document.getElementById('poll-options-container');
+    if (!container) return;
+    const count = container.querySelectorAll('.poll-option-input').length + 1;
+    if (count > 6) return alert('Maximum 6 options');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'poll-option-input';
+    input.placeholder = `Option ${count}`;
+    input.required = true;
+    input.autocomplete = 'off';
+    container.appendChild(input);
+  });
+}
+
+if (formCreatePoll) {
+  formCreatePoll.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.activeSalon) return;
+    const questionInput = document.getElementById('poll-question-input');
+    const optionInputs = document.querySelectorAll('.poll-option-input');
+    const question = questionInput ? questionInput.value.trim() : '';
+    const options = Array.from(optionInputs).map(i => i.value.trim()).filter(Boolean);
+
+    if (!question || options.length < 2) {
+      return alert('La question et au moins 2 options sont requises.');
+    }
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/polls/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, options })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (modalCreatePoll) modalCreatePoll.style.display = 'none';
+        if (questionInput) questionInput.value = '';
+        optionInputs.forEach((i, idx) => {
+          if (idx < 2) i.value = '';
+          else i.remove();
+        });
+      }
+    } catch (err) {
+      alert('Erreur lors de la création du sondage.');
+    }
+  });
+}
+
+// Universal Message Pinning Helpers (Discussions, Salons & Support SOS - Limit 3 Pinned Messages)
+state.pinnedMessages = [];
+state.pinnedCurrentIndex = 0;
+
+window.pinCurrentChatMessage = async function(messageId, action = 'pin') {
+  let channelType = 'private';
+  let targetId = null;
+
+  if (state.activeTab === 'salons' && state.activeSalon) {
+    channelType = 'salon';
+    targetId = state.activeSalon.id;
+  } else if (state.activeTab === 'support') {
+    channelType = 'support';
+    targetId = state.activeSupportSession || (state.user ? state.user.id : null);
+  } else if (state.activeContact) {
+    channelType = 'private';
+    targetId = state.activeContact.id;
+  }
+
+  if (!channelType || !targetId) return;
+
+  try {
+    const res = await authFetch('/api/chat/pin-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelType, targetId, messageId, action })
+    });
+    const data = await res.json();
+    if (data.success) {
+      updatePinnedMessageBanner(channelType, targetId, data.pinnedMessages);
+      if (typeof showToast === 'function') {
+        if (action === 'unpin') {
+          showToast('Message dépinglé');
+        } else {
+          showToast('Message épinglé (max 3 par discussion)');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[-] Error pinning message:', e);
+  }
+};
+
+window.loadPinnedMessageForActiveChat = async function() {
+  let channelType = 'private';
+  let targetId = null;
+
+  if (state.activeTab === 'salons' && state.activeSalon) {
+    channelType = 'salon';
+    targetId = state.activeSalon.id;
+  } else if (state.activeTab === 'support') {
+    channelType = 'support';
+    targetId = state.activeSupportSession || (state.user ? state.user.id : null);
+  } else if (state.activeContact) {
+    channelType = 'private';
+    targetId = state.activeContact.id;
+  }
+
+  const banner = document.getElementById('salon-pinned-banner');
+  if (!banner || !channelType || !targetId) {
+    if (banner) banner.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await authFetch(`/api/chat/pinned-messages?channelType=${channelType}&targetId=${targetId}`);
+    const data = await res.json();
+    updatePinnedMessageBanner(channelType, targetId, data.pinnedMessages || []);
+  } catch (e) {
+    if (banner) banner.style.display = 'none';
+  }
+};
+
+window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessages = []) {
+  const banner = document.getElementById('salon-pinned-banner');
+  const bannerText = document.getElementById('pinned-banner-text');
+  const btnJump = document.getElementById('btn-jump-pinned');
+  const btnUnpin = document.getElementById('btn-unpin-message');
+  if (!banner) return;
+
+  const msgs = Array.isArray(pinnedMessages) ? pinnedMessages : (pinnedMessages ? [pinnedMessages] : []);
+  state.pinnedMessages = msgs;
+
+  if (msgs.length === 0) {
+    banner.style.display = 'none';
+    state.pinnedCurrentIndex = 0;
+    return;
+  }
+
+  banner.style.display = 'flex';
+
+  if (state.pinnedCurrentIndex >= msgs.length) {
+    state.pinnedCurrentIndex = 0;
+  }
+
+  const currentMsg = msgs[state.pinnedCurrentIndex];
+  
+  // Clean text preview
+  let rawText = currentMsg.content || '';
+  try {
+    const parsed = JSON.parse(rawText);
+    if (parsed.text) rawText = parsed.text;
+    else if (parsed.fileName) rawText = `[Fichier] ${parsed.fileName}`;
+    else if (parsed.type === 'voice') rawText = '[Note vocale]';
+  } catch (e) {}
+
+  if (rawText.length > 40) {
+    rawText = rawText.substring(0, 40) + '...';
+  }
+
+  const countBadge = msgs.length > 1 ? ` (${state.pinnedCurrentIndex + 1}/${msgs.length})` : '';
+  if (bannerText) {
+    bannerText.textContent = `${currentMsg.sender_name || currentMsg.senderName || 'Message'}${countBadge} : ${rawText}`;
+  }
+
+  if (btnJump) {
+    btnJump.textContent = msgs.length > 1 ? 'Suivant' : 'Voir';
+    btnJump.onclick = (e) => {
+      e.stopPropagation();
+      const msgEl = document.getElementById(currentMsg.id);
+      if (msgEl) {
+        msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        msgEl.style.transition = 'background 0.3s ease';
+        const origBg = msgEl.style.background;
+        msgEl.style.background = 'rgba(0, 168, 132, 0.35)';
+        setTimeout(() => { msgEl.style.background = origBg; }, 1800);
+      } else {
+        if (typeof showToast === 'function') showToast('Message épinglé disponible dans l\'historique');
+      }
+
+      // If multiple pinned messages, cycle index to next pinned message on click
+      if (msgs.length > 1) {
+        state.pinnedCurrentIndex = (state.pinnedCurrentIndex + 1) % msgs.length;
+        window.updatePinnedMessageBanner(channelType, targetId, msgs);
+      }
+    };
+  }
+
+  if (btnUnpin) {
+    btnUnpin.style.display = 'flex';
+    btnUnpin.onclick = (e) => {
+      e.stopPropagation();
+      window.pinCurrentChatMessage(currentMsg.id, 'unpin');
+    };
+  }
+};

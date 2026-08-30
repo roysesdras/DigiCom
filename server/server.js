@@ -9,7 +9,8 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const { v4: uuidv4 } = require('crypto');
+const { randomUUID } = require('crypto');
+const uuidv4 = () => randomUUID();
 
 const { exec } = require('child_process');
 const db = require('./database');
@@ -80,15 +81,63 @@ app.use(compression());
 app.use(express.json());
 app.use(cookieParser());
 
-// Static Files with ETag Revalidation for Instant 304 Live Updates (0 KB payload when unchanged)
+function setStaticCacheHeaders(res, filePath) {
+  // 1. Dynamic Entry Points (Always fresh)
+  if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  // 2. Immutable Fonts
+  else if (filePath.match(/\.(woff2?|ttf|eot|otf)$/i)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  // 3. Modern Next-Gen Images & Media
+  else if (filePath.match(/\.(webp|png|jpe?g|svg|ico|gif)$/i)) {
+    res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
+  }
+  // 4. Versioned CSS & JS Assets
+  else if (filePath.match(/\.(css|js)$/i)) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+  }
+  // 5. Web App Manifest
+  else if (filePath.endsWith('manifest.json')) {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  }
+}
+
+// Ultra-Fast Pre-Compressed Brotli (.br) & Gzip (.gz) Asset Handler
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  const reqPath = req.path === '/' ? '/index.html' : req.path;
+  const filePath = path.join(__dirname, '..', 'public', reqPath);
+
+  if (acceptEncoding.includes('br') && fs.existsSync(filePath + '.br')) {
+    if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+    else if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+    else if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+    else if (filePath.endsWith('.json')) res.setHeader('Content-Type', 'application/json; charset=UTF-8');
+    res.setHeader('Content-Encoding', 'br');
+    res.setHeader('Vary', 'Accept-Encoding');
+    setStaticCacheHeaders(res, filePath);
+    return res.sendFile(filePath + '.br');
+  } else if (acceptEncoding.includes('gzip') && fs.existsSync(filePath + '.gz')) {
+    if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+    else if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+    else if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+    else if (filePath.endsWith('.json')) res.setHeader('Content-Type', 'application/json; charset=UTF-8');
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Vary', 'Accept-Encoding');
+    setStaticCacheHeaders(res, filePath);
+    return res.sendFile(filePath + '.gz');
+  }
+  next();
+});
+
+// Static Files with High-Performance Caching Policy (Audited for Lighthouse & GTmetrix)
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   etag: true,
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-    }
-  }
+  setHeaders: setStaticCacheHeaders
 }));
 app.use('/widget', express.static(path.join(__dirname, '..', 'widget'), { maxAge: '1y', etag: true }));
 app.get('/uploads/:filename', async (req, res) => {
@@ -943,6 +992,259 @@ app.delete('/api/salons/:id', authenticateToken, async (req, res) => {
     });
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3e. Collaborative Salon Endpoints: Files, Pinned Messages, Polls & Meetings
+app.get('/api/salons/:id/files', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const files = await db.getSalonMediaFiles(id);
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/pin-message', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { messageId } = req.body;
+    const pinnedMessage = await db.setUniversalPinnedMessage('salon', id, messageId || null);
+    io.to(`salon_${id}`).emit('salon_pinned_update', {
+      salonId: id,
+      messageId: messageId || null,
+      message: pinnedMessage
+    });
+    res.json({ success: true, pinnedMessage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function getPrivatePairKey(id1, id2) {
+  return [String(id1), String(id2)].sort().join('_');
+}
+
+app.post('/api/chat/pin-message', authenticateToken, async (req, res) => {
+  try {
+    const { channelType, targetId, messageId, action = 'pin' } = req.body;
+    if (!channelType || !targetId) {
+      return res.status(400).json({ error: 'channelType et targetId sont requis' });
+    }
+
+    let actualTargetId = targetId;
+    if (channelType === 'private') {
+      actualTargetId = getPrivatePairKey(req.user.id, targetId);
+    }
+
+    const pinnedMessages = await db.setUniversalPinnedMessage(channelType, actualTargetId, messageId, action);
+    
+    // Broadcast to room & participants
+    if (channelType === 'salon') {
+      io.to(`salon_${targetId}`).emit('chat_pinned_update', { channelType, targetId, pinnedMessages });
+      io.to(`salon_${targetId}`).emit('salon_pinned_update', { salonId: targetId, pinnedMessages });
+    } else if (channelType === 'private') {
+      io.to(`user_${targetId}`).emit('chat_pinned_update', { channelType, targetId: req.user.id, pinnedMessages });
+      io.to(`user_${req.user.id}`).emit('chat_pinned_update', { channelType, targetId, pinnedMessages });
+    } else {
+      io.to(`user_${targetId}`).emit('chat_pinned_update', { channelType, targetId, pinnedMessages });
+      io.to('admin_room').emit('chat_pinned_update', { channelType, targetId, pinnedMessages });
+    }
+
+    res.json({ success: true, pinnedMessages });
+  } catch (err) {
+    console.error('[-] Error pinning message:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/chat/pinned-messages', authenticateToken, async (req, res) => {
+  try {
+    const { channelType, targetId } = req.query;
+    if (!channelType || !targetId) {
+      return res.status(400).json({ error: 'channelType et targetId sont requis' });
+    }
+
+    let actualTargetId = targetId;
+    if (channelType === 'private') {
+      actualTargetId = getPrivatePairKey(req.user.id, targetId);
+    }
+
+    const pinnedMessages = await db.getUniversalPinnedMessages(channelType, actualTargetId);
+    res.json({ pinnedMessages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/polls/create', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { question, options } = req.body;
+    if (!question || !Array.isArray(options) || options.length < 2) {
+      return res.status(400).json({ error: 'La question et au moins 2 options sont requises' });
+    }
+    const pollId = `poll_${uuidv4()}`;
+    const cleanOptions = options.map(o => String(o).trim()).filter(Boolean);
+    const poll = await db.createPoll({
+      id: pollId,
+      salonId: id,
+      creatorId: req.user.id,
+      question: question.trim(),
+      options: cleanOptions
+    });
+
+    // Save a special poll message in channel
+    const pollMsgId = `msg_${uuidv4()}`;
+    const pollData = {
+      type: 'poll',
+      pollId: pollId,
+      text: `[Sondage] ${question.trim()}`
+    };
+
+    await db.saveMessage({
+      id: pollMsgId,
+      senderId: req.user.id,
+      senderName: req.user.displayName || req.user.username,
+      receiverId: id,
+      channelType: 'salon',
+      content: JSON.stringify(pollData)
+    });
+
+    const msgRecord = {
+      id: pollMsgId,
+      senderId: req.user.id,
+      sender_id: req.user.id,
+      senderName: req.user.displayName || req.user.username,
+      sender_name: req.user.displayName || req.user.username,
+      receiverId: id,
+      receiver_id: id,
+      channelType: 'salon',
+      channel_type: 'salon',
+      content: JSON.stringify(pollData),
+      pollId: pollId,
+      poll_id: pollId,
+      timestamp: new Date().toISOString()
+    };
+
+    io.to(`salon_${id}`).emit('new_salon_message', msgRecord);
+
+    io.to(`salon_${id}`).emit('salon_poll_created', {
+      salonId: id,
+      poll: poll,
+      messageId: pollMsgId,
+      senderName: req.user.displayName || req.user.username
+    });
+
+    res.json({ success: true, poll });
+  } catch (err) {
+    console.error('[-] Error creating poll:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/polls/:id/vote', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { optionIndex } = req.body;
+    if (optionIndex === undefined || optionIndex === null) {
+      return res.status(400).json({ error: 'Option invalide' });
+    }
+    const poll = await db.votePoll(id, req.user.id, optionIndex);
+    if (poll) {
+      io.to(`salon_${poll.salon_id}`).emit('poll_vote_update', {
+        poll: poll
+      });
+    }
+    res.json({ success: true, poll });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/polls/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const poll = await db.getPollById(id);
+    if (!poll) return res.status(404).json({ error: 'Sondage introuvable' });
+    res.json({ poll });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/meeting/start', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const salon = await db.getSalonById(id);
+    if (!salon) return res.status(404).json({ error: 'Salon introuvable' });
+
+    const roomName = `DigiCom_Salon_${id}`;
+    const senderName = req.user.displayName || req.user.username;
+    
+    // Save meeting invitation message in salon
+    const msgId = `msg_${uuidv4()}`;
+    const meetingData = {
+      type: 'meeting',
+      roomName: roomName,
+      startedBy: senderName,
+      text: `[Réunion] ${senderName} a démarré une réunion vidéo de salon.`
+    };
+
+    await db.saveMessage({
+      id: msgId,
+      senderId: req.user.id,
+      senderName: senderName,
+      receiverId: id,
+      channelType: 'salon',
+      content: JSON.stringify(meetingData)
+    });
+
+    const msgRecord = {
+      id: msgId,
+      senderId: req.user.id,
+      sender_id: req.user.id,
+      senderName: senderName,
+      sender_name: senderName,
+      receiverId: id,
+      receiver_id: id,
+      channelType: 'salon',
+      channel_type: 'salon',
+      content: JSON.stringify(meetingData),
+      timestamp: new Date().toISOString()
+    };
+
+    io.to(`salon_${id}`).emit('new_salon_message', msgRecord);
+
+    // Broadcast socket event
+    io.to(`salon_${id}`).emit('salon_meeting_started', {
+      salonId: id,
+      salonName: salon.name,
+      roomName: roomName,
+      startedBy: senderName,
+      startedById: req.user.id
+    });
+
+    // Notify all members via push
+    const members = await db.getSalonMembers(id);
+    for (const m of members) {
+      if (m.id !== req.user.id) {
+        pushService.sendNotificationToUser(m.id, {
+          title: `Réunion: ${salon.name}`,
+          body: `${senderName} a démarré une réunion vidéo. Cliquez pour rejoindre.`,
+          icon: '/img/icon-192.png',
+          badge: '/img/icon-192.png',
+          data: {
+            url: `/?openSalonMeeting=true&salonId=${id}&roomName=${encodeURIComponent(roomName)}`
+          }
+        }).catch(err => console.error('[-] Push error for salon meeting:', err));
+      }
+    }
+
+    res.json({ success: true, roomName });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

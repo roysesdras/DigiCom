@@ -177,21 +177,42 @@ async function initTables() {
   try {
     await run(`ALTER TABLE salon_members ADD COLUMN last_read_at DATETIME`);
   } catch (e) {}
-  await run(`CREATE INDEX IF NOT EXISTS idx_salon_members_salon ON salon_members(salon_id)`);
-  await run(`CREATE INDEX IF NOT EXISTS idx_salon_members_user ON salon_members(user_id)`);
+  try {
+    await run(`ALTER TABLE salons ADD COLUMN pinned_message_id TEXT`);
+  } catch (e) {}
 
   await run(`
-    CREATE TABLE IF NOT EXISTS salon_message_reads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS polls (
+      id TEXT PRIMARY KEY,
       salon_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(message_id, user_id)
+      creator_id TEXT NOT NULL,
+      question TEXT NOT NULL,
+      options TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await run(`CREATE INDEX IF NOT EXISTS idx_salon_msg_reads_msg ON salon_message_reads(message_id)`);
-  await run(`CREATE INDEX IF NOT EXISTS idx_salon_msg_reads_user ON salon_message_reads(salon_id, user_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_polls_salon ON polls(salon_id)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      poll_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      option_index INTEGER NOT NULL,
+      voted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(poll_id, user_id)
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS pinned_messages_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pinned_unique_v2 ON pinned_messages_v2(channel_type, target_id, message_id)`);
 
   console.log('[+] Database tables & indexes initialized successfully.');
 }
@@ -758,6 +779,131 @@ async function getSalonMessages(salonId, limit = 50, before = null) {
   );
 }
 
+// Collaborative Salon Helpers: Polls, Pinned Messages & Salon Files
+async function createPoll({ id, salonId, creatorId, question, options }) {
+  const optionsJson = JSON.stringify(options);
+  await run(
+    `INSERT INTO polls (id, salon_id, creator_id, question, options) VALUES (?, ?, ?, ?, ?)`,
+    [id, salonId, creatorId, question, optionsJson]
+  );
+  return await getPollById(id);
+}
+
+async function getPollById(pollId) {
+  const poll = await get(`SELECT * FROM polls WHERE id = ?`, [pollId]);
+  if (!poll) return null;
+  const votes = await all(`SELECT user_id, option_index FROM poll_votes WHERE poll_id = ?`, [pollId]);
+  try {
+    poll.options = JSON.parse(poll.options || '[]');
+  } catch (e) {
+    poll.options = [];
+  }
+  poll.votes = votes || [];
+  return poll;
+}
+
+async function votePoll(pollId, userId, optionIndex) {
+  await run(
+    `INSERT INTO poll_votes (poll_id, user_id, option_index) VALUES (?, ?, ?)
+     ON CONFLICT(poll_id, user_id) DO UPDATE SET option_index = excluded.option_index`,
+    [pollId, userId, parseInt(optionIndex, 10)]
+  );
+  return await getPollById(pollId);
+}
+
+async function setSalonPinnedMessage(salonId, messageId) {
+  return setUniversalPinnedMessage('salon', salonId, messageId);
+}
+
+async function setUniversalPinnedMessage(channelType, targetId, messageId, action = 'pin') {
+  if (action === 'unpin') {
+    if (messageId) {
+      await run(`DELETE FROM pinned_messages_v2 WHERE channel_type = ? AND target_id = ? AND message_id = ?`, [channelType, targetId, messageId]);
+    } else {
+      await run(`DELETE FROM pinned_messages_v2 WHERE channel_type = ? AND target_id = ?`, [channelType, targetId]);
+    }
+  } else if (messageId) {
+    // Check existing count for this conversation
+    const existing = await all(
+      `SELECT id, message_id FROM pinned_messages_v2 WHERE channel_type = ? AND target_id = ? ORDER BY updated_at ASC`,
+      [channelType, targetId]
+    );
+
+    const isAlreadyPinned = existing.some(row => row.message_id === messageId);
+    if (!isAlreadyPinned) {
+      // Limit to 3 pinned messages max: if 3 exist, remove oldest (FIFO)
+      if (existing.length >= 3) {
+        const oldestId = existing[0].id;
+        await run(`DELETE FROM pinned_messages_v2 WHERE id = ?`, [oldestId]);
+      }
+      await run(
+        `INSERT INTO pinned_messages_v2 (channel_type, target_id, message_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+        [channelType, targetId, messageId]
+      );
+    } else {
+      await run(
+        `UPDATE pinned_messages_v2 SET updated_at = CURRENT_TIMESTAMP WHERE channel_type = ? AND target_id = ? AND message_id = ?`,
+        [channelType, targetId, messageId]
+      );
+    }
+  }
+
+  return await getUniversalPinnedMessages(channelType, targetId);
+}
+
+async function getUniversalPinnedMessages(channelType, targetId) {
+  const rows = await all(
+    `SELECT pm.message_id, pm.updated_at, m.*
+     FROM pinned_messages_v2 pm
+     JOIN messages m ON pm.message_id = m.id
+     WHERE pm.channel_type = ? AND pm.target_id = ?
+     ORDER BY pm.updated_at DESC
+     LIMIT 3`,
+    [channelType, targetId]
+  );
+  return rows || [];
+}
+
+async function getSalonMediaFiles(salonId) {
+  const msgs = await all(
+    `SELECT id, sender_id, sender_name, content, timestamp
+     FROM messages
+     WHERE channel_type = 'salon' 
+       AND receiver_id = ? 
+       AND (deleted_scope IS NULL OR deleted_scope != 'all')
+     ORDER BY timestamp DESC`,
+    [salonId]
+  );
+
+  const files = [];
+  for (const m of msgs) {
+    let parsed = null;
+    if (typeof m.content === 'object' && m.content !== null) {
+      parsed = m.content;
+    } else if (typeof m.content === 'string') {
+      try {
+        parsed = JSON.parse(m.content);
+      } catch (e) {}
+    }
+
+    if (parsed && (parsed.url || parsed.fileUrl)) {
+      files.push({
+        id: m.id,
+        sender_id: m.sender_id,
+        sender_name: m.sender_name,
+        content: parsed.text || parsed.fileName || m.content,
+        file_url: parsed.url || parsed.fileUrl,
+        file_name: parsed.fileName || parsed.name || 'Fichier',
+        file_size: parsed.fileSize || parsed.size || null,
+        file_type: parsed.fileType || parsed.type || 'file',
+        media_type: parsed.type || 'file',
+        timestamp: m.timestamp
+      });
+    }
+  }
+  return files;
+}
+
 module.exports = {
   db,
   getUserCount,
@@ -801,6 +947,14 @@ module.exports = {
   markSalonMessagesAsRead,
   markSalonMessageReadByMembers,
   getSalonMessages,
+  // Collaborative Salon Exports
+  createPoll,
+  getPollById,
+  votePoll,
+  setSalonPinnedMessage,
+  setUniversalPinnedMessage,
+  getUniversalPinnedMessages,
+  getSalonMediaFiles,
   // Contact Requests exports
   areUsersContacts,
   getUserByExactUsername,

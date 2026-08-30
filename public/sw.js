@@ -2,27 +2,32 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1113';
+const CACHE_NAME = 'digicom-pwa-v1135';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/css/style.css',
+  '/css/style.min.css',
   '/fonts/plus-jakarta-sans-latin.woff2',
   '/socket.io/socket.io.js',
-  '/js/qrcode.js',
-  '/js/idb-store.js',
-  '/js/push-client.js',
-  '/js/webrtc-call.js',
-  '/js/guided-tour.js',
-  '/js/app.js',
-  '/img/bubble.jpeg',
-  '/img/bot.png',
+  '/js/qrcode.min.js',
+  '/js/idb-store.min.js',
+  '/js/push-client.min.js',
+  '/js/webrtc-call.min.js',
+  '/js/guided-tour.min.js',
+  '/js/app.min.js',
+  '/img/bubble.webp',
+  '/img/chat.webp',
+  '/img/bot.webp',
+  '/img/icon-192.webp',
   '/img/icon-192.png',
+  '/img/icon-512.webp',
   '/img/icon-512.png',
+  '/img/apple-touch-icon.webp',
   '/img/apple-touch-icon.png',
+  '/img/favicon.webp',
   '/img/favicon.png',
-  '/img/badge-72.png',
+  '/img/badge-72.webp',
   '/manifest.json'
 ];
 
@@ -212,8 +217,8 @@ self.addEventListener('push', (event) => {
   let data = {
     title: 'DigiCom',
     body: 'Nouveau message reçu.',
-    icon: '/img/icon-192.png',
-    badge: '/img/badge-72.png',
+    icon: '/img/icon-192.webp',
+    badge: '/img/badge-72.webp',
     data: { url: '/' }
   };
 
@@ -239,8 +244,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/img/icon-192.png',
-    badge: data.badge || '/img/badge-72.png',
+    icon: data.icon || '/img/icon-192.webp',
+    badge: data.badge || '/img/badge-72.webp',
     vibrate: isCall ? [800, 400, 800, 400, 800, 400, 800, 400, 1000] : [200, 100, 200],
     data: data.data || { url: '/' },
     tag: notifTag,

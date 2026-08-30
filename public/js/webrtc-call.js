@@ -265,7 +265,34 @@
     cleanupCall();
   }
 
-  function startJitsiCall(roomName, callType) {
+  function loadJitsiScript() {
+    if (typeof JitsiMeetExternalAPI !== 'undefined') {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[src="https://meet.digiroys.com/external_api.js"]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', (e) => reject(e));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://meet.digiroys.com/external_api.js';
+      script.async = true;
+      script.onload = () => {
+        console.log('[+] Jitsi external API loaded on-demand.');
+        resolve();
+      };
+      script.onerror = (err) => {
+        console.error('[-] Failed to load Jitsi external API script:', err);
+        reject(err);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  window.loadJitsiScript = loadJitsiScript;
+
+  async function startJitsiCall(roomName, callType) {
     const incomingModal = document.getElementById('call-incoming-modal');
     const activeModal = document.getElementById('active-call-modal');
     const container = document.getElementById('jitsi-container');
@@ -274,14 +301,20 @@
     if (activeModal) activeModal.style.display = 'flex';
 
     if (!container) return;
-    container.innerHTML = '';
+    container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:0.95rem;gap:12px;"><div class="inline-spinner" style="width:28px;height:28px;border:3px solid rgba(16,185,129,0.2);border-top-color:#10b981;border-radius:50%;animation:spin 0.8s linear infinite;"></div><span>Connexion à la visioconférence sécurisée...</span></div>';
 
-    if (typeof JitsiMeetExternalAPI === 'undefined') {
-      console.error('[-] JitsiMeetExternalAPI script not loaded');
+    try {
+      if (typeof JitsiMeetExternalAPI === 'undefined') {
+        await loadJitsiScript();
+      }
+    } catch (err) {
+      console.error('[-] JitsiMeetExternalAPI script load failed:', err);
       alert('Module Jitsi Meet indisponible sur le serveur.');
       cleanupCall();
       return;
     }
+
+    container.innerHTML = '';
 
     const myDisplayName = (window.state && window.state.user) 
       ? (window.state.user.display_name || window.state.user.username) 
