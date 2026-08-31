@@ -388,6 +388,13 @@
     }
     stopRingtone();
 
+    if (window.localMediaStream) {
+      try {
+        window.localMediaStream.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      window.localMediaStream = null;
+    }
+
     if (jitsiApi) {
       try {
         jitsiApi.dispose();

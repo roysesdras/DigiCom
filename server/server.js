@@ -13,6 +13,7 @@ const { randomUUID } = require('crypto');
 const uuidv4 = () => randomUUID();
 
 const { exec } = require('child_process');
+const cron = require('node-cron');
 const db = require('./database');
 const pushService = require('./push-service');
 const { performBackup } = require('./backup-db');
@@ -58,13 +59,51 @@ function fetchFileFromRemoteStorage(fileName, localTarget) {
   });
 }
 
-// Schedule daily automated encrypted database backup (every 24h)
-setInterval(() => {
-  performBackup().catch(err => console.error('[-] Scheduled backup error:', err));
-}, 24 * 60 * 60 * 1000);
+function pruneLocalUploadsCache(maxAgeDays = 7) {
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  const now = Date.now();
 
-// Socket.io with permissive CORS for standalone widget integration
+  fs.readdir(uploadsDir, (err, files) => {
+    if (err) {
+      console.error('[-] Error reading uploads directory for cache pruning:', err.message);
+      return;
+    }
+
+    files.forEach(file => {
+      const filePath = path.join(uploadsDir, file);
+      fs.stat(filePath, (statErr, stats) => {
+        if (statErr) return;
+        if (stats.isFile()) {
+          const fileAge = now - stats.mtimeMs;
+          if (fileAge > maxAgeMs) {
+            fs.unlink(filePath, (unlinkErr) => {
+              if (!unlinkErr) {
+                console.log(`[+] Pruned 7-day old local upload cache: ${file}`);
+              }
+            });
+          }
+        }
+      });
+    });
+  });
+}
+
+// Schedule daily automated encrypted database backup at 03:30 AM every night (node-cron Option 1)
+cron.schedule('30 3 * * *', () => {
+  console.log('[*] Triggering scheduled nightly database backup at 03:30 AM...');
+  performBackup().catch(err => console.error('[-] Scheduled backup error:', err));
+});
+
+// Schedule nightly 7-day local upload cache pruning at 04:00 AM every night
+cron.schedule('0 4 * * *', () => {
+  console.log('[*] Triggering scheduled nightly 7-day local upload cache pruning at 04:00 AM...');
+  pruneLocalUploadsCache(7);
+});
+
+// Socket.io with permissive CORS for standalone widget integration & strict heartbeat
 const io = new Server(server, {
+  pingInterval: 25000,
+  pingTimeout: 20000,
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -2471,25 +2510,51 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
-    if (currentUser && onlineUsers.has(currentUser.id)) {
-      const userSockets = onlineUsers.get(currentUser.id);
+  const cleanupSocket = (reason) => {
+    const targetUserId = (currentUser && currentUser.id) || socket.userId;
+
+    if (targetUserId && onlineUsers.has(targetUserId)) {
+      const userSockets = onlineUsers.get(targetUserId);
       userSockets.delete(socket.id);
       if (userSockets.size === 0) {
-        onlineUsers.delete(currentUser.id);
+        onlineUsers.delete(targetUserId);
         io.emit('presence_delta', {
-          userId: currentUser.id,
+          userId: targetUserId,
           status: 'offline'
         });
         io.emit('presence_update', {
-          userId: currentUser.id,
+          userId: targetUserId,
           status: 'offline',
           onlineUserIds: Array.from(onlineUsers.keys())
         });
       }
+    } else {
+      for (const [uId, socketSet] of onlineUsers.entries()) {
+        if (socketSet.has(socket.id)) {
+          socketSet.delete(socket.id);
+          if (socketSet.size === 0) {
+            onlineUsers.delete(uId);
+            io.emit('presence_delta', { userId: uId, status: 'offline' });
+          }
+        }
+      }
     }
-    console.log(`[-] Socket disconnected: ${socket.id}`);
-  });
+
+    if (socket.activeCallTarget) {
+      io.to(`user_${socket.activeCallTarget}`).emit('call_ended', { reason: 'peer_disconnected' });
+      socket.activeCallTarget = null;
+    }
+
+    if (socket.activeChatPartner && targetUserId) {
+      socket.leave(`active_chat_${targetUserId}_${socket.activeChatPartner}`);
+      socket.activeChatPartner = null;
+    }
+
+    console.log(`[-] Socket cleaned up (${reason}): ${socket.id}`);
+  };
+
+  socket.on('disconnect', (reason) => cleanupSocket(`disconnect: ${reason}`));
+  socket.on('error', (err) => cleanupSocket(`error: ${err ? err.message : 'unknown'}`));
 });
 
 // Automatic Asset Minification (AST-based, 100% loss-free)

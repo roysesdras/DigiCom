@@ -4,7 +4,7 @@
   "description": "Sovereign Real-Time Messaging & Support Engine with E2EE and VAPID Push",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --max-old-space-size=512 server.js",
     "dev": "node server.js"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
     "socket.io": "^4.7.5",
     "sqlite3": "^5.1.7",
     "terser": "^5.51.2",

@@ -35,6 +35,23 @@ function runCommand(cmd) {
   });
 }
 
+const sqlite3 = require('sqlite3').verbose();
+
+function createSnapshotVacuum(sourcePath, targetPath) {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(sourcePath, sqlite3.OPEN_READWRITE, (err) => {
+      if (err) return reject(err);
+      const safePath = targetPath.replace(/'/g, "''");
+      db.run(`VACUUM INTO '${safePath}'`, (vacuumErr) => {
+        db.close(() => {
+          if (vacuumErr) return reject(vacuumErr);
+          resolve();
+        });
+      });
+    });
+  });
+}
+
 async function performBackup() {
   console.log('[+] Starting automated encrypted database backup...');
   
@@ -48,9 +65,14 @@ async function performBackup() {
   const encryptedBackup = path.join(backupDir, `digicom_backup_${timestamp}.db.enc`);
 
   try {
-    // 1. Copy database snapshot safely
-    fs.copyFileSync(dbPath, tempSnapshot);
-    console.log('[+] Database snapshot created:', tempSnapshot);
+    // 1. Create non-blocking atomic database snapshot using SQLite VACUUM INTO
+    try {
+      await createSnapshotVacuum(dbPath, tempSnapshot);
+      console.log('[+] Non-blocking SQLite snapshot created via VACUUM INTO:', tempSnapshot);
+    } catch (vErr) {
+      console.warn('[-] VACUUM INTO snapshot fallback to copyFileSync:', vErr.message);
+      fs.copyFileSync(dbPath, tempSnapshot);
+    }
 
     // 2. Encrypt database snapshot using AES-256-GCM
     const iv = crypto.randomBytes(16);
@@ -65,11 +87,12 @@ async function performBackup() {
     fs.writeFileSync(encryptedBackup, finalBuffer);
     console.log('[+] Backup encrypted with AES-256-GCM:', encryptedBackup);
 
-    // 3. Transfer encrypted backup file to remote storage VPS
+    // 3. Transfer encrypted backup file to remote storage VPS with low CPU & I/O priority
     const sshOption = `-i ${sshKeyPath} -o StrictHostKeyChecking=no`;
-    const rsyncCmd = `rsync -avz -e "ssh ${sshOption}" "${encryptedBackup}" ${remoteUser}@${remoteHost}:${remoteBackupDir}/`;
+    const lowPriorityPrefix = 'nice -n 19 ionice -c 3 2>/dev/null || nice -n 19';
+    const rsyncCmd = `${lowPriorityPrefix} rsync -avz -e "ssh ${sshOption}" "${encryptedBackup}" ${remoteUser}@${remoteHost}:${remoteBackupDir}/`;
     
-    console.log('[+] Transferring backup to remote storage VPS...');
+    console.log('[+] Transferring backup to remote storage VPS (Low I/O priority)...');
     await runCommand(rsyncCmd);
     console.log('[+] Backup successfully transferred to remote storage VPS:', `${remoteHost}:${remoteBackupDir}/`);
 

@@ -5,6 +5,14 @@ services:
       dockerfile: Dockerfile
     container_name: digicom
     restart: always
+    mem_limit: 512m
+    mem_reservation: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     environment:
       - PORT=3000
       - NODE_ENV=production

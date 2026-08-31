@@ -179,13 +179,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  window.addEventListener('online', () => {
-    console.log('[+] Connection restored. Flushing outbox...');
-    flushOutbox();
-  });
-
   state.pushClient = new DigiPushClient();
-  state.pushClient.init();
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => state.pushClient.init(), { timeout: 2500 });
+  } else {
+    setTimeout(() => state.pushClient.init(), 1500);
+  }
 
   setupEventListeners();
   await checkAuthAndInit();
@@ -940,7 +939,7 @@ function initSocket() {
       const bar = document.getElementById('typing-indicator');
       if (bar) {
         if (data.isTyping !== false) {
-          bar.innerHTML = `<span style="color: #10b981; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>${escapeHtml(data.userName || data.senderName || 'Un membre')} est en train d'écrire...</span>`;
+          bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name">${escapeHtml(data.userName || data.senderName || 'Un membre')}</span><div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div>`;
           clearTimeout(window.typingTimeout);
           window.typingTimeout = setTimeout(() => {
             if (bar) bar.innerHTML = '';
@@ -958,7 +957,7 @@ function initSocket() {
       if (state.activeTab === 'support' && state.activeSupportSession === data.senderId) {
         const bar = document.getElementById('typing-indicator');
         if (bar) {
-          bar.innerHTML = `<span style="color: #f43f5e; font-weight: 500;">${escapeHtml(data.senderName || 'Le formateur')} est en train d'écrire...</span>`;
+          bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name" style="color: #f43f5e;">${escapeHtml(data.senderName || 'Le formateur')}</span><div class="typing-dots-bubble"><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span></div></div>`;
           clearTimeout(window.typingTimeout);
           window.typingTimeout = setTimeout(() => {
             if (bar) bar.innerHTML = '';
@@ -972,7 +971,7 @@ function initSocket() {
       const bar = document.getElementById('typing-indicator');
 
       if (bar) {
-        bar.innerHTML = `<span style="color: var(--emerald-light); font-weight: 500;">${escapeHtml(data.senderName || 'Votre correspondant')} est en train d'écrire...</span>`;
+        bar.innerHTML = `<div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
       }
 
       clearTimeout(window.typingTimeout);

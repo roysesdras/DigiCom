@@ -42,6 +42,7 @@ class DigiStore {
         this.db = event.target.result;
         console.log('[+] DigiStore IndexedDB initialized successfully.');
         resolve(this.db);
+        this.scheduleBackgroundPrune();
       };
 
       request.onerror = (event) => {
@@ -219,30 +220,46 @@ class DigiStore {
     });
   }
 
-  async pruneOldMessages(maxPerConversation = 500) {
+  async pruneOldMessages(maxTotalMessages = 100) {
     if (!this.db) await this.init();
     try {
       const tx = this.db.transaction('messages', 'readwrite');
       const store = tx.objectStore('messages');
       const countReq = store.count();
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+
       countReq.onsuccess = () => {
-        if (countReq.result > maxPerConversation * 4) {
-          const index = store.index('timestamp');
-          let deleted = 0;
-          const toDelete = countReq.result - (maxPerConversation * 2);
-          const cursorReq = index.openCursor(); // Ascending (oldest first)
-          cursorReq.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor && deleted < toDelete) {
+        const index = store.index('timestamp');
+        const cursorReq = index.openCursor(); // Ascending (oldest first)
+        let deleted = 0;
+        const total = countReq.result || 0;
+        const toKeep = maxTotalMessages;
+
+        cursorReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const m = cursor.value;
+            const isOld = m.timestamp && m.timestamp < fifteenDaysAgo;
+            const isExcess = (total - deleted) > toKeep;
+
+            if (isOld || isExcess) {
               cursor.delete();
               deleted++;
               cursor.continue();
             }
-          };
-        }
+          }
+        };
       };
     } catch (e) {
       console.warn('[-] DigiStore prune warning:', e);
+    }
+  }
+
+  scheduleBackgroundPrune() {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => this.pruneOldMessages(100), { timeout: 5000 });
+    } else {
+      setTimeout(() => this.pruneOldMessages(100), 3000);
     }
   }
 

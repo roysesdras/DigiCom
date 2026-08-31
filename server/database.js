@@ -16,10 +16,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
     db.serialize(() => {
       db.run('PRAGMA journal_mode = WAL;');
       db.run('PRAGMA synchronous = NORMAL;');
-      db.run('PRAGMA busy_timeout = 5000;');
+      db.run('PRAGMA busy_timeout = 10000;');
       db.run('PRAGMA cache_size = -20000;');
       db.run('PRAGMA temp_store = MEMORY;');
     });
+    // Schedule periodic WAL checkpoint every 1 hour to keep .db-wal compact
+    setInterval(() => {
+      db.run('PRAGMA wal_checkpoint(PASSIVE);', (err) => {
+        if (err) console.warn('[-] WAL checkpoint warning:', err.message);
+      });
+    }, 60 * 60 * 1000);
     initTables();
   }
 });

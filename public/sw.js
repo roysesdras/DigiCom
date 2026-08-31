@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1137';
+const CACHE_NAME = 'digicom-pwa-v1143';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -157,58 +157,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Fast Network-First Strategy with AbortController for App Assets
+  // 2. Instant Cache-First (Stale-While-Revalidate) Strategy for App Shell Assets (< 1s Startup)
   event.respondWith(
-    new Promise((resolve) => {
-      let isResolved = false;
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cachedResponse = await cache.match(event.request, { ignoreSearch: event.request.mode === 'navigate' });
 
-      // 1. Attempt Network Fetch
-      const fetchPromise = fetch(event.request, { signal: controller ? controller.signal : undefined })
+      // Background network update (Stale-While-Revalidate)
+      const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && (networkResponse.status === 200 || networkResponse.status === 304)) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          if (!isResolved) {
-            isResolved = true;
-            resolve(networkResponse);
+            cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
         })
         .catch(() => null);
 
-      // 2. 1500ms Timeout: Fallback to Cache if network is slow/metered
-      const timeoutId = setTimeout(() => {
-        if (!isResolved) {
-          caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse && !isResolved) {
-              isResolved = true;
-              if (controller) controller.abort();
-              console.log('[SW] Network timeout (1.5s). Serving from Cache:', event.request.url);
-              resolve(cachedResponse);
-            }
-          });
-        }
-      }, 1500);
+      // If asset exists in cache, serve immediately for instant startup (< 10ms)
+      if (cachedResponse) {
+        return cachedResponse;
+      }
 
-      // 3. Fallback if network fails completely or offline
-      fetchPromise.then((netResp) => {
-        clearTimeout(timeoutId);
-        if (!netResp && !isResolved) {
-          caches.match(event.request).then((cachedResponse) => {
-            if (!isResolved) {
-              isResolved = true;
-              if (cachedResponse) return resolve(cachedResponse);
-              if (event.request.mode === 'navigate') {
-                return resolve(caches.match('/index.html', { ignoreSearch: true }));
-              }
-              resolve(new Response('Ressource indisponible hors-ligne', { status: 503, statusText: 'Offline' }));
-            }
-          });
-        }
-      });
-    })
+      // If not in cache, await network fetch or navigation fallback
+      const netResponse = await fetchPromise;
+      if (netResponse) return netResponse;
+
+      if (event.request.mode === 'navigate') {
+        const fallbackHTML = await cache.match('/index.html', { ignoreSearch: true });
+        if (fallbackHTML) return fallbackHTML;
+      }
+
+      return new Response('Ressource indisponible hors-ligne', { status: 503, statusText: 'Offline' });
+    })()
   );
 });
 

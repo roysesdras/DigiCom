@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install build tools and SSH/rsync for remote storage integration
-RUN apk add --no-cache python3 make g++ openssh-client rsync
+# Install build tools, util-linux (nice/ionice), and SSH/rsync for remote storage integration
+RUN apk add --no-cache python3 make g++ openssh-client rsync util-linux
 
 WORKDIR /app
 
@@ -23,4 +23,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
-CMD ["node", "server/server.js"]
+CMD ["node", "--max-old-space-size=512", "server/server.js"]
