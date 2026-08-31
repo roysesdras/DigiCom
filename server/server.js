@@ -950,13 +950,52 @@ app.post('/api/salons/:id/members/add', authenticateToken, async (req, res) => {
   }
 });
 
-// Remove a member from the salon
+// Update member role (Promote / Demote Co-Admin - Creator only)
+app.put('/api/salons/:id/members/:userId/role', authenticateToken, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const { role } = req.body; // 'admin' or 'member'
+
+    if (role !== 'admin' && role !== 'member') {
+      return res.status(400).json({ error: 'Rôle invalide' });
+    }
+
+    const isCreator = await db.isSalonCreator(id, req.user.id);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Seul le créateur du salon peut nommer ou rétrograder des administrateurs.' });
+    }
+
+    const salon = await db.getSalonById(id);
+    if (!salon) return res.status(404).json({ error: 'Salon introuvable' });
+    if (salon.created_by === userId) {
+      return res.status(400).json({ error: 'Le rôle du créateur ne peut pas être modifié.' });
+    }
+
+    if (role === 'admin') {
+      const currentMembers = await db.getSalonMembers(id);
+      const currentAdmins = currentMembers.filter(m => m.salon_role === 'admin');
+      if (currentAdmins.length >= 3) {
+        return res.status(400).json({ error: 'Vous avez déjà atteint la limite de 3 administrateurs délégués.' });
+      }
+    }
+
+    await db.updateSalonMemberRole(id, userId, role);
+
+    io.to(`salon_${id}`).emit('salon_updated', { salonId: id });
+    const members = await db.getSalonMembers(id);
+    res.json({ success: true, role, members });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove a member from the salon (Creator only)
 app.delete('/api/salons/:id/members/:userId', authenticateToken, async (req, res) => {
   try {
     const { id, userId } = req.params;
-    const isAdmin = await db.isSalonAdmin(id, req.user.id);
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Seul le créateur ou l\'administrateur peut retirer des membres' });
+    const isCreator = await db.isSalonCreator(id, req.user.id);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Seul le créateur du salon peut retirer des membres.' });
     }
 
     const salon = await db.getSalonById(id);
@@ -987,14 +1026,14 @@ app.delete('/api/salons/:id/members/:userId', authenticateToken, async (req, res
   }
 });
 
-// Block/Unblock a member in the salon
+// Block/Unblock a member in the salon (Creator only)
 app.post('/api/salons/:id/members/:userId/block', authenticateToken, async (req, res) => {
   try {
     const { id, userId } = req.params;
     const { blocked } = req.body;
-    const isAdmin = await db.isSalonAdmin(id, req.user.id);
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Seul le créateur ou l\'administrateur peut bloquer des membres' });
+    const isCreator = await db.isSalonCreator(id, req.user.id);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Seul le créateur du salon peut bloquer des membres.' });
     }
 
     const salon = await db.getSalonById(id);
@@ -1019,9 +1058,9 @@ app.post('/api/salons/:id/members/:userId/block', authenticateToken, async (req,
 app.delete('/api/salons/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const isAdmin = await db.isSalonAdmin(id, req.user.id);
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Seul le créateur ou l\'administrateur peut supprimer ce Salon' });
+    const isCreator = await db.isSalonCreator(id, req.user.id);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Seul le créateur du salon peut supprimer définitivement ce Salon.' });
     }
     const members = await db.getSalonMembers(id);
     await db.deleteSalon(id);
@@ -1031,6 +1070,413 @@ app.delete('/api/salons/:id', authenticateToken, async (req, res) => {
     });
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Salon 6 Collaborative Modules REST Endpoints ===
+
+// 1. Tâches (Tasks & Kanban)
+app.get('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
+  try {
+    const tasks = await db.getSalonTasks(req.params.id);
+    res.json({ tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, assignedTo, dueDate } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Le titre de la tâche est requis' });
+    
+    const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createSalonTask({
+      id: taskId,
+      salonId: id,
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      assignedTo: assignedTo || null,
+      dueDate: dueDate || null,
+      createdBy: req.user.id
+    });
+
+    // Broadcast task update to connected sockets
+    const tasks = await db.getSalonTasks(id);
+    io.to(`salon_${id}`).emit('salon_task_updated', { salonId: id, tasks });
+
+    // Send an automatic system announcement message in the salon chat feed
+    try {
+      const assignedUser = assignedTo ? await db.getUserById(assignedTo) : null;
+      const assignedName = assignedUser ? (assignedUser.display_name || assignedUser.username) : 'Toute l\'équipe';
+      const creatorName = req.user.displayName || req.user.username;
+      
+      const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const annRecord = {
+        id: annMsgId,
+        channelType: 'salon',
+        senderId: req.user.id,
+        senderName: 'Système Salon',
+        receiverId: id,
+        content: JSON.stringify({
+          type: 'task_announcement',
+          isTaskAnnouncement: true,
+          action: 'created',
+          taskId: taskId,
+          title: title.trim(),
+          creatorName: creatorName,
+          assignedName: assignedName,
+          dueDate: dueDate || null,
+          text: `📌 Nouvelle Tâche : ${title.trim()} (Assignée à : ${assignedName})`
+        }),
+        contextData: null,
+        is_read: 0,
+        timestamp: new Date().toISOString()
+      };
+      
+      await db.saveMessage(annRecord);
+      io.to(`salon_${id}`).emit('salon_message', annRecord);
+
+      // Web Push notification to all members of the salon
+      const members = await db.getSalonMembers(id);
+      const salonObj = await db.getSalonById(id);
+      const salonName = salonObj ? salonObj.name : 'Salon';
+      
+      members.forEach(m => {
+        if (m.id !== req.user.id) {
+          const isAssigned = (m.id === assignedTo);
+          pushService.sendNotificationToUser(m.id, {
+            title: isAssigned ? `🎯 Tâche assignée dans #${salonName}` : `📋 Nouvelle Tâche dans #${salonName}`,
+            body: isAssigned ? `${creatorName} vous a assigné la tâche : "${title.trim()}"` : `${creatorName} a créé la tâche : "${title.trim()}" (Assignée à: ${assignedName})`,
+            icon: '/img/icon-192.png',
+            data: { url: `/?salon=${id}`, channel: 'salon', salonId: id }
+          }).catch(e => console.error('[-] Push error for task:', e));
+        }
+      });
+    } catch (e) {
+      console.error('[-] Task announcement error:', e);
+    }
+
+    res.json({ success: true, taskId, tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) => {
+  try {
+    const { id, taskId } = req.params;
+    const { status } = req.body;
+    await db.updateSalonTaskStatus(taskId, status);
+
+    const tasks = await db.getSalonTasks(id);
+    io.to(`salon_${id}`).emit('salon_task_updated', { salonId: id, tasks });
+
+    // Status change notification
+    const statusLabels = { todo: 'À faire', in_progress: 'En cours', done: 'Terminé' };
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      const changerName = req.user.displayName || req.user.username;
+      const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const annRecord = {
+        id: annMsgId,
+        channelType: 'salon',
+        senderId: req.user.id,
+        senderName: 'Système Salon',
+        receiverId: id,
+        content: JSON.stringify({
+          type: 'task_announcement',
+          isTaskAnnouncement: true,
+          action: 'updated',
+          taskId: taskId,
+          title: task.title,
+          statusLabel: statusLabels[status] || status,
+          changerName: changerName,
+          text: `📋 Statut de la tâche "${task.title}" changé à ${statusLabels[status] || status} par ${changerName}`
+        }),
+        contextData: null,
+        is_read: 0,
+        timestamp: new Date().toISOString()
+      };
+      await db.saveMessage(annRecord);
+      io.to(`salon_${id}`).emit('salon_message', annRecord);
+
+      // Push notification for status change
+      const members = await db.getSalonMembers(id);
+      const salonObj = await db.getSalonById(id);
+      const salonName = salonObj ? salonObj.name : 'Salon';
+      members.forEach(m => {
+        if (m.id !== req.user.id) {
+          pushService.sendNotificationToUser(m.id, {
+            title: `📋 Tâche mise à jour dans #${salonName}`,
+            body: `${changerName} a passé "${task.title}" à ${statusLabels[status] || status}`,
+            icon: '/img/icon-192.png',
+            data: { url: `/?salon=${id}`, channel: 'salon', salonId: id }
+          }).catch(e => console.error('[-] Push error for task status update:', e));
+        }
+      });
+    }
+
+    res.json({ success: true, tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) => {
+  try {
+    const { id, taskId } = req.params;
+    await db.deleteSalonTask(taskId);
+
+    const tasks = await db.getSalonTasks(id);
+    io.to(`salon_${id}`).emit('salon_task_updated', { salonId: id, tasks });
+    res.json({ success: true, tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Fils (Threads / Message Threads)
+app.get('/api/salons/:id/threads/:messageId', authenticateToken, async (req, res) => {
+  try {
+    const messages = await db.getThreadMessages(req.params.messageId);
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/threads/:messageId', authenticateToken, async (req, res) => {
+  try {
+    const { id, messageId } = req.params;
+    const { content } = req.body;
+    if (!content || !content.trim()) return res.status(400).json({ error: 'Le contenu du message est requis' });
+
+    const threadMsgId = 'thread_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.addThreadMessage({
+      id: threadMsgId,
+      parentMessageId: messageId,
+      salonId: id,
+      senderId: req.user.id,
+      senderName: req.user.displayName || req.user.username,
+      content: content.trim()
+    });
+
+    const threadMessages = await db.getThreadMessages(messageId);
+    io.to(`salon_${id}`).emit('salon_thread_updated', { salonId: id, parentMessageId: messageId, messages: threadMessages });
+    res.json({ success: true, threadMsgId, messages: threadMessages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Annonces (Broadcast Mode Toggle)
+app.put('/api/salons/:id/broadcast', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { broadcastOnly } = req.body;
+    const isAdmin = await db.isSalonAdmin(id, req.user.id);
+    if (!isAdmin) return res.status(403).json({ error: 'Seul l\'administrateur du salon peut modifier ce mode' });
+
+    await db.setSalonBroadcastOnly(id, broadcastOnly);
+    io.to(`salon_${id}`).emit('salon_updated', { salonId: id, broadcastOnly: !!broadcastOnly });
+    res.json({ success: true, broadcastOnly: !!broadcastOnly });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Décisions (Decision Log)
+app.get('/api/salons/:id/decisions', authenticateToken, async (req, res) => {
+  try {
+    const decisions = await db.getSalonDecisions(req.params.id);
+    res.json({ decisions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/decisions', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, sourceMessageId, responsibleId } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Le titre de la décision est requis' });
+
+    // Check salon admin permission
+    const salonObj = await db.getSalonById(id);
+    const members = await db.getSalonMembers(id);
+    const me = members ? members.find(m => m.id === req.user.id) : null;
+    const isSalonAdmin = (salonObj && salonObj.created_by === req.user.id) || (me && me.role === 'admin') || req.user.role === 'admin';
+
+    if (!isSalonAdmin) {
+      return res.status(403).json({ error: 'Seuls les administrateurs du salon peuvent enregistrer une décision.' });
+    }
+
+    const decisionId = 'dec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createSalonDecision({
+      id: decisionId,
+      salonId: id,
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      sourceMessageId: sourceMessageId || null,
+      responsibleId: responsibleId || null,
+      decidedBy: req.user.id
+    });
+
+    const decisions = await db.getSalonDecisions(id);
+    io.to(`salon_${id}`).emit('salon_decision_updated', { salonId: id, decisions });
+
+    // Emit in-chat decision announcement card & Web Push
+    try {
+      let responsibleName = 'Toute l\'équipe';
+      if (responsibleId) {
+        const ids = responsibleId.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length > 0) {
+          const names = [];
+          for (const rId of ids) {
+            const respUser = await db.getUserById(rId);
+            if (respUser) names.push(respUser.display_name || respUser.username);
+          }
+          if (names.length > 0) responsibleName = names.join(', ');
+        }
+      }
+      const creatorName = req.user.displayName || req.user.username;
+      const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const annRecord = {
+        id: annMsgId,
+        channelType: 'salon',
+        senderId: req.user.id,
+        senderName: creatorName,
+        receiverId: id,
+        content: JSON.stringify({
+          type: 'decision_announcement',
+          isDecisionAnnouncement: true,
+          decisionId: decisionId,
+          title: title.trim(),
+          description: description ? description.trim() : '',
+          responsibleName: responsibleName,
+          creatorName: creatorName,
+          createdAt: new Date().toISOString()
+        }),
+        contextData: null,
+        is_read: 0,
+        timestamp: new Date().toISOString()
+      };
+      
+      await db.saveMessage(annRecord);
+      io.to(`salon_${id}`).emit('salon_message', annRecord);
+
+      // Web Push notification to salon members
+      const members = await db.getSalonMembers(id);
+      const salonObj = await db.getSalonById(id);
+      const salonName = salonObj ? salonObj.name : 'Salon';
+      members.forEach(m => {
+        if (m.id !== req.user.id) {
+          pushService.sendNotificationToUser(m.id, {
+            title: `📌 Décision Actée dans #${salonName}`,
+            body: `${creatorName} a enregistré la décision : "${title.trim()}" (Responsable: ${responsibleName})`,
+            icon: '/img/icon-192.png',
+            data: { url: `/?salon=${id}`, channel: 'salon', salonId: id }
+          }).catch(e => console.error('[-] Push error for decision:', e));
+        }
+      });
+    } catch (e) {
+      console.error('[-] Decision announcement error:', e);
+    }
+
+    res.json({ success: true, decisionId, decisions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/salons/:id/decisions/:decisionId', authenticateToken, async (req, res) => {
+  try {
+    const { id, decisionId } = req.params;
+
+    // Check salon admin permission
+    const salonObj = await db.getSalonById(id);
+    const members = await db.getSalonMembers(id);
+    const me = members ? members.find(m => m.id === req.user.id) : null;
+    const isSalonAdmin = (salonObj && salonObj.created_by === req.user.id) || (me && me.role === 'admin') || req.user.role === 'admin';
+
+    if (!isSalonAdmin) {
+      return res.status(403).json({ error: 'Seuls les administrateurs du salon peuvent supprimer une décision.' });
+    }
+
+    await db.deleteSalonDecision(decisionId);
+
+    const decisions = await db.getSalonDecisions(id);
+    io.to(`salon_${id}`).emit('salon_decision_updated', { salonId: id, decisions });
+    res.json({ success: true, decisions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. Caisse (Finances & Mobile Money Ledger)
+app.get('/api/salons/:id/finances', authenticateToken, async (req, res) => {
+  try {
+    const finances = await db.getSalonFinances(req.params.id);
+    res.json({ finances });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/finances/target', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { targetAmount, currency } = req.body;
+    await db.setSalonFinanceTarget(id, parseFloat(targetAmount) || 0, currency || 'FCFA');
+
+    const finances = await db.getSalonFinances(id);
+    io.to(`salon_${id}`).emit('salon_finance_updated', { salonId: id, finances });
+    res.json({ success: true, finances });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/salons/:id/finances/transactions', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, memberId, memberName, amount, category, receiptUrl, note } = req.body;
+    if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'Le montant doit être supérieur à zéro' });
+
+    const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.addSalonTransaction({
+      id: txId,
+      salonId: id,
+      type: type === 'expense' ? 'expense' : 'contribution',
+      memberId: memberId || req.user.id,
+      memberName: memberName || req.user.displayName || req.user.username,
+      amount: parseFloat(amount),
+      category: category || 'Autre',
+      receiptUrl: receiptUrl || null,
+      note: note ? note.trim() : '',
+      createdBy: req.user.id
+    });
+
+    const finances = await db.getSalonFinances(id);
+    io.to(`salon_${id}`).emit('salon_finance_updated', { salonId: id, finances });
+    res.json({ success: true, txId, finances });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/salons/:id/finances/transactions/:txId', authenticateToken, async (req, res) => {
+  try {
+    const { id, txId } = req.params;
+    await db.deleteSalonTransaction(txId);
+
+    const finances = await db.getSalonFinances(id);
+    io.to(`salon_${id}`).emit('salon_finance_updated', { salonId: id, finances });
+    res.json({ success: true, finances });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2087,6 +2533,19 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Check if broadcast_only (Annonces) mode is active and user is not admin
+      const salonRecord = await db.getSalonById(salonId);
+      if (salonRecord && salonRecord.broadcast_only) {
+        const isAdmin = await db.isSalonAdmin(salonId, senderId);
+        if (!isAdmin) {
+          socket.emit('salon_error', {
+            salonId,
+            message: 'Ce Salon est en mode Annonces : seuls les administrateurs peuvent publier.'
+          });
+          return;
+        }
+      }
+
       let contentToSave = data.content;
       if (data.replyTo) {
         if (typeof contentToSave === 'string') {
@@ -2564,6 +3023,62 @@ try {
 } catch (e) {
   console.warn('[-] Error during asset minification on startup:', e);
 }
+
+// Daily Automated Task Reminder Checker
+async function checkDailyTaskReminders() {
+  try {
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const tasksDue = await db.getTasksDueForReminder(todayDateStr);
+    
+    for (const task of tasksDue) {
+      const assignedName = task.assigned_name || task.assigned_username || 'Toute l\'équipe';
+      const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      
+      const annRecord = {
+        id: annMsgId,
+        channelType: 'salon',
+        senderId: 'system',
+        senderName: 'Système Salon',
+        receiverId: task.salon_id,
+        content: JSON.stringify({
+          type: 'task_reminder',
+          isTaskAnnouncement: true,
+          action: 'reminder',
+          taskId: task.id,
+          title: task.title,
+          assignedName: assignedName,
+          assignedTo: task.assigned_to,
+          dueDate: task.due_date,
+          text: `⏰ Rappel : La tâche "${task.title}" (Assignée à : ${assignedName}) est prévue pour aujourd'hui !`
+        }),
+        contextData: null,
+        is_read: 0,
+        timestamp: new Date().toISOString()
+      };
+      
+      await db.saveMessage(annRecord);
+      io.to(`salon_${task.salon_id}`).emit('salon_message', annRecord);
+
+      // Targeted Web Push Notification specifically to assigned user
+      if (task.assigned_to) {
+        pushService.sendNotificationToUser(task.assigned_to, {
+          title: `⏰ Rappel de Tâche (Aujourd'hui)`,
+          body: `La tâche "${task.title}" est prévue pour aujourd'hui ! Cliquez pour mettre à jour son statut.`,
+          icon: '/img/icon-192.png',
+          data: { url: `/?salon=${task.salon_id}`, channel: 'salon', salonId: task.salon_id }
+        }).catch(e => console.error('[-] Push error for task reminder:', e));
+      }
+
+      await db.updateTaskReminderDate(task.id, todayDateStr);
+    }
+  } catch (err) {
+    console.error('[-] Error checking daily task reminders:', err);
+  }
+}
+
+// Run task reminder check on startup and every 30 minutes
+setTimeout(checkDailyTaskReminders, 10000);
+setInterval(checkDailyTaskReminders, 30 * 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);

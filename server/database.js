@@ -223,6 +223,83 @@ async function initTables() {
   `);
   await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pinned_unique_v2 ON pinned_messages_v2(channel_type, target_id, message_id)`);
 
+  // Salon 6 Collaborative Modules Tables
+  try {
+    await run(`ALTER TABLE salons ADD COLUMN broadcast_only INTEGER DEFAULT 0`);
+  } catch (e) {}
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_tasks (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      assigned_to TEXT,
+      status TEXT DEFAULT 'todo',
+      due_date DATETIME,
+      last_reminder_date TEXT,
+      created_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_tasks ON salon_tasks(salon_id, status)`);
+  try {
+    await run(`ALTER TABLE salon_tasks ADD COLUMN last_reminder_date TEXT`);
+  } catch (e) {}
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_threads (
+      id TEXT PRIMARY KEY,
+      parent_message_id TEXT NOT NULL,
+      salon_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_threads ON salon_threads(parent_message_id, created_at)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_decisions (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      source_message_id TEXT,
+      responsible_id TEXT,
+      decided_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_decisions ON salon_decisions(salon_id, created_at)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_finances (
+      salon_id TEXT PRIMARY KEY,
+      target_amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'FCFA',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS salon_finance_transactions (
+      id TEXT PRIMARY KEY,
+      salon_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      member_id TEXT,
+      member_name TEXT,
+      amount REAL NOT NULL,
+      category TEXT DEFAULT 'Autre',
+      receipt_url TEXT,
+      note TEXT,
+      created_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_salon_finances ON salon_finance_transactions(salon_id, created_at)`);
+
   console.log('[+] Database tables & indexes initialized successfully.');
 }
 
@@ -716,6 +793,20 @@ async function blockSalonMember(salonId, userId, isBlocked = 1) {
   );
 }
 
+async function updateSalonMemberRole(salonId, userId, newRole) {
+  await run(
+    `UPDATE salon_members SET role = ? WHERE salon_id = ? AND user_id = ?`,
+    [newRole, salonId, userId]
+  );
+}
+
+async function isSalonCreator(salonId, userId) {
+  const user = await getUserById(userId);
+  if (user && (user.role === 'superadmin')) return true;
+  const salon = await getSalonById(salonId);
+  return salon && String(salon.created_by) === String(userId);
+}
+
 async function isSalonMemberBlocked(salonId, userId) {
   const row = await get(
     `SELECT is_blocked, role FROM salon_members WHERE salon_id = ? AND user_id = ?`,
@@ -984,6 +1075,127 @@ async function nukeUser(userId) {
   return { success: true, userId, filesToUnlink };
 }
 
+// Salon 6 Modules Helpers
+async function getSalonTasks(salonId) {
+  return await all(`SELECT t.*, u.display_name as assigned_name FROM salon_tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.salon_id = ? ORDER BY t.created_at DESC`, [salonId]);
+}
+async function createSalonTask({ id, salonId, title, description, assignedTo, dueDate, createdBy }) {
+  return await run(
+    `INSERT INTO salon_tasks (id, salon_id, title, description, assigned_to, due_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, salonId, title, description, assignedTo, dueDate, createdBy]
+  );
+}
+async function updateSalonTaskStatus(taskId, status) {
+  return await run(`UPDATE salon_tasks SET status = ? WHERE id = ?`, [status, taskId]);
+}
+
+async function deleteSalonTask(taskId) {
+  return await run(`DELETE FROM salon_tasks WHERE id = ?`, [taskId]);
+}
+
+async function getTasksDueForReminder(todayDateStr) {
+  return await all(
+    `SELECT t.*, u.display_name as assigned_name, u.username as assigned_username, s.name as salon_name 
+     FROM salon_tasks t 
+     LEFT JOIN users u ON t.assigned_to = u.id 
+     LEFT JOIN salons s ON t.salon_id = s.id 
+     WHERE t.status != 'done' 
+       AND t.due_date IS NOT NULL 
+       AND DATE(t.due_date) <= ? 
+       AND (t.last_reminder_date IS NULL OR t.last_reminder_date != ?)`,
+    [todayDateStr, todayDateStr]
+  );
+}
+async function updateTaskReminderDate(taskId, todayDateStr) {
+  return await run(`UPDATE salon_tasks SET last_reminder_date = ? WHERE id = ?`, [todayDateStr, taskId]);
+}
+
+async function getThreadMessages(parentMessageId) {
+  return await all(`SELECT * FROM salon_threads WHERE parent_message_id = ? ORDER BY created_at ASC`, [parentMessageId]);
+}
+async function addThreadMessage({ id, parentMessageId, salonId, senderId, senderName, content }) {
+  return await run(
+    `INSERT INTO salon_threads (id, parent_message_id, salon_id, sender_id, sender_name, content) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, parentMessageId, salonId, senderId, senderName, content]
+  );
+}
+async function getThreadCounts(salonId) {
+  return await all(`SELECT parent_message_id, COUNT(*) as count FROM salon_threads WHERE salon_id = ? GROUP BY parent_message_id`, [salonId]);
+}
+
+async function getSalonDecisions(salonId) {
+  const decisions = await all(`SELECT * FROM salon_decisions WHERE salon_id = ? ORDER BY created_at DESC`, [salonId]);
+  const allUsers = await all(`SELECT id, display_name, username FROM users`);
+  const userMap = {};
+  allUsers.forEach(u => { userMap[u.id] = u.display_name || u.username; });
+
+  return decisions.map(d => {
+    let responsibleName = 'Toute l\'équipe';
+    if (d.responsible_id) {
+      const ids = d.responsible_id.split(',').map(s => s.trim()).filter(Boolean);
+      if (ids.length > 0) {
+        const names = ids.map(id => userMap[id] || id);
+        responsibleName = names.join(', ');
+      }
+    }
+    return {
+      ...d,
+      responsible_name: responsibleName
+    };
+  });
+}
+async function createSalonDecision({ id, salonId, title, description, sourceMessageId, responsibleId, decidedBy }) {
+  return await run(
+    `INSERT INTO salon_decisions (id, salon_id, title, description, source_message_id, responsible_id, decided_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, salonId, title, description, sourceMessageId, responsibleId, decidedBy]
+  );
+}
+async function deleteSalonDecision(decisionId) {
+  return await run(`DELETE FROM salon_decisions WHERE id = ?`, [decisionId]);
+}
+
+async function getSalonFinances(salonId) {
+  let finance = await get(`SELECT * FROM salon_finances WHERE salon_id = ?`, [salonId]);
+  if (!finance) {
+    await run(`INSERT OR IGNORE INTO salon_finances (salon_id, target_amount, currency) VALUES (?, 0, 'FCFA')`, [salonId]);
+    finance = { salon_id: salonId, target_amount: 0, currency: 'FCFA' };
+  }
+  const transactions = await all(`SELECT * FROM salon_finance_transactions WHERE salon_id = ? ORDER BY created_at DESC`, [salonId]);
+  const stats = await get(`
+    SELECT 
+      SUM(CASE WHEN type = 'contribution' THEN amount ELSE 0 END) as total_contributions,
+      SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expenses
+    FROM salon_finance_transactions WHERE salon_id = ?
+  `, [salonId]);
+
+  return {
+    target_amount: finance.target_amount || 0,
+    currency: finance.currency || 'FCFA',
+    total_contributions: (stats && stats.total_contributions) || 0,
+    total_expenses: (stats && stats.total_expenses) || 0,
+    balance: ((stats && stats.total_contributions) || 0) - ((stats && stats.total_expenses) || 0),
+    transactions: transactions || []
+  };
+}
+async function setSalonFinanceTarget(salonId, targetAmount, currency = 'FCFA') {
+  return await run(
+    `INSERT INTO salon_finances (salon_id, target_amount, currency) VALUES (?, ?, ?) ON CONFLICT(salon_id) DO UPDATE SET target_amount = ?, currency = ?, updated_at = CURRENT_TIMESTAMP`,
+    [salonId, targetAmount, currency, targetAmount, currency]
+  );
+}
+async function addSalonTransaction({ id, salonId, type, memberId, memberName, amount, category, receiptUrl, note, createdBy }) {
+  return await run(
+    `INSERT INTO salon_finance_transactions (id, salon_id, type, member_id, member_name, amount, category, receipt_url, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, salonId, type, memberId, memberName, amount, category, receiptUrl, note, createdBy]
+  );
+}
+async function deleteSalonTransaction(transactionId) {
+  return await run(`DELETE FROM salon_finance_transactions WHERE id = ?`, [transactionId]);
+}
+async function setSalonBroadcastOnly(salonId, broadcastOnly) {
+  return await run(`UPDATE salons SET broadcast_only = ? WHERE id = ?`, [broadcastOnly ? 1 : 0, salonId]);
+}
+
 module.exports = {
   db,
   getUserCount,
@@ -1018,6 +1230,8 @@ module.exports = {
   getSalonById,
   getSalonMembers,
   isSalonAdmin,
+  isSalonCreator,
+  updateSalonMemberRole,
   addSalonMember,
   removeSalonMember,
   blockSalonMember,
@@ -1035,6 +1249,24 @@ module.exports = {
   setUniversalPinnedMessage,
   getUniversalPinnedMessages,
   getSalonMediaFiles,
+  // Salon 6 Modules Exports
+  getSalonTasks,
+  createSalonTask,
+  updateSalonTaskStatus,
+  deleteSalonTask,
+  getTasksDueForReminder,
+  updateTaskReminderDate,
+  getThreadMessages,
+  addThreadMessage,
+  getThreadCounts,
+  getSalonDecisions,
+  createSalonDecision,
+  deleteSalonDecision,
+  getSalonFinances,
+  setSalonFinanceTarget,
+  addSalonTransaction,
+  deleteSalonTransaction,
+  setSalonBroadcastOnly,
   // Contact Requests exports
   areUsersContacts,
   getUserByExactUsername,

@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1143" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1143">
+    <link rel="preload" href="/css/style.min.css?v=1169" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1169">
   </head>
 
   <body>
@@ -250,7 +250,7 @@
                     <line x1="16" y1="17" x2="8" y2="17"></line>
                     <polyline points="10 9 9 9 8 9"></polyline>
                   </svg>
-                  <span>Documents & Fichiers du salon</span>
+                  <span>Documents &amp; Fichiers du salon</span>
                 </button>
 
                 <button type="button" class="dropdown-item" id="menu-item-members"
@@ -267,7 +267,7 @@
                 </button>
 
                 <button type="button" class="dropdown-item btn-admin-dashboard" id="menu-item-superadmin"
-                  onclick="if(window.AdminDashboard){window.AdminDashboard.open();}else{const s=document.createElement('script');s.src='/js/admin-dashboard.min.js?v=1143';s.onload=()=>window.AdminDashboard&&window.AdminDashboard.open();document.body.appendChild(s);} window.closeChatMoreMenu();"
+                  onclick="if(window.AdminDashboard){window.AdminDashboard.open();}else{const s=document.createElement('script');s.src='/js/admin-dashboard.min.js?v=1169';s.onload=()=>window.AdminDashboard&&window.AdminDashboard.open();document.body.appendChild(s);} window.closeChatMoreMenu();"
                   style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -298,6 +298,37 @@
                     </path>
                   </svg>
                   <span>Administration système</span>
+                </button>
+
+                <!-- 5 Salon Modules Dropdown Items (SVG Only, Zero Border) -->
+                <button type="button" class="dropdown-item" id="menu-item-salon-tasks"
+                  onclick="if(state.activeSalon){openSalonTasksModal(state.activeSalon.id);} window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                  <span>Tâches du salon</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-salon-broadcast"
+                  onclick="if(state.activeSalon){toggleSalonBroadcastMode(state.activeSalon.id);} window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                  <span>Mode Annonces</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-salon-search"
+                  onclick="if(state.activeSalon){openSalonSearchModal(state.activeSalon.id);} window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <span>Recherche &amp; Filtres du salon</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-salon-decisions"
+                  onclick="if(state.activeSalon){openSalonDecisionsModal(state.activeSalon.id);} window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                  <span>Registre des Décisions</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-salon-caisse"
+                  onclick="if(state.activeSalon){openSalonCaisseModal(state.activeSalon.id);} window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                  <span>Caisse & Cotisations du salon</span>
                 </button>
               </div>
             </div>
@@ -523,6 +554,15 @@
               </svg>
             </button>
           </div>
+        </div>
+
+        <!-- Broadcast Mode Locked Banner for Non-Admin Members -->
+        <div class="broadcast-locked-banner" id="broadcast-locked-banner" style="display: none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Ce salon est en mode Annonces : seuls les administrateurs peuvent publier.</span>
         </div>
       </main>
 
@@ -1227,6 +1267,238 @@
       </div>
     </div>
 
+    <!-- MODAL: Salon Tasks & Kanban Board -->
+    <div class="modal-backdrop" id="modal-salon-tasks" style="display: none;">
+      <div class="modal-card modal-large-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            <h3>Tâches & Missions du Salon</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-salon-tasks')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Form to Add Task -->
+          <form id="form-create-salon-task" class="salon-task-form">
+            <div class="form-row-group">
+              <input type="text" id="task-input-title" class="form-input-clean" placeholder="Intitulé de la tâche..." required>
+              <select id="task-select-assigned" class="form-select-clean">
+                <option value="">Attribuer à un membre...</option>
+              </select>
+              <div class="date-input-container">
+                <input type="date" id="task-input-due" class="form-input-clean form-input-date" oninput="this.classList.toggle('has-value', !!this.value)" onchange="this.classList.toggle('has-value', !!this.value)">
+                <span class="date-placeholder-text">Date d'échéance...</span>
+              </div>
+              <button type="submit" class="btn-primary-clean">Créer la Tâche</button>
+            </div>
+          </form>
+          <!-- Kanban Board 3 Columns -->
+          <div class="kanban-board-container">
+            <div class="kanban-column" id="kanban-col-todo">
+              <div class="kanban-col-header">
+                <span class="kanban-col-title">À Faire</span>
+                <span class="kanban-col-count" id="count-kanban-todo">0</span>
+              </div>
+              <div class="kanban-cards-list" id="list-kanban-todo"></div>
+            </div>
+            <div class="kanban-column" id="kanban-col-in_progress">
+              <div class="kanban-col-header">
+                <span class="kanban-col-title">En Cours</span>
+                <span class="kanban-col-count" id="count-kanban-in_progress">0</span>
+              </div>
+              <div class="kanban-cards-list" id="list-kanban-in_progress"></div>
+            </div>
+            <div class="kanban-column" id="kanban-col-done">
+              <div class="kanban-col-header">
+                <span class="kanban-col-title">Terminé</span>
+                <span class="kanban-col-count" id="count-kanban-done">0</span>
+              </div>
+              <div class="kanban-cards-list" id="list-kanban-done"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DRAWER: Message Threads / Discussions Secondaires -->
+    <div class="drawer-backdrop" id="drawer-salon-threads" style="display: none;">
+      <div class="drawer-card">
+        <div class="drawer-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <h3>Discussion en Fil</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeDrawer('drawer-salon-threads')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="drawer-body">
+          <div class="thread-parent-card" id="thread-parent-message"></div>
+          <div class="thread-replies-feed" id="thread-replies-feed"></div>
+        </div>
+        <div class="drawer-footer">
+          <form id="form-send-thread-reply" class="thread-reply-form">
+            <input type="text" id="input-thread-reply" class="form-input-clean" placeholder="Répondre dans le fil..." required>
+            <button type="submit" class="btn-primary-clean">Envoyer</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Registre des Décisions Actées -->
+    <div class="modal-backdrop" id="modal-salon-decisions" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <h3>Registre des Décisions Actées</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-salon-decisions')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="form-create-salon-decision" class="salon-decision-form" style="display: none;">
+            <input type="text" id="decision-input-title" class="form-input-clean" placeholder="Intitulé de la décision actée..." required>
+            <textarea id="decision-input-desc" class="form-input-clean form-textarea-elastic" placeholder="Description ou détails d'application..." rows="2" oninput="this.style.height='auto';this.style.height=(this.scrollHeight)+'px'"></textarea>
+            <div class="decision-members-picker-group">
+              <div class="picker-label-text">Membres responsables (optionnel, choix multiple) :</div>
+              <div class="decision-members-chips-container" id="decision-members-chips"></div>
+            </div>
+            <button type="submit" class="btn-primary-clean">Enregistrer la Décision</button>
+          </form>
+
+          <div class="decision-filters-row">
+            <select id="decision-filter-month" class="form-select-clean filter-select">
+              <option value="">Tous les mois</option>
+              <option value="01">Janvier</option>
+              <option value="02">Février</option>
+              <option value="03">Mars</option>
+              <option value="04">Avril</option>
+              <option value="05">Mai</option>
+              <option value="06">Juin</option>
+              <option value="07">Juillet</option>
+              <option value="08">Août</option>
+              <option value="09">Septembre</option>
+              <option value="10">Octobre</option>
+              <option value="11">Novembre</option>
+              <option value="12">Décembre</option>
+            </select>
+            <select id="decision-filter-year" class="form-select-clean filter-select">
+              <option value="">Toutes les années</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+
+          <div class="decisions-timeline-list" id="list-salon-decisions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Caisse (Cotisations & Dépenses Mobile Money) -->
+    <div class="modal-backdrop" id="modal-salon-caisse" style="display: none;">
+      <div class="modal-card modal-large-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            <h3>Caisse & Cotisations du Salon</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-salon-caisse')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Summary Cards Row -->
+          <div class="caisse-stats-grid">
+            <div class="caisse-stat-card">
+              <span class="stat-label">Solde Disponible</span>
+              <span class="stat-value text-emerald" id="caisse-stat-balance">0 FCFA</span>
+            </div>
+            <div class="caisse-stat-card">
+              <span class="stat-label">Total Cotisations</span>
+              <span class="stat-value text-blue" id="caisse-stat-contributions">0 FCFA</span>
+            </div>
+            <div class="caisse-stat-card">
+              <span class="stat-label">Total Dépenses</span>
+              <span class="stat-value text-rose" id="caisse-stat-expenses">0 FCFA</span>
+            </div>
+            <div class="caisse-stat-card">
+              <span class="stat-label">Objectif Cible</span>
+              <span class="stat-value" id="caisse-stat-target">0 FCFA</span>
+            </div>
+          </div>
+
+          <!-- Target Progress Bar -->
+          <div class="caisse-progress-bar-wrapper">
+            <div class="caisse-progress-info">
+              <span>Progression du budget</span>
+              <span id="caisse-progress-pct">0%</span>
+            </div>
+            <div class="caisse-progress-track">
+              <div class="caisse-progress-fill" id="caisse-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Add Transaction Form -->
+          <form id="form-create-salon-transaction" class="caisse-tx-form">
+            <div class="form-row-group">
+              <select id="tx-select-type" class="form-select-clean">
+                <option value="contribution">Cotisation / Entrée (+)</option>
+                <option value="expense">Dépense / Sortie (-)</option>
+              </select>
+              <input type="number" id="tx-input-amount" class="form-input-clean" placeholder="Montant (FCFA)" required min="1">
+              <select id="tx-select-category" class="form-select-clean">
+                <option value="MTN">MTN Mobile Money</option>
+                <option value="Moov">Moov Money</option>
+                <option value="Wave">Wave</option>
+                <option value="Orange">Orange Money</option>
+                <option value="Cash">Espèces / Cash</option>
+                <option value="Autre">Autre</option>
+              </select>
+              <input type="text" id="tx-input-note" class="form-input-clean" placeholder="Motif ou référence du transfert...">
+              <button type="submit" class="btn-primary-clean">Ajouter Transaction</button>
+            </div>
+          </form>
+
+          <!-- Transaction Ledger List -->
+          <div class="caisse-transactions-list" id="list-salon-transactions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Recherche & Filtres du Salon -->
+    <div class="modal-backdrop" id="modal-salon-search" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <h3>Recherche & Filtres du Salon</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-salon-search')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="search-filter-controls">
+            <input type="text" id="salon-search-keyword" class="form-input-clean" placeholder="Rechercher un mot-clé dans les messages...">
+            <div class="filter-chips-row">
+              <button type="button" class="filter-chip active" data-filter="all">Tous</button>
+              <button type="button" class="filter-chip" data-filter="text">Texte</button>
+              <button type="button" class="filter-chip" data-filter="image">Photos</button>
+              <button type="button" class="filter-chip" data-filter="video">Vidéos</button>
+              <button type="button" class="filter-chip" data-filter="audio">Audios</button>
+              <button type="button" class="filter-chip" data-filter="file">PDF &amp; Fichiers</button>
+            </div>
+          </div>
+          <div class="search-results-list" id="list-salon-search-results"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Floating PWA Install Mini-Banner (Google Chrome Style) -->
     <div id="pwa-floating-banner" class="pwa-floating-banner" role="dialog" aria-label="Installer DigiCom">
       <div class="pwa-banner-left">
@@ -1237,11 +1509,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1143" defer></script>
-    <script src="/js/idb-store.min.js?v=1143" defer></script>
-    <script src="/js/push-client.min.js?v=1143" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1143" defer></script>
-    <script src="/js/app.min.js?v=1143" defer></script>
+    <script src="/socket.io/socket.io.js?v=1169" defer></script>
+    <script src="/js/idb-store.min.js?v=1169" defer></script>
+    <script src="/js/push-client.min.js?v=1169" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1169" defer></script>
+    <script src="/js/app.min.js?v=1169" defer></script>
   </body>
 
 </html>

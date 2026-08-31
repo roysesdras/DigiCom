@@ -368,6 +368,56 @@ async function initAppInterface() {
     }, 600);
   }
 
+  // Handle URL deep links (e.g. ?salon=salon_123 or ?contact=user_456)
+  if (urlParams.get('salon')) {
+    const targetSalonId = urlParams.get('salon');
+    console.log('[+] Deep link to salon detected:', targetSalonId);
+    setTimeout(async () => {
+      await switchTab('salons');
+      if (!state.salons || state.salons.length === 0) {
+        try {
+          const res = await authFetch('/api/salons');
+          if (res.ok) state.salons = await res.json();
+        } catch (e) {}
+      }
+      let found = state.salons ? state.salons.find(s => String(s.id) === String(targetSalonId)) : null;
+      if (!found) {
+        try {
+          const res = await authFetch(`/api/salons/${targetSalonId}`);
+          if (res.ok) found = await res.json();
+        } catch (e) {}
+      }
+      if (found) {
+        selectSalon(found);
+      }
+    }, 400);
+  } else if (urlParams.get('contact')) {
+    const targetContactId = urlParams.get('contact');
+    console.log('[+] Deep link to contact detected:', targetContactId);
+    setTimeout(async () => {
+      await switchTab('contacts');
+      if (!state.contacts || state.contacts.length === 0) {
+        try {
+          const res = await authFetch('/api/contacts');
+          if (res.ok) state.contacts = await res.json();
+        } catch (e) {}
+      }
+      let found = state.contacts ? state.contacts.find(c => String(c.id) === String(targetContactId)) : null;
+      if (!found) {
+        try {
+          const res = await authFetch(`/api/users/profile/${targetContactId}`);
+          if (res.ok) {
+            const uData = await res.json();
+            found = { id: uData.id, username: uData.username, display_name: uData.display_name, avatar: uData.avatar };
+          }
+        } catch (e) {}
+      }
+      if (found) {
+        selectContact(found);
+      }
+    }, 400);
+  }
+
   // Trigger Guided Tour on first visit for new users only (Zero initial JS footprint for returning users)
   if (localStorage.getItem('digicom_tour_done_v1') !== 'true') {
     setTimeout(() => {
@@ -821,6 +871,11 @@ function initSocket() {
         }
         if (data.description !== undefined) {
           state.activeSalon.description = data.description;
+        }
+        if (data.broadcastOnly !== undefined) {
+          state.activeSalon.broadcast_only = data.broadcastOnly ? 1 : 0;
+          const isSalonAdmin = (state.activeSalon.created_by === (state.user ? state.user.id : '')) || (state.user && state.user.role === 'admin');
+          updateSalonBroadcastComposerState(Boolean(data.broadcastOnly), isSalonAdmin);
         }
       }
     }
@@ -1727,13 +1782,40 @@ function setupEventListeners() {
           }
         } else if (notifData.salonId) {
           await switchTab('salons');
-          const found = state.salons ? state.salons.find(s => String(s.id) === String(notifData.salonId)) : null;
+          if (!state.salons || state.salons.length === 0) {
+            try {
+              const res = await authFetch('/api/salons');
+              if (res.ok) state.salons = await res.json();
+            } catch (e) {}
+          }
+          let found = state.salons ? state.salons.find(s => String(s.id) === String(notifData.salonId)) : null;
+          if (!found) {
+            try {
+              const res = await authFetch(`/api/salons/${notifData.salonId}`);
+              if (res.ok) found = await res.json();
+            } catch (e) {}
+          }
           if (found) {
             selectSalon(found);
           }
         } else if (notifData.senderId) {
           await switchTab('contacts');
-          const found = state.contacts ? state.contacts.find(c => c.id === notifData.senderId) : null;
+          if (!state.contacts || state.contacts.length === 0) {
+            try {
+              const res = await authFetch('/api/contacts');
+              if (res.ok) state.contacts = await res.json();
+            } catch (e) {}
+          }
+          let found = state.contacts ? state.contacts.find(c => String(c.id) === String(notifData.senderId)) : null;
+          if (!found) {
+            try {
+              const res = await authFetch(`/api/users/profile/${notifData.senderId}`);
+              if (res.ok) {
+                const uData = await res.json();
+                found = { id: uData.id, username: uData.username, display_name: uData.display_name, avatar: uData.avatar };
+              }
+            } catch (e) {}
+          }
           if (found) {
             selectContact(found);
           }
@@ -3605,6 +3687,33 @@ function renderEyeStatusHtml(isRead, isPending) {
   `;
 }
 
+function getCleanMessageDisplayText(content) {
+  if (!content) return '';
+  let parsed = content;
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try { parsed = JSON.parse(trimmed); } catch (e) { parsed = content; }
+    }
+  }
+
+  if (typeof parsed === 'object' && parsed !== null) {
+    if (parsed.text) return parsed.text;
+    if (parsed.type === 'decision_announcement' || parsed.isDecisionAnnouncement) return '📌 [Décision] ' + (parsed.title || '');
+    if (parsed.type === 'task_announcement' || parsed.isTaskAnnouncement) return '📌 [Tâche] ' + (parsed.title || '');
+    if (parsed.type === 'task_reminder') return '⏰ [Rappel Tâche] ' + (parsed.title || '');
+    if (parsed.type === 'poll' || parsed.pollId) return '📊 [Sondage] ' + (parsed.question || '');
+    if (parsed.type === 'meeting') return '📹 [Réunion] ' + (parsed.title || '');
+    if (parsed.type === 'image') return '📷 [Photo] ' + (parsed.caption || parsed.fileName || '');
+    if (parsed.type === 'video') return '🎥 [Vidéo] ' + (parsed.caption || parsed.fileName || '');
+    if (parsed.type === 'audio') return '🎙️ [Note vocale]';
+    if (parsed.type === 'file') return '📄 [Document] ' + (parsed.fileName || '');
+    if (parsed.title) return parsed.title;
+    return typeof content === 'string' ? content : '';
+  }
+  return String(parsed);
+}
+
 function getLastMessageInfo(type, id, item) {
   let content = null;
   let timestamp = null;
@@ -3656,31 +3765,7 @@ function getLastMessageInfo(type, id, item) {
 
   let text = '';
   if (content !== null && content !== undefined) {
-    let parsed = null;
-    if (typeof content === 'object') {
-      parsed = content;
-    } else if (typeof content === 'string') {
-      try {
-        parsed = JSON.parse(content);
-      } catch (e) {
-        parsed = { text: content };
-      }
-    }
-
-    if (parsed && parsed.type === 'image') text = '📷 Photo';
-    else if (parsed && parsed.type === 'video') text = '🎥 Vidéo';
-    else if (parsed && parsed.type === 'audio') text = '🎤 Note vocale';
-    else if (parsed && parsed.type === 'file') text = `📎 ${parsed.fileName || 'Fichier'}`;
-    else text = (parsed && parsed.text !== undefined) ? String(parsed.text) : String(content);
-
-    while (typeof text === 'string' && (text.startsWith('{"') || text.startsWith('{&quot;'))) {
-      try {
-        const inner = JSON.parse(text.replace(/&quot;/g, '"'));
-        text = inner.text || inner.previewText || text;
-      } catch (e) {
-        break;
-      }
-    }
+    text = getCleanMessageDisplayText(content);
   }
 
   const snippet = text.length > 32 ? text.substring(0, 32) + '...' : text;
@@ -4104,12 +4189,10 @@ function selectContact(contact) {
   const btnCreatePoll = document.getElementById('btn-create-poll');
   if (btnCreatePoll) btnCreatePoll.style.display = 'none';
 
-  const itemMeeting = document.getElementById('menu-item-meeting');
-  const itemFiles = document.getElementById('menu-item-files');
-  const itemMembers = document.getElementById('menu-item-members');
-  if (itemMeeting) itemMeeting.style.display = 'none';
-  if (itemFiles) itemFiles.style.display = 'none';
-  if (itemMembers) itemMembers.style.display = 'none';
+  ['menu-item-meeting', 'menu-item-files', 'menu-item-members', 'menu-item-salon-tasks', 'menu-item-salon-broadcast', 'menu-item-salon-search', 'menu-item-salon-decisions', 'menu-item-salon-caisse'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 
   renderContactsList();
   loadDirectHistory(contact.id);
@@ -4830,6 +4913,119 @@ function createMessageRowElement(msg, isSos = false) {
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
           </svg>
           Rejoindre la réunion
+        </button>
+      </div>
+    `;
+  } else if (parsedContent && (parsedContent.isTaskAnnouncement || parsedContent.type === 'task_announcement')) {
+    const isCreated = parsedContent.action !== 'updated';
+    const taskTitle = escapeHtml(parsedContent.title || 'Tâche du salon');
+    const creator = escapeHtml(parsedContent.creatorName || parsedContent.changerName || 'Membre');
+    const assigned = escapeHtml(parsedContent.assignedName || 'Toute l\'équipe');
+    const statusLbl = escapeHtml(parsedContent.statusLabel || 'Mise à jour');
+
+    bodyHtml = `
+      <div class="chat-task-card">
+        <div class="task-card-header">
+          <div class="task-card-badge">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <span>${isCreated ? 'NOUVELLE TÂCHE' : 'MISE À JOUR DE TÂCHE'}</span>
+          </div>
+        </div>
+
+        <div class="task-card-body">
+          <div class="task-card-title">${taskTitle}</div>
+          <div class="task-card-details">
+            ${isCreated ? `
+              <span class="task-detail-item">Créée par : <strong>${creator}</strong></span>
+              <span class="task-detail-item">Assignée à : <strong>${assigned}</strong></span>
+            ` : `
+              <span class="task-detail-item">Modifiée par : <strong>${creator}</strong></span>
+              <span class="task-detail-item">Nouveau statut : <strong class="status-highlight">${statusLbl}</strong></span>
+            `}
+          </div>
+        </div>
+
+        <button type="button" class="btn-task-card-action" onclick="if(state.activeSalon){openSalonTasksModal(state.activeSalon.id);}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          <span>Ouvrir les Tâches du Salon</span>
+        </button>
+      </div>
+    `;
+  } else if (parsedContent && parsedContent.type === 'task_reminder') {
+    const taskTitle = escapeHtml(parsedContent.title || 'Tâche');
+    const assignedName = escapeHtml(parsedContent.assignedName || 'Toute l\'équipe');
+    const taskId = escapeHtml(parsedContent.taskId || '');
+
+    bodyHtml = `
+      <div class="chat-task-card task-reminder-card">
+        <div class="task-card-header">
+          <div class="task-card-badge reminder-badge">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span>RAPPEL D'ÉCHÉANCE DU JOUR</span>
+          </div>
+        </div>
+
+        <div class="task-card-body">
+          <div class="task-card-title">${taskTitle}</div>
+          <div class="task-reminder-desc">
+            La tâche <strong>"${taskTitle}"</strong> (Assignée à : <strong>${assignedName}</strong>) est prévue pour <strong>aujourd'hui</strong> !<br>
+            <span class="task-reminder-instruction">Si entamée, basculez sur <strong>En cours</strong>. Une fois terminée, passez sur <strong>Terminé</strong>.</span>
+          </div>
+        </div>
+
+        <div class="task-quick-actions-row">
+          <button type="button" class="btn-task-quick-action btn-task-start" onclick="window.moveSalonTask('${taskId}', 'in_progress')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>Démarrer</span>
+          </button>
+          <button type="button" class="btn-task-quick-action btn-task-finish" onclick="window.moveSalonTask('${taskId}', 'done')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span>Fin</span>
+          </button>
+        </div>
+      </div>
+    `;
+  } else if (parsedContent && (parsedContent.isDecisionAnnouncement || parsedContent.type === 'decision_announcement')) {
+    const decisionTitle = escapeHtml(parsedContent.title || 'Décision Actée');
+    const responsible = escapeHtml(parsedContent.responsibleName || 'Toute l\'équipe');
+    const creator = escapeHtml(parsedContent.creatorName || 'Membre');
+    const desc = escapeHtml(parsedContent.description || '');
+
+    bodyHtml = `
+      <div class="chat-task-card chat-decision-card">
+        <div class="task-card-header">
+          <div class="task-card-badge decision-badge">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span>DÉCISION ACTÉE</span>
+          </div>
+        </div>
+
+        <div class="task-card-body">
+          <div class="task-card-title">${decisionTitle}</div>
+          ${desc ? `<div class="decision-card-desc-preview">${desc}</div>` : ''}
+          <div class="task-card-details" style="margin-top: 0.35rem;">
+            <span class="task-detail-item">Responsable : <strong>${responsible}</strong></span>
+            <span class="task-detail-item">Acté par : <strong>${creator}</strong></span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-task-card-action btn-decision-action" onclick="if(state.activeSalon){openSalonDecisionsModal(state.activeSalon.id);}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          <span>Consulter le Registre des Décisions</span>
         </button>
       </div>
     `;
@@ -5795,13 +5991,12 @@ if (btnCloseEditModal) {
 }
 
 function showModal(id) {
-  document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
   const modal = document.getElementById(id);
   if (modal) modal.style.display = 'flex';
 }
 
 function hideModals() {
-  document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+  document.querySelectorAll('.modal-backdrop, .drawer-backdrop').forEach(m => m.style.display = 'none');
 }
 
 function hideModal(id) {
@@ -5812,6 +6007,20 @@ function hideModal(id) {
   const modal = document.getElementById(id);
   if (modal) modal.style.display = 'none';
 }
+
+window.openModal = showModal;
+window.closeModal = hideModal;
+window.closeDrawer = function(id) {
+  const drawer = document.getElementById(id);
+  if (drawer) drawer.style.display = 'none';
+};
+
+// Global backdrop click to close any modal or drawer
+document.addEventListener('click', (e) => {
+  if (e.target && (e.target.classList.contains('modal-backdrop') || e.target.classList.contains('drawer-backdrop'))) {
+    e.target.style.display = 'none';
+  }
+});
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -6236,12 +6445,10 @@ async function selectSalon(salon) {
   if (btnCreatePoll) btnCreatePoll.style.display = 'flex';
 
   // Show Salon items in 3-dots options menu
-  const itemMeeting = document.getElementById('menu-item-meeting');
-  const itemFiles = document.getElementById('menu-item-files');
-  const itemMembers = document.getElementById('menu-item-members');
-  if (itemMeeting) itemMeeting.style.display = 'flex';
-  if (itemFiles) itemFiles.style.display = 'flex';
-  if (itemMembers) itemMembers.style.display = 'flex';
+  ['menu-item-meeting', 'menu-item-files', 'menu-item-members', 'menu-item-salon-tasks', 'menu-item-salon-search', 'menu-item-salon-decisions', 'menu-item-salon-caisse'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'flex';
+  });
 
   // Load universal pinned message banner
   loadPinnedMessageForActiveChat();
@@ -6253,18 +6460,31 @@ async function selectSalon(salon) {
   renderSalonsList();
   await loadSalonHistory(salon.id);
 
-  // Check if current user is blocked in this salon and cache members for @mentions
+  // Check member role, broadcast mode & mentions cache
+  let isSalonAdmin = (salon.created_by === (state.user ? state.user.id : '')) || (state.user && state.user.role === 'admin');
   try {
     const memRes = await authFetch(`/api/salons/${salon.id}/members`);
     if (memRes.ok) {
       const memData = await memRes.json();
       state.activeSalonMembers = memData.members || [];
       const me = state.activeSalonMembers.find(m => m.id === (state.user ? state.user.id : ''));
-      if (me && Boolean(me.is_blocked)) {
-        updateSalonBlockedComposerState(true, formattedName);
+      if (me) {
+        if (me.role === 'admin') isSalonAdmin = true;
+        if (Boolean(me.is_blocked)) {
+          updateSalonBlockedComposerState(true, formattedName);
+        }
       }
     }
   } catch(e) {}
+
+  // Mode Annonces Menu Item: Visible ONLY to Salon Admins
+  const menuItemBroadcast = document.getElementById('menu-item-salon-broadcast');
+  if (menuItemBroadcast) {
+    menuItemBroadcast.style.display = isSalonAdmin ? 'flex' : 'none';
+  }
+
+  // Update Broadcast Mode Composer lock state
+  updateSalonBroadcastComposerState(Boolean(salon.broadcast_only), isSalonAdmin);
 
   if (state.socket) {
     state.socket.emit('join_salon', salon.id);
@@ -6331,18 +6551,18 @@ async function loadSalonHistory(salonId, loadMore = false) {
       pag.oldestTimestamp = messages[0].timestamp;
       if (messages.length < 50) pag.hasMore = false;
 
-      let currentDateGroup = '';
+      let lastDateKey = null;
       messages.forEach(msg => {
-        const msgDateStr = safeParseDate(msg.timestamp);
-        const dateGroup = formatMessageDateGroup(msgDateStr);
-        if (dateGroup !== currentDateGroup) {
-          currentDateGroup = dateGroup;
-          const dateDivider = document.createElement('div');
-          dateDivider.className = 'chat-date-divider';
-          dateDivider.innerHTML = `<span>${dateGroup}</span>`;
-          feed.appendChild(dateDivider);
+        const dateKey = formatMessageDateGroup(msg.timestamp);
+        if (dateKey && dateKey !== lastDateKey) {
+          const sep = document.createElement('div');
+          sep.className = 'chat-date-separator';
+          sep.dataset.dateKey = dateKey;
+          sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
+          feed.appendChild(sep);
+          lastDateKey = dateKey;
         }
-        appendMessageToFeed(msg);
+        appendMessageToFeed(msg, false, false, false);
       });
       scrollToBottom(false);
     }
@@ -6399,11 +6619,12 @@ async function openSalonInfoModal(salonId) {
       const members = membersData.members || [];
       state.activeSalonMembers = members;
 
-      const isCreatorOrAdmin = salon && (
-        salon.my_role === 'creator' ||
-        salon.created_by === (state.user ? state.user.id : '') ||
-        (state.user && state.user.role === 'admin')
+      const isCurrentUserCreator = salon && (
+        String(salon.created_by) === String(state.user ? state.user.id : '') ||
+        (state.user && state.user.role === 'superadmin')
       );
+      const isCurrentUserAdmin = isCurrentUserCreator || (members && members.some(m => String(m.id) === String(state.user?.id) && (m.salon_role === 'admin' || m.salon_role === 'creator')));
+      const isCreatorOrAdmin = isCurrentUserAdmin;
 
       if (titleEl && salon) titleEl.textContent = formatSalonName(salon.name);
       if (metaEl && salon) {
@@ -6435,11 +6656,10 @@ async function openSalonInfoModal(salonId) {
         };
       }
 
-      if (btnSaveEdit && editSection) {
+      if (btnSaveEdit) {
         btnSaveEdit.onclick = async () => {
-          const newName = (editNameInput ? editNameInput.value.trim() : '').replace(/^#+/, '');
-          const newDesc = editDescInput ? editDescInput.value.trim() : '';
-
+          const newName = (editNameInput ? editNameInput.value.trim() : '');
+          const newDesc = (editDescInput ? editDescInput.value.trim() : '');
           if (!newName) {
             alert('Le nom du Salon ne peut pas être vide.');
             return;
@@ -6447,48 +6667,28 @@ async function openSalonInfoModal(salonId) {
 
           try {
             btnSaveEdit.disabled = true;
-            const putRes = await authFetch(`/api/salons/${salonId}`, {
+            const updateRes = await authFetch(`/api/salons/${salonId}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: newName, description: newDesc })
             });
 
-            if (putRes.ok) {
-              const updatedData = await putRes.json();
-              if (updatedData.salon) {
-                salon.name = updatedData.salon.name;
-                salon.description = updatedData.salon.description;
-              } else {
-                salon.name = newName;
-                salon.description = newDesc;
+            if (updateRes.ok) {
+              const updatedData = await updateRes.json();
+              if (updatedData.salon && state.activeSalon && state.activeSalon.id === salonId) {
+                state.activeSalon.name = updatedData.salon.name;
+                state.activeSalon.description = updatedData.salon.description;
+                renderChatHeader();
               }
-
-              if (state.activeSalon && String(state.activeSalon.id) === String(salonId)) {
-                state.activeSalon.name = salon.name;
-                state.activeSalon.description = salon.description;
-                const headerName = document.getElementById('active-contact-name');
-                if (headerName) headerName.textContent = formatSalonName(salon.name);
-                const inputEl = document.getElementById('message-input');
-                if (inputEl && !inputEl.disabled) inputEl.placeholder = `Écrire dans ${formatSalonName(salon.name)}...`;
-              }
-
-              if (titleEl) titleEl.textContent = formatSalonName(salon.name);
-              if (metaEl) {
-                metaEl.innerHTML = `
-                  <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 0.5rem;">
-                    ${escapeHtml(salon.description || 'Salon confidentiel')} • <strong>${members.length} participant(s)</strong>
-                  </div>
-                `;
-              }
-
-              editSection.style.display = 'none';
               await loadSalons();
+              if (editSection) editSection.style.display = 'none';
+              await openSalonInfoModal(salonId);
             } else {
-              alert('Erreur lors de la modification du Salon.');
+              const errData = await updateRes.json();
+              alert(errData.error || 'Erreur lors de la modification du Salon.');
             }
           } catch (e) {
-            console.error('[-] Error saving salon edits:', e);
-            alert('Erreur de communication avec le serveur.');
+            alert('Erreur de connexion au serveur.');
           } finally {
             btnSaveEdit.disabled = false;
           }
@@ -6562,13 +6762,13 @@ async function openSalonInfoModal(salonId) {
             });
 
             if (addRes.ok) {
-              if (addMembersPicker) addMembersPicker.style.display = 'none';
+              addMembersPicker.style.display = 'none';
               await openSalonInfoModal(salonId);
             } else {
-              alert('Erreur lors de l\'ajout des participants.');
+              const errData = await addRes.json();
+              alert(errData.error || 'Erreur lors de l\'ajout des participants.');
             }
           } catch (e) {
-            console.error('[-] Error adding members:', e);
             alert('Erreur lors de l\'ajout des participants.');
           } finally {
             btnConfirmAdd.disabled = false;
@@ -6576,9 +6776,9 @@ async function openSalonInfoModal(salonId) {
         };
       }
 
-      // Delete Salon button
+      // Delete Salon button (Creator only)
       if (deleteBtn) {
-        deleteBtn.style.display = isCreatorOrAdmin ? 'flex' : 'none';
+        deleteBtn.style.display = isCurrentUserCreator ? 'flex' : 'none';
         deleteBtn.onclick = async () => {
           if (confirm(`Êtes-vous sûr de vouloir supprimer définitivement le Salon "${formatSalonName(salon.name)}" ? Tous les messages seront effacés.`)) {
             try {
@@ -6605,16 +6805,41 @@ async function openSalonInfoModal(salonId) {
           members.forEach(m => {
             const row = document.createElement('div');
             row.className = 'salon-member-row';
-            const isCreator = m.salon_role === 'creator' || m.id === salon.created_by;
+            const isTargetCreator = m.salon_role === 'creator' || String(m.id) === String(salon.created_by);
+            const isTargetAdmin = m.salon_role === 'admin';
             const isBlocked = Boolean(m.is_blocked === 1 || m.is_blocked === true);
             const isOnline = state.onlineUserIds.includes(m.id);
             const initial = (m.display_name || m.username || '?').charAt(0).toUpperCase();
 
-            // Creator actions for other members (Clean icon-only SVG buttons for space and aesthetics)
+            // Role Badge
+            // Role Badge (Clean text only, zero emoji)
+            let roleBadgeHtml = '';
+            if (isTargetCreator) {
+              roleBadgeHtml = `<span class="salon-role-badge creator">Créateur</span>`;
+            } else if (isTargetAdmin) {
+              roleBadgeHtml = `<span class="salon-role-badge coadmin">Admin</span>`;
+            } else {
+              roleBadgeHtml = `<span class="salon-role-badge member">Membre</span>`;
+            }
+
+            // Creator actions for other members (Nommer Admin, Rétrograder, Bloquer, Retirer)
             let actionsHtml = '';
-            if (isCreatorOrAdmin && !isCreator && m.id !== (state.user ? state.user.id : '')) {
+            if (isCurrentUserCreator && !isTargetCreator && String(m.id) !== String(state.user ? state.user.id : '')) {
               actionsHtml = `
                 <div class="salon-member-actions-row">
+                  ${isTargetAdmin ? `
+                    <button type="button" class="btn-member-icon-action demote-admin-btn" data-action="demote" data-user-id="${m.id}" data-name="${escapeHtml(m.display_name || m.username)}" title="Rétrograder au rang de Membre" aria-label="Rétrograder">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="12" x2="6" y2="12"></line>
+                      </svg>
+                    </button>
+                  ` : `
+                    <button type="button" class="btn-member-icon-action promote-admin-btn" data-action="promote" data-user-id="${m.id}" data-name="${escapeHtml(m.display_name || m.username)}" title="Nommer Administrateur délégué" aria-label="Nommer Admin">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                      </svg>
+                    </button>
+                  `}
                   ${isBlocked ? `
                     <button type="button" class="btn-member-icon-action unblock-btn" data-action="unblock" data-user-id="${m.id}" data-name="${escapeHtml(m.display_name || m.username)}" title="Débloquer ce participant" aria-label="Débloquer">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -6642,9 +6867,6 @@ async function openSalonInfoModal(salonId) {
               actionsHtml = `
                 <div style="display: flex; align-items: center; gap: 4px;">
                   ${isBlocked ? `<span class="salon-blocked-tag">Bloqué</span>` : ''}
-                  <span class="salon-creator-tag" style="${isCreator ? '' : 'background: rgba(255,255,255,0.08); color: var(--text-dim);'}">
-                    ${isCreator ? 'Admin / Créateur' : 'Participant'}
-                  </span>
                 </div>
               `;
             }
@@ -6672,7 +6894,8 @@ async function openSalonInfoModal(salonId) {
                 <div style="min-width: 0; overflow: hidden;">
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(m.display_name || m.username)}</div>
-                    ${(isBlocked && isCreatorOrAdmin && !isCreator) ? `<span class="salon-blocked-tag">Bloqué</span>` : ''}
+                    ${roleBadgeHtml}
+                    ${(isBlocked && isCurrentUserCreator && !isTargetCreator) ? `<span class="salon-blocked-tag">Bloqué</span>` : ''}
                   </div>
                   <div style="font-size: 0.72rem; color: var(--text-dim);">@${escapeHtml(m.username)}</div>
                 </div>
@@ -6682,6 +6905,61 @@ async function openSalonInfoModal(salonId) {
                 ${actionsHtml}
               </div>
             `;
+
+            // Attach promote / demote listeners
+            const btnPromote = row.querySelector('[data-action="promote"]');
+            if (btnPromote) {
+              btnPromote.onclick = async () => {
+                const targetName = btnPromote.getAttribute('data-name');
+                const targetId = btnPromote.getAttribute('data-user-id');
+                if (confirm(`Nommer "${targetName}" Administrateur délégué de ce salon ?\n\nIl aura accès aux Tâches, Décisions, Annonces et à la Caisse pour vous assister.`)) {
+                  try {
+                    const res = await authFetch(`/api/salons/${salonId}/members/${targetId}/role`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'admin' })
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                      if (typeof showToast === 'function') showToast(data.error);
+                      else alert(data.error);
+                    } else {
+                      if (typeof showToast === 'function') showToast(`${targetName} est maintenant Administrateur délégué`);
+                      await openSalonInfoModal(salonId);
+                    }
+                  } catch (e) {
+                    alert('Erreur lors de la nomination de l\'administrateur.');
+                  }
+                }
+              };
+            }
+
+            const btnDemote = row.querySelector('[data-action="demote"]');
+            if (btnDemote) {
+              btnDemote.onclick = async () => {
+                const targetName = btnDemote.getAttribute('data-name');
+                const targetId = btnDemote.getAttribute('data-user-id');
+                if (confirm(`Rétrograder "${targetName}" au rang de simple participant ?`)) {
+                  try {
+                    const res = await authFetch(`/api/salons/${salonId}/members/${targetId}/role`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'member' })
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                      if (typeof showToast === 'function') showToast(data.error);
+                      else alert(data.error);
+                    } else {
+                      if (typeof showToast === 'function') showToast(`${targetName} est redevenu simple membre`);
+                      await openSalonInfoModal(salonId);
+                    }
+                  } catch (e) {
+                    alert('Erreur lors de la rétrogradation.');
+                  }
+                }
+              };
+            }
 
             // Attach salon add contact listener
             const addBtn = row.querySelector('.btn-salon-add-contact');
@@ -7377,3 +7655,690 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
     };
   }
 };
+
+/* ==========================================================================
+   6 Collaborative Salon Modules (Tâches, Fils, Annonces, Recherche, Décisions, Caisse)
+   ========================================================================== */
+
+window.salonModulesState = {
+  tasks: [],
+  decisions: [],
+  finances: null,
+  activeThreadParentId: null,
+  activeFilter: 'all'
+};
+
+function initSalonModulesBar() {
+  const bar = document.getElementById('salon-modules-bar');
+  if (!bar) return;
+
+  document.getElementById('tab-salon-tasks')?.addEventListener('click', () => {
+    if (state.activeSalon) openSalonTasksModal(state.activeSalon.id);
+  });
+
+  document.getElementById('tab-salon-threads')?.addEventListener('click', () => {
+    if (state.activeSalon) {
+      if (typeof showToast === 'function') showToast('Cliquez sur "Discuter en fil" sous un message du salon.');
+      else alert('Cliquez sur "Discuter en fil" sous un message du salon.');
+    }
+  });
+
+  document.getElementById('tab-salon-broadcast')?.addEventListener('click', () => {
+    if (state.activeSalon) toggleSalonBroadcastMode(state.activeSalon.id);
+  });
+
+  document.getElementById('tab-salon-search')?.addEventListener('click', () => {
+    if (state.activeSalon) openSalonSearchModal(state.activeSalon.id);
+  });
+
+  document.getElementById('tab-salon-decisions')?.addEventListener('click', () => {
+    if (state.activeSalon) openSalonDecisionsModal(state.activeSalon.id);
+  });
+
+  document.getElementById('tab-salon-caisse')?.addEventListener('click', () => {
+    if (state.activeSalon) openSalonCaisseModal(state.activeSalon.id);
+  });
+}
+
+// 1. Tâches (Tasks & Kanban)
+async function openSalonTasksModal(salonId) {
+  if (typeof window.openModal === 'function') window.openModal('modal-salon-tasks');
+  else {
+    const m = document.getElementById('modal-salon-tasks');
+    if (m) m.style.display = 'flex';
+  }
+  populateSalonMembersDropdown('task-select-assigned');
+  try {
+    const res = await authFetch(`/api/salons/${salonId}/tasks`);
+    const data = await res.json();
+    window.salonModulesState.tasks = data.tasks || [];
+    renderKanbanBoard(window.salonModulesState.tasks);
+  } catch (err) {
+    console.error('[-] Error fetching salon tasks:', err);
+  }
+}
+
+function renderKanbanBoard(tasks) {
+  const todoList = document.getElementById('list-kanban-todo');
+  const inProgressList = document.getElementById('list-kanban-in_progress');
+  const doneList = document.getElementById('list-kanban-done');
+  if (!todoList || !inProgressList || !doneList) return;
+
+  const todo = tasks.filter(t => t.status === 'todo');
+  const inProgress = tasks.filter(t => t.status === 'in_progress');
+  const done = tasks.filter(t => t.status === 'done');
+
+  document.getElementById('count-kanban-todo').textContent = todo.length;
+  document.getElementById('count-kanban-in_progress').textContent = inProgress.length;
+  document.getElementById('count-kanban-done').textContent = done.length;
+
+  const renderCards = (items, currentStatus) => {
+    if (items.length === 0) return '<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:1rem;">Aucune tâche</div>';
+    return items.map(t => `
+      <div class="kanban-card">
+        <span class="kanban-card-title">${escapeHtml(t.title)}</span>
+        ${t.description ? `<span style="font-size:0.78rem; color:var(--text-muted);">${escapeHtml(t.description)}</span>` : ''}
+        <div class="kanban-card-meta">
+          <span>${t.assigned_name ? `Assigné: ${escapeHtml(t.assigned_name)}` : 'Non assigné'}</span>
+          ${t.due_date ? `<span>Échéance: ${new Date(t.due_date).toLocaleDateString()}</span>` : ''}
+        </div>
+        <div class="kanban-card-actions">
+          ${currentStatus !== 'todo' ? `<button type="button" class="btn-kanban-move" onclick="moveSalonTask('${t.id}', 'todo')">À faire</button>` : ''}
+          ${currentStatus !== 'in_progress' ? `<button type="button" class="btn-kanban-move" onclick="moveSalonTask('${t.id}', 'in_progress')">En cours</button>` : ''}
+          ${currentStatus !== 'done' ? `<button type="button" class="btn-kanban-move" onclick="moveSalonTask('${t.id}', 'done')">Terminé</button>` : ''}
+          <button type="button" class="btn-kanban-move" style="color:#f43f5e;" onclick="deleteSalonTask('${t.id}')">Supprimer</button>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  todoList.innerHTML = renderCards(todo, 'todo');
+  inProgressList.innerHTML = renderCards(inProgress, 'in_progress');
+  doneList.innerHTML = renderCards(done, 'done');
+}
+
+window.moveSalonTask = async function(taskId, newStatus) {
+  if (!state.activeSalon) return;
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    const data = await res.json();
+    if (data.tasks) {
+      window.salonModulesState.tasks = data.tasks;
+      renderKanbanBoard(data.tasks);
+    }
+  } catch (err) {
+    console.error('[-] Error moving task:', err);
+  }
+};
+
+window.deleteSalonTask = async function(taskId) {
+  if (!state.activeSalon) return;
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/tasks/${taskId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.tasks) {
+      window.salonModulesState.tasks = data.tasks;
+      renderKanbanBoard(data.tasks);
+    }
+  } catch (err) {
+    console.error('[-] Error deleting task:', err);
+  }
+};
+
+// 2. Fils (Threads)
+window.openSalonThreadDrawer = async function(messageId, parentText, senderName) {
+  window.salonModulesState.activeThreadParentId = messageId;
+  const drawer = document.getElementById('drawer-salon-threads');
+  if (drawer) drawer.style.display = 'flex';
+  
+  const parentCard = document.getElementById('thread-parent-message');
+  if (parentCard) {
+    parentCard.innerHTML = `
+      <div style="font-size:0.75rem; font-weight:700; color:var(--emerald-light); margin-bottom:2px;">${escapeHtml(senderName || 'Membre')}</div>
+      <div style="font-size:0.85rem; color:var(--text-main);">${escapeHtml(parentText || 'Message')}</div>
+    `;
+  }
+  
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/threads/${messageId}`);
+    const data = await res.json();
+    renderThreadReplies(data.messages || []);
+  } catch (err) {
+    console.error('[-] Error loading thread messages:', err);
+  }
+};
+
+function renderThreadReplies(messages) {
+  const feed = document.getElementById('thread-replies-feed');
+  if (!feed) return;
+  if (messages.length === 0) {
+    feed.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.8rem; padding:2rem;">Aucune réponse dans ce fil pour le moment.</div>';
+    return;
+  }
+  feed.innerHTML = messages.map(m => `
+    <div class="thread-reply-card">
+      <div style="display:flex; justify-content:space-between; font-size:0.74rem; margin-bottom:2px;">
+        <span style="font-weight:700; color:var(--text-main);">${escapeHtml(m.sender_name)}</span>
+        <span style="color:var(--text-muted);">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+      </div>
+      <div style="font-size:0.84rem; color:var(--text-main);">${escapeHtml(m.content)}</div>
+    </div>
+  `).join('');
+}
+
+function updateSalonBroadcastComposerState(isBroadcastOnly, isUserAdmin) {
+  const composer = document.getElementById('chat-input-area');
+  const lockedBanner = document.getElementById('broadcast-locked-banner');
+
+  if (isBroadcastOnly && !isUserAdmin) {
+    if (composer) composer.style.display = 'none';
+    if (lockedBanner) lockedBanner.style.display = 'flex';
+  } else {
+    if (lockedBanner) lockedBanner.style.display = 'none';
+    if (composer && state.activeSalon) composer.style.display = 'block';
+  }
+}
+
+// 3. Annonces (Broadcast Mode Toggle)
+async function toggleSalonBroadcastMode(salonId) {
+  if (!state.activeSalon) return;
+  const currentBroadcast = Boolean(state.activeSalon.broadcast_only);
+  const newBroadcast = !currentBroadcast;
+  const confirmMsg = newBroadcast 
+    ? 'Activer le mode Annonces ? Seuls les administrateurs pourront publier dans ce salon.'
+    : 'Désactiver le mode Annonces ? Tous les membres pourront à nouveau publier.';
+  
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await authFetch(`/api/salons/${salonId}/broadcast`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ broadcastOnly: newBroadcast })
+    });
+    const data = await res.json();
+    if (data.error) {
+      if (typeof showToast === 'function') showToast(data.error);
+      else alert(data.error);
+    } else {
+      state.activeSalon.broadcast_only = data.broadcastOnly ? 1 : 0;
+      const isSalonAdmin = (state.activeSalon.created_by === (state.user ? state.user.id : '')) || (state.user && state.user.role === 'admin');
+      updateSalonBroadcastComposerState(Boolean(data.broadcastOnly), isSalonAdmin);
+      if (typeof showToast === 'function') showToast(data.broadcastOnly ? 'Mode Annonces activé' : 'Mode Annonces désactivé');
+    }
+  } catch (err) {
+    console.error('[-] Error toggling broadcast mode:', err);
+  }
+}
+
+function isCurrentActiveSalonAdmin() {
+  if (!state.user || !state.activeSalon) return false;
+
+  // 1. Is user creator of the salon?
+  if (state.activeSalon.created_by && String(state.activeSalon.created_by) === String(state.user.id)) {
+    return true;
+  }
+
+  // 2. Is user global superadmin?
+  if (state.user.role === 'superadmin') {
+    return true;
+  }
+
+  // 3. Is user an admin in salon_members list?
+  if (state.activeSalonMembers && Array.isArray(state.activeSalonMembers)) {
+    const me = state.activeSalonMembers.find(m => String(m.id) === String(state.user.id));
+    if (me && (me.role === 'admin' || me.salon_role === 'admin' || me.role === 'creator')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function populateDecisionMembersPicker() {
+  const container = document.getElementById('decision-members-chips');
+  if (!container) return;
+
+  if (!state.activeSalonMembers || state.activeSalonMembers.length === 0) {
+    container.innerHTML = '<span style="color:var(--text-muted); font-size:0.75rem;">Aucun membre dans le salon</span>';
+    return;
+  }
+
+  container.innerHTML = state.activeSalonMembers.map(m => {
+    const name = escapeHtml(m.display_name || m.username);
+    return `
+      <div class="member-select-chip" data-user-id="${m.id}" onclick="this.classList.toggle('selected')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chip-check-icon">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>${name}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 5. Décisions (Decision Log)
+async function openSalonDecisionsModal(salonId) {
+  if (typeof window.openModal === 'function') window.openModal('modal-salon-decisions');
+  else {
+    const m = document.getElementById('modal-salon-decisions');
+    if (m) m.style.display = 'flex';
+  }
+
+  // Hide form by default immediately
+  const decisionForm = document.getElementById('form-create-salon-decision');
+  if (decisionForm) decisionForm.style.display = 'none';
+
+  // Ensure active salon members are loaded
+  try {
+    if (!state.activeSalonMembers || state.activeSalonMembers.length === 0) {
+      const memRes = await authFetch(`/api/salons/${salonId}/members`);
+      if (memRes.ok) {
+        const memData = await memRes.json();
+        state.activeSalonMembers = memData.members || [];
+      }
+    }
+  } catch(e) {}
+
+  populateDecisionMembersPicker();
+  const monthFilter = document.getElementById('decision-filter-month');
+  const yearFilter = document.getElementById('decision-filter-year');
+  if (monthFilter) monthFilter.value = '';
+  if (yearFilter) yearFilter.value = '';
+
+  // Check admin status strictly
+  const isUserAdmin = isCurrentActiveSalonAdmin();
+  if (decisionForm) {
+    if (isUserAdmin) {
+      decisionForm.classList.add('active-admin-form');
+      decisionForm.style.display = 'flex';
+    } else {
+      decisionForm.classList.remove('active-admin-form');
+      decisionForm.style.display = 'none';
+    }
+  }
+
+  try {
+    const res = await authFetch(`/api/salons/${salonId}/decisions`);
+    const data = await res.json();
+    window.salonModulesState.decisions = data.decisions || [];
+    renderDecisions(window.salonModulesState.decisions);
+  } catch (err) {
+    console.error('[-] Error fetching decisions:', err);
+  }
+}
+
+function applyDecisionFilters() {
+  const month = document.getElementById('decision-filter-month')?.value || '';
+  const year = document.getElementById('decision-filter-year')?.value || '';
+  const allDecisions = window.salonModulesState.decisions || [];
+
+  let filtered = allDecisions.filter(d => {
+    if (!d.created_at) return true;
+    const dateObj = new Date(d.created_at);
+    if (isNaN(dateObj.getTime())) return true;
+    
+    if (year && String(dateObj.getFullYear()) !== String(year)) return false;
+    if (month) {
+      const mStr = String(dateObj.getMonth() + 1).padStart(2, '0');
+      if (mStr !== month) return false;
+    }
+    return true;
+  });
+
+  renderDecisions(filtered);
+}
+
+async function deleteSalonDecision(decisionId) {
+  if (!state.activeSalon) return;
+  if (!confirm('Voulez-vous vraiment supprimer cette décision du registre ?')) return;
+
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/decisions/${decisionId}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (data.decisions) {
+      window.salonModulesState.decisions = data.decisions;
+      applyDecisionFilters();
+      if (typeof showToast === 'function') showToast('Décision supprimée du registre');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting decision:', err);
+  }
+}
+
+function renderDecisions(decisions) {
+  const container = document.getElementById('list-salon-decisions');
+  if (!container) return;
+  if (!Array.isArray(decisions) || decisions.length === 0) {
+    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.8rem; padding:2rem;">Aucune décision actée pour ce filtre.</div>';
+    return;
+  }
+
+  const isUserAdmin = isCurrentActiveSalonAdmin();
+
+  container.innerHTML = decisions.map(d => `
+    <div class="decision-card">
+      <div class="decision-header">
+        <span class="decision-title">${escapeHtml(d.title)}</span>
+        <span class="decision-badge-verified">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Décision Validée
+        </span>
+      </div>
+      ${d.description ? `<div class="decision-desc">${escapeHtml(d.description)}</div>` : ''}
+      <div class="decision-meta">
+        <span>${d.responsible_name ? `Responsable: ${escapeHtml(d.responsible_name)}` : 'Équipe entière'}</span>
+        <span>Acté le ${new Date(d.created_at).toLocaleDateString()}</span>
+      </div>
+      ${isUserAdmin ? `
+        <div style="margin-top: 0.4rem; text-align: right;">
+          <button type="button" class="btn-delete-decision" onclick="deleteSalonDecision('${d.id}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Supprimer</span>
+          </button>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+// 6. Caisse (Finances & Mobile Money Ledger)
+async function openSalonCaisseModal(salonId) {
+  if (typeof window.openModal === 'function') window.openModal('modal-salon-caisse');
+  else {
+    const m = document.getElementById('modal-salon-caisse');
+    if (m) m.style.display = 'flex';
+  }
+  try {
+    const res = await authFetch(`/api/salons/${salonId}/finances`);
+    const data = await res.json();
+    window.salonModulesState.finances = data.finances;
+    renderCaisse(data.finances);
+  } catch (err) {
+    console.error('[-] Error fetching finances:', err);
+  }
+}
+
+function renderCaisse(finances) {
+  if (!finances) return;
+  const balance = finances.balance || 0;
+  const contributions = finances.total_contributions || 0;
+  const expenses = finances.total_expenses || 0;
+  const target = finances.target_amount || 0;
+  const pct = target > 0 ? Math.min(Math.round((contributions / target) * 100), 100) : 0;
+
+  document.getElementById('caisse-stat-balance').textContent = balance.toLocaleString() + ' FCFA';
+  document.getElementById('caisse-stat-contributions').textContent = contributions.toLocaleString() + ' FCFA';
+  document.getElementById('caisse-stat-expenses').textContent = expenses.toLocaleString() + ' FCFA';
+  document.getElementById('caisse-stat-target').textContent = target > 0 ? target.toLocaleString() + ' FCFA' : 'Non défini';
+
+  document.getElementById('caisse-progress-pct').textContent = pct + '%';
+  const fill = document.getElementById('caisse-progress-fill');
+  if (fill) fill.style.width = pct + '%';
+
+  const list = document.getElementById('list-salon-transactions');
+  if (!list) return;
+  const txs = finances.transactions || [];
+  if (txs.length === 0) {
+    list.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.8rem; padding:1.5rem;">Aucune transaction enregistrée.</div>';
+    return;
+  }
+
+  list.innerHTML = txs.map(t => {
+    const isPlus = t.type === 'contribution';
+    const catClass = 'badge-' + (t.category || 'autre').toLowerCase();
+    return `
+      <div class="caisse-tx-item">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span class="tx-badge ${catClass}">${escapeHtml(t.category)}</span>
+          <div style="display:flex; flex-direction:column;">
+            <span style="font-size:0.82rem; font-weight:600; color:var(--text-main);">${escapeHtml(t.member_name || 'Membre')}</span>
+            <span style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(t.note || (isPlus ? 'Cotisation' : 'Dépense'))} • ${new Date(t.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+        <span class="${isPlus ? 'tx-amount-plus' : 'tx-amount-minus'}">${isPlus ? '+' : '-'}${Number(t.amount).toLocaleString()} FCFA</span>
+      </div>
+    `;
+  }).join('');
+}
+
+
+// 4. Recherche & Filtres
+function openSalonSearchModal(salonId) {
+  if (typeof window.openModal === 'function') window.openModal('modal-salon-search');
+  else {
+    const m = document.getElementById('modal-salon-search');
+    if (m) m.style.display = 'flex';
+  }
+  const input = document.getElementById('salon-search-keyword');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  window.salonModulesState.activeFilter = 'all';
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  const firstChip = document.querySelector('.filter-chip[data-filter="all"]');
+  if (firstChip) firstChip.classList.add('active');
+  renderSearchResults('', 'all');
+}
+
+function renderSearchResults(query, filterType) {
+  const container = document.getElementById('list-salon-search-results');
+  if (!container || !state.activeSalon) return;
+
+  const msgs = state.salonMessages[state.activeSalon.id] || [];
+  let filtered = msgs.filter(m => {
+    let parsed = m.content;
+    if (typeof parsed === 'string') {
+      const trimmed = parsed.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try { parsed = JSON.parse(trimmed); } catch (e) {}
+      }
+    }
+
+    const cleanText = getCleanMessageDisplayText(m.content);
+    if (!cleanText) return false;
+
+    if (query && !cleanText.toLowerCase().includes(query.toLowerCase())) return false;
+    
+    if (filterType === 'all') return true;
+    
+    if (typeof parsed === 'object' && parsed !== null) {
+      const type = parsed.type || 'text';
+      if (filterType === 'image' && type === 'image') return true;
+      if (filterType === 'video' && type === 'video') return true;
+      if (filterType === 'audio' && type === 'audio') return true;
+      if (filterType === 'file' && (type === 'file' || type === 'pdf')) return true;
+      if (filterType === 'text' && (type === 'text' || (!type && parsed.text))) return true;
+      return false;
+    }
+    return filterType === 'text';
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.8rem; padding:2rem;">Aucun résultat correspondant.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.slice(0, 50).map(m => {
+    const cleanText = getCleanMessageDisplayText(m.content);
+    const dateStr = new Date(m.timestamp || m.created_at).toLocaleDateString();
+    return `
+      <div class="search-result-card" onclick="if(typeof closeModal==='function')closeModal('modal-salon-search'); scrollToMessage('${m.id}');">
+        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+          <span style="font-weight:700; color:var(--emerald-light);">${escapeHtml(m.sender_name || 'Membre')}</span>
+          <span style="color:var(--text-muted);">${dateStr}</span>
+        </div>
+        <div style="font-size:0.84rem; color:var(--text-main); line-height:1.4;">${escapeHtml(cleanText)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function populateSalonMembersDropdown(selectId) {
+  const select = document.getElementById(selectId);
+  if (!select || !state.activeSalonMembers) return;
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Sélectionner un membre...</option>' + 
+    state.activeSalonMembers.map(m => `<option value="${m.id}">${escapeHtml(m.display_name || m.username)}</option>`).join('');
+  if (currentVal) select.value = currentVal;
+}
+
+function initSalonForms() {
+  document.getElementById('form-create-salon-task')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.activeSalon) return;
+    const title = document.getElementById('task-input-title').value;
+    const assignedTo = document.getElementById('task-select-assigned').value;
+    const dueDate = document.getElementById('task-input-due').value;
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, assignedTo, dueDate })
+      });
+      const data = await res.json();
+      if (data.tasks) {
+        window.salonModulesState.tasks = data.tasks;
+        renderKanbanBoard(data.tasks);
+        document.getElementById('task-input-title').value = '';
+        const dueInput = document.getElementById('task-input-due');
+        if (dueInput) {
+          dueInput.value = '';
+          dueInput.removeAttribute('value');
+          dueInput.classList.remove('has-value');
+        }
+      }
+    } catch (err) {
+      console.error('[-] Error creating task:', err);
+    }
+  });
+
+  const taskDueInput = document.getElementById('task-input-due');
+  if (taskDueInput) {
+    taskDueInput.addEventListener('change', () => {
+      if (taskDueInput.value) {
+        taskDueInput.setAttribute('value', taskDueInput.value);
+      } else {
+        taskDueInput.removeAttribute('value');
+      }
+    });
+  }
+
+  document.getElementById('form-send-thread-reply')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.activeSalon || !window.salonModulesState.activeThreadParentId) return;
+    const input = document.getElementById('input-thread-reply');
+    const content = input.value;
+    if (!content.trim()) return;
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/threads/${window.salonModulesState.activeThreadParentId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json();
+      if (data.messages) {
+        renderThreadReplies(data.messages);
+        input.value = '';
+      }
+    } catch (err) {
+      console.error('[-] Error sending thread reply:', err);
+    }
+  });
+
+  document.getElementById('form-create-salon-decision')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.activeSalon) return;
+    const title = document.getElementById('decision-input-title').value;
+    const description = document.getElementById('decision-input-desc').value;
+
+    const selectedChips = document.querySelectorAll('#decision-members-chips .member-select-chip.selected');
+    const responsibleId = Array.from(selectedChips).map(c => c.getAttribute('data-user-id')).join(',');
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/decisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, responsibleId })
+      });
+      const data = await res.json();
+      if (data.error) {
+        if (typeof showToast === 'function') showToast(data.error);
+        else alert(data.error);
+        return;
+      }
+      if (data.decisions) {
+        window.salonModulesState.decisions = data.decisions;
+        applyDecisionFilters();
+        document.getElementById('decision-input-title').value = '';
+        const descEl = document.getElementById('decision-input-desc');
+        if (descEl) {
+          descEl.value = '';
+          descEl.style.height = 'auto';
+        }
+        document.querySelectorAll('#decision-members-chips .member-select-chip.selected').forEach(c => c.classList.remove('selected'));
+        if (typeof showToast === 'function') showToast('Décision enregistrée avec succès');
+      }
+    } catch (err) {
+      console.error('[-] Error creating decision:', err);
+    }
+  });
+
+  document.getElementById('decision-filter-month')?.addEventListener('change', () => applyDecisionFilters());
+  document.getElementById('decision-filter-year')?.addEventListener('change', () => applyDecisionFilters());
+
+  document.getElementById('form-create-salon-transaction')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.activeSalon) return;
+    const type = document.getElementById('tx-select-type').value;
+    const amount = document.getElementById('tx-input-amount').value;
+    const category = document.getElementById('tx-select-category').value;
+    const note = document.getElementById('tx-input-note').value;
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, amount, category, note })
+      });
+      const data = await res.json();
+      if (data.finances) {
+        window.salonModulesState.finances = data.finances;
+        renderCaisse(data.finances);
+        document.getElementById('tx-input-amount').value = '';
+        document.getElementById('tx-input-note').value = '';
+      }
+    } catch (err) {
+      console.error('[-] Error creating transaction:', err);
+    }
+  });
+
+  document.getElementById('salon-search-keyword')?.addEventListener('input', (e) => {
+    renderSearchResults(e.target.value, window.salonModulesState.activeFilter);
+  });
+
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      e.target.classList.add('active');
+      window.salonModulesState.activeFilter = e.target.getAttribute('data-filter') || 'all';
+      const query = document.getElementById('salon-search-keyword')?.value || '';
+      renderSearchResults(query, window.salonModulesState.activeFilter);
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSalonModulesBar();
+  initSalonForms();
+});
+
