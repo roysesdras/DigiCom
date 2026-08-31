@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1169" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1169">
+    <link rel="preload" href="/css/style.min.css?v=1170" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1170">
   </head>
 
   <body>
@@ -267,7 +267,7 @@
                 </button>
 
                 <button type="button" class="dropdown-item btn-admin-dashboard" id="menu-item-superadmin"
-                  onclick="if(window.AdminDashboard){window.AdminDashboard.open();}else{const s=document.createElement('script');s.src='/js/admin-dashboard.min.js?v=1169';s.onload=()=>window.AdminDashboard&&window.AdminDashboard.open();document.body.appendChild(s);} window.closeChatMoreMenu();"
+                  onclick="if(window.AdminDashboard){window.AdminDashboard.open();}else{const s=document.createElement('script');s.src='/js/admin-dashboard.min.js?v=1170';s.onload=()=>window.AdminDashboard&&window.AdminDashboard.open();document.body.appendChild(s);} window.closeChatMoreMenu();"
                   style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -1427,8 +1427,23 @@
               <span class="stat-value text-rose" id="caisse-stat-expenses">0 FCFA</span>
             </div>
             <div class="caisse-stat-card">
-              <span class="stat-label">Objectif Cible</span>
-              <span class="stat-value" id="caisse-stat-target">0 FCFA</span>
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <span class="stat-label">Objectif Cible</span>
+                <button type="button" class="btn-edit-target" id="btn-edit-caisse-target" title="Définir / Modifier l'objectif" style="display: none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+              </div>
+              <span class="stat-value" id="caisse-stat-target">Non défini</span>
+            </div>
+          </div>
+
+          <!-- Target Edit Box (Collapsible for Admin) -->
+          <div id="caisse-target-edit-box" class="caisse-target-edit-box" style="display: none;">
+            <div class="picker-label-text">Définir l'objectif de collecte pour ce salon :</div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="number" id="caisse-input-target-amount" class="form-input-clean" placeholder="Montant cible (ex: 500000 FCFA)" min="0" style="flex: 1;">
+              <button type="button" class="btn-primary-clean" id="btn-save-caisse-target" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Valider</button>
+              <button type="button" class="btn-cancel-modal btn-sm" id="btn-cancel-caisse-target">Annuler</button>
             </div>
           </div>
 
@@ -1443,9 +1458,9 @@
             </div>
           </div>
 
-          <!-- Add Transaction Form -->
-          <form id="form-create-salon-transaction" class="caisse-tx-form">
-            <div class="form-row-group">
+          <!-- Add Transaction Form (Admin Only) -->
+          <form id="form-create-salon-transaction" class="caisse-tx-form" style="display: none;">
+            <div class="caisse-form-grid">
               <select id="tx-select-type" class="form-select-clean">
                 <option value="contribution">Cotisation / Entrée (+)</option>
                 <option value="expense">Dépense / Sortie (-)</option>
@@ -1459,9 +1474,12 @@
                 <option value="Cash">Espèces / Cash</option>
                 <option value="Autre">Autre</option>
               </select>
-              <input type="text" id="tx-input-note" class="form-input-clean" placeholder="Motif ou référence du transfert...">
-              <button type="submit" class="btn-primary-clean">Ajouter Transaction</button>
+              <select id="tx-select-member" class="form-select-clean">
+                <option value="">Membre concerné (optionnel)...</option>
+              </select>
             </div>
+            <input type="text" id="tx-input-note" class="form-input-clean" placeholder="Motif ou référence du transfert...">
+            <button type="submit" class="btn-primary-clean">Enregistrer la Transaction</button>
           </form>
 
           <!-- Transaction Ledger List -->
@@ -1509,11 +1527,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1169" defer></script>
-    <script src="/js/idb-store.min.js?v=1169" defer></script>
-    <script src="/js/push-client.min.js?v=1169" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1169" defer></script>
-    <script src="/js/app.min.js?v=1169" defer></script>
+    <script src="/socket.io/socket.io.js?v=1170" defer></script>
+    <script src="/js/idb-store.min.js?v=1170" defer></script>
+    <script src="/js/push-client.min.js?v=1170" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1170" defer></script>
+    <script src="/js/app.min.js?v=1170" defer></script>
   </body>
 
 </html>

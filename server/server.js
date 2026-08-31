@@ -1430,6 +1430,11 @@ app.get('/api/salons/:id/finances', authenticateToken, async (req, res) => {
 app.post('/api/salons/:id/finances/target', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const isAdmin = await db.isSalonAdmin(id, req.user.id);
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Seuls les administrateurs du salon peuvent définir l\'objectif financier.' });
+    }
+
     const { targetAmount, currency } = req.body;
     await db.setSalonFinanceTarget(id, parseFloat(targetAmount) || 0, currency || 'FCFA');
 
@@ -1444,6 +1449,11 @@ app.post('/api/salons/:id/finances/target', authenticateToken, async (req, res) 
 app.post('/api/salons/:id/finances/transactions', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const isAdmin = await db.isSalonAdmin(id, req.user.id);
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Seuls les administrateurs du salon peuvent enregistrer des transactions.' });
+    }
+
     const { type, memberId, memberName, amount, category, receiptUrl, note } = req.body;
     if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'Le montant doit être supérieur à zéro' });
 
@@ -1472,6 +1482,11 @@ app.post('/api/salons/:id/finances/transactions', authenticateToken, async (req,
 app.delete('/api/salons/:id/finances/transactions/:txId', authenticateToken, async (req, res) => {
   try {
     const { id, txId } = req.params;
+    const isAdmin = await db.isSalonAdmin(id, req.user.id);
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Seuls les administrateurs du salon peuvent supprimer des transactions.' });
+    }
+
     await db.deleteSalonTransaction(txId);
 
     const finances = await db.getSalonFinances(id);

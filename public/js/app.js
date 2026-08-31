@@ -8055,6 +8055,46 @@ async function openSalonCaisseModal(salonId) {
     const m = document.getElementById('modal-salon-caisse');
     if (m) m.style.display = 'flex';
   }
+
+  // Hide form and target edit box by default immediately
+  const txForm = document.getElementById('form-create-salon-transaction');
+  const btnEditTarget = document.getElementById('btn-edit-caisse-target');
+  const targetEditBox = document.getElementById('caisse-target-edit-box');
+  if (txForm) {
+    txForm.classList.remove('active-admin-form');
+    txForm.style.display = 'none';
+  }
+  if (btnEditTarget) btnEditTarget.style.display = 'none';
+  if (targetEditBox) targetEditBox.style.display = 'none';
+
+  // Ensure active salon members are loaded
+  try {
+    if (!state.activeSalonMembers || state.activeSalonMembers.length === 0) {
+      const memRes = await authFetch(`/api/salons/${salonId}/members`);
+      if (memRes.ok) {
+        const memData = await memRes.json();
+        state.activeSalonMembers = memData.members || [];
+      }
+    }
+  } catch(e) {}
+
+  populateSalonMembersDropdown('tx-select-member');
+
+  // Check admin status strictly
+  const isUserAdmin = isCurrentActiveSalonAdmin();
+  if (txForm) {
+    if (isUserAdmin) {
+      txForm.classList.add('active-admin-form');
+      txForm.style.display = 'flex';
+    } else {
+      txForm.classList.remove('active-admin-form');
+      txForm.style.display = 'none';
+    }
+  }
+  if (btnEditTarget) {
+    btnEditTarget.style.display = isUserAdmin ? 'inline-flex' : 'none';
+  }
+
   try {
     const res = await authFetch(`/api/salons/${salonId}/finances`);
     const data = await res.json();
@@ -8071,16 +8111,26 @@ function renderCaisse(finances) {
   const contributions = finances.total_contributions || 0;
   const expenses = finances.total_expenses || 0;
   const target = finances.target_amount || 0;
-  const pct = target > 0 ? Math.min(Math.round((contributions / target) * 100), 100) : 0;
+  const isUserAdmin = isCurrentActiveSalonAdmin();
 
   document.getElementById('caisse-stat-balance').textContent = balance.toLocaleString() + ' FCFA';
   document.getElementById('caisse-stat-contributions').textContent = contributions.toLocaleString() + ' FCFA';
   document.getElementById('caisse-stat-expenses').textContent = expenses.toLocaleString() + ' FCFA';
-  document.getElementById('caisse-stat-target').textContent = target > 0 ? target.toLocaleString() + ' FCFA' : 'Non défini';
 
-  document.getElementById('caisse-progress-pct').textContent = pct + '%';
+  const targetEl = document.getElementById('caisse-stat-target');
+  const pctEl = document.getElementById('caisse-progress-pct');
   const fill = document.getElementById('caisse-progress-fill');
-  if (fill) fill.style.width = pct + '%';
+
+  if (target > 0) {
+    const pct = Math.min(Math.round((contributions / target) * 100), 100);
+    if (targetEl) targetEl.textContent = target.toLocaleString() + ' FCFA';
+    if (pctEl) pctEl.textContent = `${pct}% (${contributions.toLocaleString()} / ${target.toLocaleString()} FCFA)`;
+    if (fill) fill.style.width = `${pct}%`;
+  } else {
+    if (targetEl) targetEl.textContent = 'Non défini';
+    if (pctEl) pctEl.textContent = '0% (Aucun objectif fixé)';
+    if (fill) fill.style.width = '0%';
+  }
 
   const list = document.getElementById('list-salon-transactions');
   if (!list) return;
@@ -8093,6 +8143,15 @@ function renderCaisse(finances) {
   list.innerHTML = txs.map(t => {
     const isPlus = t.type === 'contribution';
     const catClass = 'badge-' + (t.category || 'autre').toLowerCase();
+    const deleteBtnHtml = isUserAdmin ? `
+      <button type="button" class="btn-delete-decision" onclick="deleteSalonTransaction('${t.id}')" title="Supprimer cette transaction">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+      </button>
+    ` : '';
+
     return `
       <div class="caisse-tx-item">
         <div style="display:flex; align-items:center; gap:0.6rem;">
@@ -8102,10 +8161,32 @@ function renderCaisse(finances) {
             <span style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(t.note || (isPlus ? 'Cotisation' : 'Dépense'))} • ${new Date(t.created_at).toLocaleDateString()}</span>
           </div>
         </div>
-        <span class="${isPlus ? 'tx-amount-plus' : 'tx-amount-minus'}">${isPlus ? '+' : '-'}${Number(t.amount).toLocaleString()} FCFA</span>
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <span class="${isPlus ? 'tx-amount-plus' : 'tx-amount-minus'}">${isPlus ? '+' : '-'}${Number(t.amount).toLocaleString()} FCFA</span>
+          ${deleteBtnHtml}
+        </div>
       </div>
     `;
   }).join('');
+}
+
+async function deleteSalonTransaction(txId) {
+  if (!state.activeSalon) return;
+  if (!confirm('Voulez-vous vraiment supprimer cette transaction ?')) return;
+
+  try {
+    const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/transactions/${txId}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (data.finances) {
+      window.salonModulesState.finances = data.finances;
+      renderCaisse(data.finances);
+      if (typeof showToast === 'function') showToast('Transaction supprimée');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting transaction:', err);
+  }
 }
 
 
@@ -8296,26 +8377,85 @@ function initSalonForms() {
   document.getElementById('decision-filter-month')?.addEventListener('change', () => applyDecisionFilters());
   document.getElementById('decision-filter-year')?.addEventListener('change', () => applyDecisionFilters());
 
+  // Caisse Target Edit Listeners
+  document.getElementById('btn-edit-caisse-target')?.addEventListener('click', () => {
+    const box = document.getElementById('caisse-target-edit-box');
+    if (!box) return;
+    const isOpening = box.style.display === 'none';
+    box.style.display = isOpening ? 'flex' : 'none';
+    if (isOpening) {
+      const input = document.getElementById('caisse-input-target-amount');
+      if (input) {
+        input.value = (window.salonModulesState.finances?.target_amount) || '';
+        input.focus();
+      }
+    }
+  });
+
+  document.getElementById('btn-cancel-caisse-target')?.addEventListener('click', () => {
+    const box = document.getElementById('caisse-target-edit-box');
+    if (box) box.style.display = 'none';
+  });
+
+  document.getElementById('btn-save-caisse-target')?.addEventListener('click', async () => {
+    if (!state.activeSalon) return;
+    const input = document.getElementById('caisse-input-target-amount');
+    const targetAmount = parseFloat(input?.value) || 0;
+
+    try {
+      const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/target`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetAmount })
+      });
+      const data = await res.json();
+      if (data.error) {
+        if (typeof showToast === 'function') showToast(data.error);
+        else alert(data.error);
+        return;
+      }
+      if (data.finances) {
+        window.salonModulesState.finances = data.finances;
+        renderCaisse(data.finances);
+        const box = document.getElementById('caisse-target-edit-box');
+        if (box) box.style.display = 'none';
+        if (typeof showToast === 'function') showToast('Objectif financier mis à jour');
+      }
+    } catch (err) {
+      console.error('[-] Error saving caisse target:', err);
+    }
+  });
+
   document.getElementById('form-create-salon-transaction')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.activeSalon) return;
     const type = document.getElementById('tx-select-type').value;
     const amount = document.getElementById('tx-input-amount').value;
     const category = document.getElementById('tx-select-category').value;
+    const memberSelect = document.getElementById('tx-select-member');
+    const memberId = memberSelect ? memberSelect.value : '';
+    const memberName = memberSelect && memberSelect.selectedOptions[0] && memberSelect.value ? memberSelect.selectedOptions[0].text : '';
     const note = document.getElementById('tx-input-note').value;
 
     try {
       const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, amount, category, note })
+        body: JSON.stringify({ type, amount, category, memberId, memberName, note })
       });
       const data = await res.json();
+      if (data.error) {
+        if (typeof showToast === 'function') showToast(data.error);
+        else alert(data.error);
+        return;
+      }
       if (data.finances) {
         window.salonModulesState.finances = data.finances;
         renderCaisse(data.finances);
         document.getElementById('tx-input-amount').value = '';
         document.getElementById('tx-input-note').value = '';
+        if (memberSelect) memberSelect.value = '';
+        if (typeof showToast === 'function') showToast('Transaction enregistrée avec succès');
       }
     } catch (err) {
       console.error('[-] Error creating transaction:', err);
