@@ -878,9 +878,12 @@
     return div.innerHTML;
   }
 
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  if (document.body) {
+    init();
+  } else if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(init, 0);
   } else {
     document.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('load', init);
   }
 })();
