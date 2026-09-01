@@ -448,6 +448,18 @@ async function navigateToTarget(targetData) {
   }
 
   console.log('[+] navigateToTarget -> switching active conversation to:', { salonId, contactId, messageId, channel, senderName, salonName });
+  try {
+    fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: 'info',
+        tag: 'APP_NAV',
+        message: `App navigating to target conversation: ${contactId ? 'Contact ' + contactId : 'Salon ' + salonId}`,
+        data: { salonId, contactId, messageId, channel, senderName }
+      })
+    }).catch(() => {});
+  } catch (e) {}
 
   if (targetData.openRequests || (targetData.url && targetData.url.includes('openRequests=true'))) {
     await switchTab('contacts');

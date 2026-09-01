@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1198';
+const CACHE_NAME = 'digicom-pwa-v1199';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -271,12 +271,26 @@ self.addEventListener('push', (event) => {
     ] : []
   };
 
+  // Log incoming push notification to server
+  try {
+    fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: 'info',
+        tag: 'SW_PUSH',
+        message: `Push received: ${data.title || 'DigiCom'} -> ${data.body || ''}`,
+        data: payloadData
+      })
+    }).catch(() => {});
+  } catch (e) {}
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'DigiCom', options)
   );
 });
 
-// Notification Click Handler (v1196 - BroadcastChannel + client.navigate + postMessage + openWindow)
+// Notification Click Handler (v1199 - Android openWindow + BroadcastChannel + Server Log)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -302,6 +316,20 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   const fullTargetUrl = new URL(targetPath, self.location.origin).href;
+
+  // Log click event to server
+  try {
+    fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: 'info',
+        tag: 'SW_CLICK',
+        message: `Notification clicked: ${event.notification.title || ''} -> target: ${targetPath}`,
+        data: notifData
+      })
+    }).catch(() => {});
+  } catch (e) {}
 
   event.waitUntil(
     (async () => {
@@ -329,7 +357,7 @@ self.addEventListener('notificationclick', (event) => {
         includeUncontrolled: true
       });
 
-      // 2. Search for an existing open DigiCom window
+      // 2. If a window is already open, try to focus and postMessage
       let matchingClient = null;
       for (const client of windowClients) {
         if (client.url && client.url.includes(self.location.origin)) {
@@ -339,26 +367,6 @@ self.addEventListener('notificationclick', (event) => {
       }
 
       if (matchingClient) {
-        // 1. Force navigate client directly to target URL so browser loads deep-link
-        try {
-          if ('navigate' in matchingClient) {
-            await matchingClient.navigate(fullTargetUrl);
-          }
-        } catch (err) {
-          console.warn('[SW] client.navigate warning:', err);
-        }
-
-        // 2. Bring window to foreground
-        let focusedClient = null;
-        try {
-          if ('focus' in matchingClient) {
-            focusedClient = await matchingClient.focus();
-          }
-        } catch (err) {
-          console.warn('[SW] client.focus warning:', err);
-        }
-
-        // 3. Send direct postMessage
         try {
           matchingClient.postMessage({
             action: 'NAVIGATE_TO_SALON',
@@ -373,10 +381,21 @@ self.addEventListener('notificationclick', (event) => {
           });
         } catch (e) {}
 
-        return focusedClient || matchingClient;
+        try {
+          if ('navigate' in matchingClient) {
+            await matchingClient.navigate(fullTargetUrl);
+          }
+        } catch (err) {}
+
+        try {
+          if ('focus' in matchingClient) {
+            const focused = await matchingClient.focus();
+            if (focused) return focused;
+          }
+        } catch (err) {}
       }
 
-      // 3. No existing window: cold start with target URL
+      // 3. Guaranteed window open / foreground launch on Android Mobile & Desktop
       if (self.clients.openWindow) {
         return self.clients.openWindow(fullTargetUrl);
       }

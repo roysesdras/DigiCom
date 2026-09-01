@@ -280,6 +280,19 @@ app.get('/api/logs', (req, res) => {
   res.send(logs.join('\n'));
 });
 
+// Client & Service Worker Log Collector Endpoint
+app.post('/api/client-log', (req, res) => {
+  const { level = 'info', tag = 'CLIENT', message = '', data = null } = req.body || {};
+  if (level === 'error') {
+    logger.error(tag, message, data);
+  } else if (level === 'warn') {
+    logger.warn(tag, message, data);
+  } else {
+    logger.info(tag, message, data);
+  }
+  res.json({ success: true });
+});
+
 // 1b. Link Preview (Open Graph metadata scraper with Server-side Caching)
 const linkPreviewServerCache = new Map();
 const LINK_PREVIEW_CACHE_TTL = 3600 * 2000; // 2 hours
