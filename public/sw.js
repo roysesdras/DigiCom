@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1199';
+const CACHE_NAME = 'digicom-pwa-v1200';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -352,50 +352,32 @@ self.addEventListener('notificationclick', (event) => {
         }
       } catch (e) {}
 
-      const windowClients = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true
-      });
-
-      // 2. If a window is already open, try to focus and postMessage
-      let matchingClient = null;
-      for (const client of windowClients) {
-        if (client.url && client.url.includes(self.location.origin)) {
-          matchingClient = client;
-          break;
+      // 2. Also send postMessage to any existing open window clients
+      try {
+        const windowClients = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true
+        });
+        for (const client of windowClients) {
+          if (client.url && client.url.includes(self.location.origin)) {
+            try {
+              client.postMessage({
+                action: 'NAVIGATE_TO_SALON',
+                type: 'NOTIFICATION_CLICK',
+                salonId: notifData.salonId,
+                contactId: notifData.contactId || notifData.senderId,
+                messageId: notifData.messageId,
+                channel: notifData.channel,
+                url: fullTargetUrl,
+                targetUrl: fullTargetUrl,
+                data: notifData
+              });
+            } catch (e) {}
+          }
         }
-      }
+      } catch (e) {}
 
-      if (matchingClient) {
-        try {
-          matchingClient.postMessage({
-            action: 'NAVIGATE_TO_SALON',
-            type: 'NOTIFICATION_CLICK',
-            salonId: notifData.salonId,
-            contactId: notifData.contactId || notifData.senderId,
-            messageId: notifData.messageId,
-            channel: notifData.channel,
-            url: fullTargetUrl,
-            targetUrl: fullTargetUrl,
-            data: notifData
-          });
-        } catch (e) {}
-
-        try {
-          if ('navigate' in matchingClient) {
-            await matchingClient.navigate(fullTargetUrl);
-          }
-        } catch (err) {}
-
-        try {
-          if ('focus' in matchingClient) {
-            const focused = await matchingClient.focus();
-            if (focused) return focused;
-          }
-        } catch (err) {}
-      }
-
-      // 3. Guaranteed window open / foreground launch on Android Mobile & Desktop
+      // 3. Unconditionally command Android / Desktop to bring DigiCom to the front!
       if (self.clients.openWindow) {
         return self.clients.openWindow(fullTargetUrl);
       }
