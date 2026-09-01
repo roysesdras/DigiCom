@@ -18,20 +18,22 @@
   }
 
   const defaultTrainerId = getPersistentGuestId();
+  let defaultTitle = (document.title || 'Support Client').replace(/Campus/gi, 'Academy');
 
-  let defaultTitle = (document.title || 'RebOnly Academy').replace(/Campus/gi, 'Academy');
+  const isSelf = typeof window !== 'undefined' && (window.location.hostname === 'chat.digiroys.com' || window.location.hostname === 'localhost');
+  const defaultServerUrl = isSelf ? window.location.origin : 'https://chat.digiroys.com';
 
   const config = Object.assign(
     {
-      serverUrl: window.location.origin,
-      trainerName: 'Étudiant',
+      serverUrl: defaultServerUrl,
+      trainerName: 'Visiteur',
       trainerId: defaultTrainerId,
       courseTitle: defaultTitle,
       primaryColor: '#6366f1',
       sosColor: '#f43f5e',
       position: 'bottom-right' // 'bottom-right' | 'bottom-left'
     },
-    window.RebOnlyConfig || {}
+    window.RebOnlyConfig || window.DigiComWidgetConfig || {}
   );
 
   if (config.courseTitle && typeof config.courseTitle === 'string') {
@@ -50,15 +52,15 @@
     #rebonly-widget-root * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     #rebonly-floating-btn {
       position: fixed;
-      bottom: 24px;
-      ${config.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
-      width: 66px;
-      height: 66px;
+      bottom: 20px;
+      ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
+      width: 52px;
+      height: 52px;
       border-radius: 50%;
       background: #0f172a;
       color: #f43f5e;
-      border: 2px solid rgba(244, 63, 94, 0.65);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 15px rgba(244, 63, 94, 0.35);
+      border: 1.5px solid rgba(244, 63, 94, 0.6);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 12px rgba(244, 63, 94, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -67,25 +69,25 @@
       pointer-events: auto !important;
       transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease;
     }
-    #rebonly-floating-btn:hover { transform: scale(1.08); border-color: #f43f5e; box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75), 0 0 22px rgba(244, 63, 94, 0.5); }
+    #rebonly-floating-btn:hover { transform: scale(1.06); border-color: #f43f5e; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 18px rgba(244, 63, 94, 0.45); }
     #rebonly-floating-btn:active { transform: scale(0.95); }
 
     #rebonly-floating-badge {
       position: absolute;
-      top: -4px;
-      right: -4px;
+      top: -2px;
+      right: -2px;
       background: #f43f5e;
       color: #ffffff;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
-      width: 22px;
-      height: 22px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       display: none;
       align-items: center;
       justify-content: center;
       border: 2px solid #0f172a;
-      box-shadow: 0 0 10px rgba(244, 63, 94, 0.7);
+      box-shadow: 0 0 8px rgba(244, 63, 94, 0.7);
       z-index: 999999999 !important;
       animation: rebonlyBadgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
@@ -99,45 +101,45 @@
     }
     @keyframes rebonlyPulse {
       0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7); }
-      70% { box-shadow: 0 0 0 16px rgba(244, 63, 94, 0); }
+      70% { box-shadow: 0 0 0 12px rgba(244, 63, 94, 0); }
       100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
     }
 
     #rebonly-toast-tooltip {
       position: fixed;
-      bottom: 96px;
-      ${config.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
+      bottom: 80px;
+      ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
       z-index: 99999999 !important;
       background: #0f172a;
       border: 1px solid rgba(244, 63, 94, 0.4);
       color: #e2e8f0;
-      padding: 10px 14px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-      font-size: 12px;
-      max-width: 280px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      font-size: 11.5px;
+      max-width: 250px;
       cursor: pointer;
       display: none;
       pointer-events: auto !important;
       animation: rebonlyToastSlide 0.3s ease-out;
     }
     @keyframes rebonlyToastSlide {
-      from { transform: translateY(10px); opacity: 0; }
+      from { transform: translateY(8px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
 
     #rebonly-chat-window {
       position: fixed;
-      bottom: 96px;
-      ${config.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
-      width: 360px;
-      max-width: calc(100vw - 48px);
-      height: 520px;
-      max-height: calc(100vh - 120px);
+      bottom: 80px;
+      ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
+      width: 330px;
+      max-width: calc(100vw - 32px);
+      height: 460px;
+      max-height: calc(100vh - 100px);
       background: #0f172a;
       color: #f8fafc;
-      border-radius: 18px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      border-radius: 16px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
       border: 1px solid rgba(255, 255, 255, 0.1);
       display: none;
       flex-direction: column;
@@ -147,13 +149,25 @@
       animation: rebonlyFadeIn 0.25s ease;
     }
     @keyframes rebonlyFadeIn {
-      from { opacity: 0; transform: translateY(12px); }
+      from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 480px) {
+      #rebonly-chat-window {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 88px);
+        bottom: 74px;
+        right: 12px !important;
+        left: 12px !important;
+        max-width: none;
+        border-radius: 14px;
+      }
     }
 
     .rebonly-header {
       background: linear-gradient(135deg, #1e293b, #0f172a);
-      padding: 14px 16px;
+      padding: 10px 14px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       align-items: center;
@@ -161,34 +175,34 @@
     }
     .rebonly-header-title {
       font-weight: 600;
-      font-size: 15px;
+      font-size: 13.5px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
     }
     .rebonly-status-tag {
-      font-size: 10px;
+      font-size: 9.5px;
       background: rgba(16, 185, 129, 0.2);
       color: #10b981;
-      padding: 2px 8px;
-      border-radius: 10px;
+      padding: 2px 7px;
+      border-radius: 8px;
       border: 1px solid rgba(16, 185, 129, 0.3);
     }
     .rebonly-close-btn {
       background: none;
       border: none;
       color: #94a3b8;
-      font-size: 18px;
+      font-size: 16px;
       cursor: pointer;
-      padding: 4px;
+      padding: 3px;
     }
     .rebonly-close-btn:hover { color: #fff; }
 
     .rebonly-meta-bar {
       background: rgba(244, 63, 94, 0.08);
       border-bottom: 1px solid rgba(244, 63, 94, 0.15);
-      padding: 8px 14px;
-      font-size: 12px;
+      padding: 6px 12px;
+      font-size: 11px;
       color: #fda4af;
       white-space: nowrap;
       overflow: hidden;
@@ -197,27 +211,27 @@
 
     .rebonly-feed {
       flex: 1;
-      padding: 14px;
+      padding: 10px 12px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
       background: #090d16;
     }
 
     .rebonly-bubble-row {
       display: flex;
       flex-direction: column;
-      max-width: 85%;
+      max-width: 86%;
     }
     .rebonly-bubble-row.other { align-self: flex-start; }
     .rebonly-bubble-row.me { align-self: flex-end; }
 
     .rebonly-bubble {
-      padding: 10px 14px;
-      border-radius: 14px;
-      font-size: 13px;
-      line-height: 1.45;
+      padding: 8px 11px;
+      border-radius: 12px;
+      font-size: 12.5px;
+      line-height: 1.4;
       word-break: break-word;
     }
     .rebonly-bubble-row.other .rebonly-bubble {
@@ -237,13 +251,13 @@
       align-items: center;
       justify-content: flex-end;
       gap: 4px;
-      font-size: 10px;
+      font-size: 9.5px;
       color: rgba(255, 255, 255, 0.5);
       margin-top: 2px;
       padding: 0 4px;
     }
     .rebonly-read-receipt {
-      font-size: 11px;
+      font-size: 10px;
     }
     .rebonly-read-receipt.read {
       color: #38bdf8;
@@ -251,34 +265,34 @@
 
     /* Elastic Textarea & Action Bar */
     .rebonly-input-bar {
-      padding: 10px;
+      padding: 8px 10px;
       background: #1e293b;
       border-top: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       align-items: flex-end;
-      gap: 6px;
+      gap: 5px;
       position: relative;
     }
     .rebonly-textarea {
       flex: 1;
       background: #0f172a;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 16px;
+      border-radius: 14px;
       color: #fff;
-      padding: 8px 12px;
-      font-size: 13px;
+      padding: 6px 10px;
+      font-size: 12.5px;
       outline: none;
       resize: none;
-      height: 38px;
-      max-height: 120px;
-      line-height: 1.4;
+      height: 34px;
+      max-height: 110px;
+      line-height: 1.35;
     }
     .rebonly-textarea:focus {
       border-color: ${config.sosColor};
     }
     .rebonly-action-btn {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -295,8 +309,8 @@
       color: #fff;
     }
     .rebonly-send-btn {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       background: ${config.sosColor};
       border: none;
@@ -316,20 +330,20 @@
       justify-content: space-between;
       background: #331018;
       border: 1px solid rgba(244, 63, 94, 0.4);
-      border-radius: 16px;
-      padding: 6px 12px;
+      border-radius: 14px;
+      padding: 5px 10px;
       color: #f43f5e;
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
     }
     .rebonly-rec-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: #f43f5e;
       display: inline-block;
       animation: rebonlyBlink 1s infinite;
-      margin-right: 6px;
+      margin-right: 5px;
     }
     @keyframes rebonlyBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
@@ -342,19 +356,19 @@
     .rebonly-file-card {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       background: rgba(255,255,255,0.08);
-      padding: 8px 10px;
+      padding: 6px 9px;
       border-radius: 8px;
       margin-top: 4px;
       color: #fff;
       text-decoration: none;
-      font-size: 12px;
+      font-size: 11.5px;
     }
     .rebonly-audio-player {
       width: 100%;
-      max-width: 220px;
-      height: 36px;
+      max-width: 200px;
+      height: 32px;
       margin-top: 4px;
     }
   `;
@@ -379,25 +393,25 @@
     const root = document.createElement('div');
     root.id = 'rebonly-widget-root';
     root.innerHTML = `
-      <div id="rebonly-floating-wrap" style="position: fixed; bottom: 24px; ${config.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'} z-index: 99999999; display: inline-block;">
-        <button id="rebonly-floating-btn" title="Besoin d'aide ? SOS Support"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"></path></svg></button>
+      <div id="rebonly-floating-wrap" style="position: fixed; bottom: 20px; ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'} z-index: 99999999; display: inline-block;">
+        <button id="rebonly-floating-btn" title="Besoin d'aide ? SOS Support"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"></path></svg></button>
         <span id="rebonly-floating-badge">0</span>
       </div>
 
       <div id="rebonly-toast-tooltip">
-        <div style="font-weight: 700; font-size: 12px; color: #38bdf8; margin-bottom: 2px;">Support DigiCom</div>
+        <div style="font-weight: 700; font-size: 11.5px; color: #38bdf8; margin-bottom: 2px;">Support DigiCom</div>
         <div id="rebonly-toast-body" style="font-size: 11px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Nouveau message du support...</div>
       </div>
       <div id="rebonly-chat-window">
         <div class="rebonly-header">
           <div class="rebonly-header-title">
-            <div style="display:flex;align-items:center;gap:6px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span>SOS Support Direct</span></div>
+            <div style="display:flex;align-items:center;gap:5px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span>SOS Support Direct</span></div>
             <span class="rebonly-status-tag">En ligne</span>
           </div>
           <button class="rebonly-close-btn" id="rebonly-close">✕</button>
         </div>
-        <div class="rebonly-meta-bar" style="display:flex;align-items:center;gap:6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>
+        <div class="rebonly-meta-bar" style="display:flex;align-items:center;gap:5px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>
           <span><strong>${escapeText(config.courseTitle)}</strong></span>
         </div>
         <div class="rebonly-feed" id="rebonly-feed">
@@ -406,23 +420,23 @@
           </div>
         </div>
 
-        <div class="rebonly-typing-bar" id="rebonly-typing-bar" style="display: none; padding: 4px 14px; font-size: 11px; color: #10b981; font-style: italic; background: rgba(16, 185, 129, 0.08); border-top: 1px solid rgba(16, 185, 129, 0.15);">Support DigiCom est en train d'écrire...</div>
+        <div class="rebonly-typing-bar" id="rebonly-typing-bar" style="display: none; padding: 4px 12px; font-size: 10.5px; color: #10b981; font-style: italic; background: rgba(16, 185, 129, 0.08); border-top: 1px solid rgba(16, 185, 129, 0.15);">Support DigiCom est en train d'écrire...</div>
 
         <form class="rebonly-input-bar" id="rebonly-form">
           <input type="file" id="rebonly-file-input" accept="image/*,application/pdf" style="display: none;">
-          <button type="button" class="rebonly-action-btn" id="rebonly-attach-btn" title="Joindre une photo ou un PDF"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></button>
-          <button type="button" class="rebonly-action-btn" id="rebonly-mic-btn" title="Enregistrer une note vocale"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
+          <button type="button" class="rebonly-action-btn" id="rebonly-attach-btn" title="Joindre une photo ou un PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></button>
+          <button type="button" class="rebonly-action-btn" id="rebonly-mic-btn" title="Enregistrer une note vocale"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
           
           <div class="rebonly-voice-banner" id="rebonly-voice-banner">
             <span><span class="rebonly-rec-dot"></span><span id="rebonly-rec-timer">00:00</span></span>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <button type="button" id="rebonly-cancel-rec" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
-              <button type="button" id="rebonly-send-rec" style="background: #10b981; border: none; color: #fff; border-radius: 10px; padding: 3px 9px; cursor: pointer; font-size: 12px;">Envoyer</button>
+            <div style="display: flex; gap: 5px; align-items: center;">
+              <button type="button" id="rebonly-cancel-rec" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+              <button type="button" id="rebonly-send-rec" style="background: #10b981; border: none; color: #fff; border-radius: 8px; padding: 2px 8px; cursor: pointer; font-size: 11.5px;">Envoyer</button>
             </div>
           </div>
 
           <textarea class="rebonly-textarea" id="rebonly-input" placeholder="Message d'urgence..." rows="1" autocomplete="off"></textarea>
-          <button type="submit" class="rebonly-send-btn" id="rebonly-submit-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+          <button type="submit" class="rebonly-send-btn" id="rebonly-submit-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
         </form>
       </div>
     `;
@@ -497,7 +511,7 @@
       const text = textarea.value.trim();
       if (!text) return;
       textarea.value = '';
-      textarea.style.height = '38px';
+      textarea.style.height = '34px';
       sendSOS(text);
     }
 

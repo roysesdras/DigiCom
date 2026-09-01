@@ -185,7 +185,13 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   etag: true,
   setHeaders: setStaticCacheHeaders
 }));
-app.use('/widget', express.static(path.join(__dirname, '..', 'widget'), { maxAge: '1y', etag: true }));
+app.use('/widget', express.static(path.join(__dirname, '..', 'widget'), {
+  etag: true,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+}));
 app.get('/uploads/:filename', async (req, res) => {
   const fileName = path.basename(req.params.filename);
   const localFile = path.join(uploadsDir, fileName);
