@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1196';
+const CACHE_NAME = 'digicom-pwa-v1197';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -272,18 +272,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    (async () => {
-      // Check if user already has an active, focused DigiCom tab in foreground
-      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const isAppFocused = windowClients.some(client => client.focused && client.visibilityState === 'visible');
-
-      // For standard text messages, skip notification if staring at foreground chat. For CALLS, always alert!
-      if (isAppFocused && !isCall) {
-        return;
-      }
-
-      return self.registration.showNotification(data.title, options);
-    })()
+    self.registration.showNotification(data.title || 'DigiCom', options)
   );
 });
 

@@ -31,7 +31,7 @@ class DigiPushClient {
     }
 
     try {
-      this.swRegistration = await navigator.serviceWorker.register('/sw.js?v=1196');
+      this.swRegistration = await navigator.serviceWorker.register('/sw.js?v=1197');
       console.log('[+] Service Worker registered with scope:', this.swRegistration.scope);
       try { this.swRegistration.update(); } catch (e) {}
 

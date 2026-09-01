@@ -2429,39 +2429,37 @@ io.on('connection', (socket) => {
       io.to(`user_${receiverId}`).emit('private_message', messageRecord);
       io.to(`user_${senderId}`).emit('private_message', messageRecord);
 
-      // If recipient is NOT actively in the visible chat window, send Web Push notification
-      if (!isRecipientActiveInChat) {
-        let pushBody = 'Nouveau message';
-        if (typeof data.content === 'string') {
-          pushBody = data.content;
-        } else if (data.content && data.content.text) {
-          pushBody = data.content.text;
-        } else if (data.content && data.content.type === 'audio') {
-          pushBody = 'Note vocale';
-        } else if (data.content && data.content.type === 'image') {
-          pushBody = 'Photo';
-        } else if (data.content && data.content.type === 'video') {
-          pushBody = 'Vidéo';
-        } else if (data.content && data.content.type === 'file') {
-          pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
-        }
-
-        pushService.sendNotificationToUser(receiverId, {
-          title: senderName,
-          body: pushBody,
-          icon: '/img/icon-192.webp',
-          badge: '/img/badge-72.webp',
-          tag: `contact-${senderId}`,
-          data: {
-            url: `/?contact=${senderId}&msg=${messageRecord.id}`,
-            channel: 'direct',
-            senderId: senderId,
-            contactId: senderId,
-            senderName: senderName,
-            messageId: messageRecord.id
-          }
-        });
+      // Always send Web Push notification so user receives it in background/lockscreen
+      let pushBody = 'Nouveau message';
+      if (typeof data.content === 'string') {
+        pushBody = data.content;
+      } else if (data.content && data.content.text) {
+        pushBody = data.content.text;
+      } else if (data.content && data.content.type === 'audio') {
+        pushBody = 'Note vocale';
+      } else if (data.content && data.content.type === 'image') {
+        pushBody = 'Photo';
+      } else if (data.content && data.content.type === 'video') {
+        pushBody = 'Vidéo';
+      } else if (data.content && data.content.type === 'file') {
+        pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
       }
+
+      pushService.sendNotificationToUser(receiverId, {
+        title: senderName,
+        body: pushBody,
+        icon: '/img/icon-192.webp',
+        badge: '/img/badge-72.webp',
+        tag: `contact-${senderId}`,
+        data: {
+          url: `/?contact=${senderId}&msg=${messageRecord.id}`,
+          channel: 'direct',
+          senderId: senderId,
+          contactId: senderId,
+          senderName: senderName,
+          messageId: messageRecord.id
+        }
+      }).catch(err => console.error('[-] Push error for private message:', err));
     } catch (err) {
       console.error('[-] Error handling private_message:', err);
     }
@@ -2670,29 +2668,26 @@ io.on('connection', (socket) => {
         if (member.id !== senderId) {
           const isMemberActiveInSalon = activeMemberIds.includes(member.id);
 
-          // Send Push ONLY if member is not actively viewing this salon chat
-          if (!isMemberActiveInSalon) {
-            const isMentioned = member.username && (mentionedUsernames.has(member.username.toLowerCase()) || (member.display_name && mentionedUsernames.has(member.display_name.toLowerCase())));
-            const notificationTitle = isMentioned
-              ? `${formattedSalonName} • ${senderName} vous a mentionné`
-              : `${formattedSalonName} • ${senderName}`;
+          const isMentioned = member.username && (mentionedUsernames.has(member.username.toLowerCase()) || (member.display_name && mentionedUsernames.has(member.display_name.toLowerCase())));
+          const notificationTitle = isMentioned
+            ? `${formattedSalonName} • ${senderName} vous a mentionné`
+            : `${formattedSalonName} • ${senderName}`;
 
-            pushService.sendNotificationToUser(member.id, {
-              title: notificationTitle,
-              body: pushBody.length > 70 ? pushBody.substring(0, 70) + '...' : pushBody,
-              icon: '/img/icon-192.webp',
-              badge: '/img/badge-72.webp',
-              tag: `salon-${salonId}`,
-              data: {
-                url: `/?salon=${salonId}&msg=${messageRecord.id}`,
-                channel: 'salon',
-                salonId: salonId,
-                salonName: formattedSalonName,
-                senderName: senderName,
-                messageId: messageRecord.id
-              }
-            }).catch(e => console.error('[-] Push error to salon member:', e));
-          }
+          pushService.sendNotificationToUser(member.id, {
+            title: notificationTitle,
+            body: pushBody.length > 70 ? pushBody.substring(0, 70) + '...' : pushBody,
+            icon: '/img/icon-192.webp',
+            badge: '/img/badge-72.webp',
+            tag: `salon-${salonId}`,
+            data: {
+              url: `/?salon=${salonId}&msg=${messageRecord.id}`,
+              channel: 'salon',
+              salonId: salonId,
+              salonName: formattedSalonName,
+              senderName: senderName,
+              messageId: messageRecord.id
+            }
+          }).catch(e => console.error('[-] Push error to salon member:', e));
         }
       }
 
