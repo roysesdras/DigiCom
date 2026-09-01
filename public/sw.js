@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1195';
+const CACHE_NAME = 'digicom-pwa-v1196';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -287,7 +287,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Notification Click Handler (v1190 - Desktop postMessage + Mobile openWindow fallback)
+// Notification Click Handler (v1196 - BroadcastChannel + client.navigate + postMessage + openWindow)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -316,12 +316,31 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     (async () => {
+      // 1. Broadcast navigation event across all open tabs/PWAs via BroadcastChannel
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const bc = new BroadcastChannel('digicom_nav_channel');
+          bc.postMessage({
+            action: 'NAVIGATE_TO_SALON',
+            type: 'NOTIFICATION_CLICK',
+            salonId: notifData.salonId,
+            contactId: notifData.contactId || notifData.senderId,
+            messageId: notifData.messageId,
+            channel: notifData.channel,
+            url: fullTargetUrl,
+            targetUrl: fullTargetUrl,
+            data: notifData
+          });
+          setTimeout(() => { try { bc.close(); } catch (e) {} }, 1000);
+        }
+      } catch (e) {}
+
       const windowClients = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true
       });
 
-      // 1. Search for an existing open DigiCom window
+      // 2. Search for an existing open DigiCom window
       let matchingClient = null;
       for (const client of windowClients) {
         if (client.url && client.url.includes(self.location.origin)) {
@@ -331,40 +350,50 @@ self.addEventListener('notificationclick', (event) => {
       }
 
       if (matchingClient) {
+        // Send direct postMessage
+        try {
+          matchingClient.postMessage({
+            action: 'NAVIGATE_TO_SALON',
+            type: 'NOTIFICATION_CLICK',
+            salonId: notifData.salonId,
+            contactId: notifData.contactId || notifData.senderId,
+            messageId: notifData.messageId,
+            channel: notifData.channel,
+            url: fullTargetUrl,
+            targetUrl: fullTargetUrl,
+            data: notifData
+          });
+        } catch (e) {}
+
+        // Focus client
         let focusedClient = null;
         try {
           if ('focus' in matchingClient) {
             focusedClient = await matchingClient.focus();
           }
         } catch (err) {
-          console.warn('[SW] client.focus failed (expected on Android Chrome):', err);
+          console.warn('[SW] client.focus warning:', err);
         }
 
-        if (focusedClient) {
-          // Desktop / PWA standalone: focus worked, route via postMessage (no reload needed)
-          try {
-            focusedClient.postMessage({
-              action: 'NAVIGATE_TO_SALON',
-              type: 'NOTIFICATION_CLICK',
-              salonId: notifData.salonId,
-              contactId: notifData.contactId || notifData.senderId,
-              messageId: notifData.messageId,
-              url: fullTargetUrl,
-              data: notifData,
-              targetUrl: fullTargetUrl
-            });
-          } catch (e) {}
-          return;
+        // Navigate client directly if needed (W3C standard)
+        try {
+          if ('navigate' in matchingClient && (!matchingClient.url || !matchingClient.url.includes(targetPath))) {
+            await matchingClient.navigate(fullTargetUrl);
+          }
+        } catch (err) {
+          console.warn('[SW] client.navigate warning:', err);
         }
 
-        // Mobile: focus() was blocked by Android → force foreground via openWindow with full URL.
+        if (focusedClient) return;
+
+        // Fallback openWindow if focus failed on mobile
         if (self.clients.openWindow) {
           return self.clients.openWindow(fullTargetUrl);
         }
         return;
       }
 
-      // 2. No existing window: cold start with target URL (initApp reads params after contacts load).
+      // 3. No existing window: cold start with target URL
       if (self.clients.openWindow) {
         return self.clients.openWindow(fullTargetUrl);
       }

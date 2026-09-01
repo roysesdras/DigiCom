@@ -1838,53 +1838,71 @@ function setupEventListeners() {
 
   let lastTypingEmit = 0;
 
-  // Handle Notification Click message from Service Worker to open direct chat, salon or SOS ticket
+  // Handle Notification Click message from Service Worker (postMessage + BroadcastChannel)
+  async function handleNotificationNavigationEvent(eventData) {
+    if (!eventData) return;
+    if (eventData.action === 'NAVIGATE_TO_SALON' || eventData.type === 'NOTIFICATION_CLICK') {
+      const notifData = eventData.data || eventData || {};
+      const targetUrl = eventData.url || eventData.targetUrl || '';
+      const act = eventData.action;
+
+      // Merge URL params into notifData as fallback
+      if (targetUrl) {
+        try {
+          const parsedUrl = new URL(targetUrl, window.location.origin);
+          if (!notifData.contactId && !notifData.senderId) {
+            const urlContact = parsedUrl.searchParams.get('contact') || parsedUrl.searchParams.get('contactId') || parsedUrl.searchParams.get('sender') || parsedUrl.searchParams.get('senderId');
+            if (urlContact) notifData.contactId = urlContact;
+          }
+          if (!notifData.salonId) {
+            const urlSalon = parsedUrl.searchParams.get('salon') || parsedUrl.searchParams.get('salonId');
+            if (urlSalon) notifData.salonId = urlSalon;
+          }
+          if (!notifData.messageId) {
+            const urlMsg = parsedUrl.searchParams.get('msg') || parsedUrl.searchParams.get('messageId');
+            if (urlMsg) notifData.messageId = urlMsg;
+          }
+          if (!notifData.channel) {
+            const urlChannel = parsedUrl.searchParams.get('channel');
+            if (urlChannel) notifData.channel = urlChannel;
+          }
+        } catch (e) {}
+      }
+
+      if (notifData.type === 'call_incoming' || notifData.callerId) {
+        if (window.triggerIncomingCallUI) {
+          window.triggerIncomingCallUI({
+            callerId: notifData.callerId,
+            callerName: notifData.callerName || 'Correspondant',
+            callType: notifData.callType || 'audio',
+            autoAnswer: act === 'answer',
+            autoReject: act === 'reject'
+          });
+        }
+        return;
+      }
+
+      await navigateToTarget(notifData);
+    }
+  }
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', async (event) => {
-      if (event.data && (event.data.action === 'NAVIGATE_TO_SALON' || event.data.type === 'NOTIFICATION_CLICK')) {
-        const notifData = event.data.data || event.data || {};
-        const targetUrl = event.data.url || event.data.targetUrl || '';
-        const act = event.data.action;
-
-        // Merge URL params into notifData as fallback (in case SW data fields are missing)
-        if (targetUrl) {
-          try {
-            const parsedUrl = new URL(targetUrl, window.location.origin);
-            if (!notifData.contactId && !notifData.senderId) {
-              const urlContact = parsedUrl.searchParams.get('contact') || parsedUrl.searchParams.get('contactId') || parsedUrl.searchParams.get('sender') || parsedUrl.searchParams.get('senderId');
-              if (urlContact) notifData.contactId = urlContact;
-            }
-            if (!notifData.salonId) {
-              const urlSalon = parsedUrl.searchParams.get('salon') || parsedUrl.searchParams.get('salonId');
-              if (urlSalon) notifData.salonId = urlSalon;
-            }
-            if (!notifData.messageId) {
-              const urlMsg = parsedUrl.searchParams.get('msg') || parsedUrl.searchParams.get('messageId');
-              if (urlMsg) notifData.messageId = urlMsg;
-            }
-            if (!notifData.channel) {
-              const urlChannel = parsedUrl.searchParams.get('channel');
-              if (urlChannel) notifData.channel = urlChannel;
-            }
-          } catch (e) {}
-        }
-
-        if (notifData.type === 'call_incoming' || notifData.callerId) {
-          if (window.triggerIncomingCallUI) {
-            window.triggerIncomingCallUI({
-              callerId: notifData.callerId,
-              callerName: notifData.callerName || 'Correspondant',
-              callType: notifData.callType || 'audio',
-              autoAnswer: act === 'answer',
-              autoReject: act === 'reject'
-            });
-          }
-          return;
-        }
-
-        await navigateToTarget(notifData);
+      if (event.data) {
+        await handleNotificationNavigationEvent(event.data);
       }
     });
+  }
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const navChannel = new BroadcastChannel('digicom_nav_channel');
+      navChannel.onmessage = async (event) => {
+        if (event.data) {
+          await handleNotificationNavigationEvent(event.data);
+        }
+      };
+    } catch (e) {}
   }
 
   // Page Visibility & Tab Focus Handler (Debounced, eliminates duplicate socket spam)
