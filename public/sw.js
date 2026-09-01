@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1200';
+const CACHE_NAME = 'digicom-pwa-v1201';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -290,13 +290,13 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Notification Click Handler (v1199 - Android openWindow + BroadcastChannel + Server Log)
+// Notification Click Handler (v1201 - Targeted foreground focus + Android openWindow fallback)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const notifData = (event.notification && event.notification.data) || {};
   const action = event.action;
-  let targetPath = '/';
+  let targetPath = notifData.url || '/';
 
   const msgParam = notifData.messageId ? `&msg=${encodeURIComponent(notifData.messageId)}` : '';
 
@@ -315,7 +315,7 @@ self.addEventListener('notificationclick', (event) => {
     targetPath = notifData.url;
   }
 
-  const fullTargetUrl = new URL(targetPath, self.location.origin).href;
+  const targetUrl = new URL(targetPath, self.location.origin).href;
 
   // Log click event to server
   try {
@@ -332,56 +332,32 @@ self.addEventListener('notificationclick', (event) => {
   } catch (e) {}
 
   event.waitUntil(
-    (async () => {
-      // 1. Broadcast navigation event across all open tabs/PWAs via BroadcastChannel
-      try {
-        if (typeof BroadcastChannel !== 'undefined') {
-          const bc = new BroadcastChannel('digicom_nav_channel');
-          bc.postMessage({
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // 1. Cherche si une fenêtre est DÉJÀ affichée à l'écran au premier plan
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && client.visibilityState === 'visible') {
+          // L'app est déjà sous les yeux de l'utilisateur : on change de salon immédiatement
+          client.postMessage({
             action: 'NAVIGATE_TO_SALON',
             type: 'NOTIFICATION_CLICK',
             salonId: notifData.salonId,
             contactId: notifData.contactId || notifData.senderId,
+            senderId: notifData.senderId,
             messageId: notifData.messageId,
             channel: notifData.channel,
-            url: fullTargetUrl,
-            targetUrl: fullTargetUrl,
+            url: targetUrl,
             data: notifData
           });
-          setTimeout(() => { try { bc.close(); } catch (e) {} }, 1000);
+          return client.focus();
         }
-      } catch (e) {}
-
-      // 2. Also send postMessage to any existing open window clients
-      try {
-        const windowClients = await self.clients.matchAll({
-          type: 'window',
-          includeUncontrolled: true
-        });
-        for (const client of windowClients) {
-          if (client.url && client.url.includes(self.location.origin)) {
-            try {
-              client.postMessage({
-                action: 'NAVIGATE_TO_SALON',
-                type: 'NOTIFICATION_CLICK',
-                salonId: notifData.salonId,
-                contactId: notifData.contactId || notifData.senderId,
-                messageId: notifData.messageId,
-                channel: notifData.channel,
-                url: fullTargetUrl,
-                targetUrl: fullTargetUrl,
-                data: notifData
-              });
-            } catch (e) {}
-          }
-        }
-      } catch (e) {}
-
-      // 3. Unconditionally command Android / Desktop to bring DigiCom to the front!
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(fullTargetUrl);
       }
-    })()
+
+      // 2. Si l'app est en arrière-plan, minimisée ou fermée (ex: sur Facebook) :
+      // On force l'ouverture via openWindow pour obliger Android à hisser l'écran
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
   );
 });
 
