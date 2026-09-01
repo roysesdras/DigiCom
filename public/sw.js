@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1197';
+const CACHE_NAME = 'digicom-pwa-v1198';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -339,7 +339,26 @@ self.addEventListener('notificationclick', (event) => {
       }
 
       if (matchingClient) {
-        // Send direct postMessage
+        // 1. Force navigate client directly to target URL so browser loads deep-link
+        try {
+          if ('navigate' in matchingClient) {
+            await matchingClient.navigate(fullTargetUrl);
+          }
+        } catch (err) {
+          console.warn('[SW] client.navigate warning:', err);
+        }
+
+        // 2. Bring window to foreground
+        let focusedClient = null;
+        try {
+          if ('focus' in matchingClient) {
+            focusedClient = await matchingClient.focus();
+          }
+        } catch (err) {
+          console.warn('[SW] client.focus warning:', err);
+        }
+
+        // 3. Send direct postMessage
         try {
           matchingClient.postMessage({
             action: 'NAVIGATE_TO_SALON',
@@ -354,32 +373,7 @@ self.addEventListener('notificationclick', (event) => {
           });
         } catch (e) {}
 
-        // Focus client
-        let focusedClient = null;
-        try {
-          if ('focus' in matchingClient) {
-            focusedClient = await matchingClient.focus();
-          }
-        } catch (err) {
-          console.warn('[SW] client.focus warning:', err);
-        }
-
-        // Navigate client directly if needed (W3C standard)
-        try {
-          if ('navigate' in matchingClient && (!matchingClient.url || !matchingClient.url.includes(targetPath))) {
-            await matchingClient.navigate(fullTargetUrl);
-          }
-        } catch (err) {
-          console.warn('[SW] client.navigate warning:', err);
-        }
-
-        if (focusedClient) return;
-
-        // Fallback openWindow if focus failed on mobile
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(fullTargetUrl);
-        }
-        return;
+        return focusedClient || matchingClient;
       }
 
       // 3. No existing window: cold start with target URL

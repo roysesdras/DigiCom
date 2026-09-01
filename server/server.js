@@ -16,6 +16,7 @@ const { exec } = require('child_process');
 const cron = require('node-cron');
 const db = require('./database');
 const pushService = require('./push-service');
+const logger = require('./logger');
 const { performBackup } = require('./backup-db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'digicom_ultra_secure_jwt_key_prod_2026';
@@ -38,12 +39,13 @@ const STORAGE_SSH_KEY = process.env.STORAGE_SSH_KEY || '/root/.ssh/id_ed25519_di
 
 function syncFileToRemoteStorage(filePath) {
   const sshOption = `-i ${STORAGE_SSH_KEY} -o StrictHostKeyChecking=no`;
-  const cmd = `rsync -avz -e "ssh ${sshOption}" "${filePath}" ${STORAGE_USER}@${STORAGE_HOST}:${STORAGE_REMOTE_PATH}/`;
-  exec(cmd, (err) => {
+  const remoteTarget = `${STORAGE_USER}@${STORAGE_HOST}:${STORAGE_REMOTE_PATH}/`;
+  const cmd = `ionice -c3 nice -n 19 rsync -az -e "ssh ${sshOption}" "${filePath}" "${remoteTarget}"`;
+  exec(cmd, (err, stdout, stderr) => {
     if (err) {
-      console.error('[-] Remote storage sync error for', path.basename(filePath), ':', err.message);
+      logger.warn('STORAGE', `Remote storage sync warning for ${path.basename(filePath)}: ${err.message}`);
     } else {
-      console.log('[+] Synced to remote storage:', path.basename(filePath));
+      logger.info('STORAGE', `File synced to remote storage: ${path.basename(filePath)}`);
     }
   });
 }
@@ -257,6 +259,25 @@ app.get('/api/status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// System Log Viewer & Exporter Endpoint
+app.get('/api/logs', (req, res) => {
+  const download = req.query.download === '1' || req.query.download === 'true';
+  if (download) {
+    const logPath = logger.getLogFilePath();
+    if (fs.existsSync(logPath)) {
+      return res.download(logPath, `digicom_${new Date().toISOString().slice(0, 10)}.log`);
+    }
+    return res.status(404).send('Log file not found');
+  }
+  const lines = parseInt(req.query.lines) || 200;
+  const logs = logger.readLogFile(lines);
+  if (req.query.json === '1') {
+    return res.json({ success: true, count: logs.length, logs });
+  }
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(logs.join('\n'));
 });
 
 // 1b. Link Preview (Open Graph metadata scraper with Server-side Caching)
@@ -2370,7 +2391,7 @@ io.on('connection', (socket) => {
       status: 'online'
     });
 
-    console.log(`[+] User connected: ${userData.username || userData.id} (${socket.id})`);
+    logger.info('SOCKET', `User connected: ${userData.username || userData.id} (role: ${userData.role || 'user'})`, { socketId: socket.id, userId: userData.id });
   });
 
   // Direct 1-to-1 Private Message (Hermetic & Private between Sender and Receiver)
@@ -2382,9 +2403,11 @@ io.on('connection', (socket) => {
       const receiverId = data.receiverId;
 
       if (!receiverId) {
-        console.warn('[-] Missing receiverId in private_message');
+        logger.warn('MESSAGE', 'Missing receiverId in private_message', { senderId });
         return;
       }
+
+      logger.info('MESSAGE', `Private message from ${senderName} (${senderId}) -> ${receiverId}`, { msgId });
 
       let contentToSave = data.content;
       if (data.replyTo) {

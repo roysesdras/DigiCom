@@ -486,18 +486,24 @@ async function navigateToTarget(targetData) {
       }).catch(() => {});
     }
   } else if (contactId) {
-    // Strip any accidental admin_ prefix that might come from room naming conventions
-    const cleanContactId = String(contactId).replace(/^admin_/, '');
+    const rawContactId = String(contactId);
     await switchTab('contacts');
-    let found = Array.isArray(state.contacts) ? state.contacts.find(c => String(c.id) === cleanContactId) : null;
+    let found = Array.isArray(state.contacts)
+      ? state.contacts.find(c => String(c.id) === rawContactId || String(c.id) === rawContactId.replace(/^admin_/, '') || (c.username && c.username.toLowerCase() === senderName.toLowerCase()))
+      : null;
     if (!found) {
-      found = { id: cleanContactId, username: senderName, display_name: senderName };
+      found = { id: rawContactId, username: senderName, display_name: senderName };
     }
     selectContact(found);
     document.body.classList.add('mobile-chat-open');
     if (messageId) {
       highlightAndScrollMessage(messageId);
     }
+    setTimeout(() => {
+      const inp = document.getElementById('message-input');
+      if (inp) inp.focus();
+    }, 150);
+
     // Background async refresh without blocking UI
     if (!state.contacts || !Array.isArray(state.contacts) || state.contacts.length === 0) {
       authFetch('/api/contacts').then(r => r.ok && r.json()).then(cData => {

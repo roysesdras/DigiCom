@@ -122,9 +122,12 @@ async function sendNotificationToSubscription(subscription, payload) {
   }
 }
 
+const logger = require('./logger');
+
 async function sendNotificationToUser(userId, payload) {
   const subscriptions = await db.getSubscriptionsByUserId(userId);
   if (!subscriptions || subscriptions.length === 0) {
+    logger.info('PUSH', `No subscriptions found for user: ${userId}`);
     return { success: false, sentCount: 0, reason: 'No subscriptions found' };
   }
 
@@ -132,6 +135,7 @@ async function sendNotificationToUser(userId, payload) {
     subscriptions.map(sub => sendNotificationToSubscription(sub, payload))
   );
   const sentCount = results.filter(Boolean).length;
+  logger.info('PUSH', `Sent push notification to user: ${userId} (${sentCount}/${subscriptions.length} succeeded)`, { title: payload.title, body: payload.body });
   return { success: true, sentCount, total: subscriptions.length };
 }
 
