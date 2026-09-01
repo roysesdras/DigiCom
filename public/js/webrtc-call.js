@@ -334,7 +334,22 @@
         prejoinPageEnabled: false,
         disableThirdPartyRequests: true,
         enableWelcomePage: false,
-        enableClosePage: false
+        enableClosePage: false,
+        p2p: { enabled: true },
+        constraints: {
+          video: {
+            height: { max: 480, ideal: 360 },
+            frameRate: { max: 15 }
+          }
+        },
+        channelLastN: 4,
+        videoQuality: {
+          maxBitratesVideo: {
+            low: 100000,
+            standard: 250000,
+            high: 500000
+          }
+        }
       },
       interfaceConfigOverwrite: {
         TOOLBAR_BUTTONS: [
@@ -390,7 +405,10 @@
 
     if (window.localMediaStream) {
       try {
-        window.localMediaStream.getTracks().forEach(track => track.stop());
+        window.localMediaStream.getTracks().forEach(track => {
+          try { track.enabled = false; } catch (e) {}
+          try { track.stop(); } catch (e) {}
+        });
       } catch (e) {}
       window.localMediaStream = null;
     }

@@ -67,17 +67,45 @@ async function sendNotificationToSubscription(subscription, payload) {
       }
     };
 
-    const payloadObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
-    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    let payloadObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    if (typeof payloadObj === 'object' && payloadObj !== null) {
+      if (!payloadObj.icon) payloadObj.icon = '/img/icon-192.webp';
+      if (!payloadObj.badge) payloadObj.badge = '/img/badge-72.webp';
+
+      payloadObj.data = payloadObj.data || {};
+
+      // Enrich salonId, contactId, messageId and url if present in payload or payloadObj.data
+      const salonId = payloadObj.salonId || payloadObj.data.salonId;
+      const contactId = payloadObj.contactId || payloadObj.data.contactId || payloadObj.senderId || payloadObj.data.senderId;
+      const messageId = payloadObj.messageId || payloadObj.data.messageId;
+
+      if (salonId) payloadObj.data.salonId = salonId;
+      if (contactId) payloadObj.data.contactId = contactId;
+      if (messageId) payloadObj.data.messageId = messageId;
+
+      if (!payloadObj.url && !payloadObj.data.url) {
+        const msgQuery = messageId ? `&msg=${encodeURIComponent(messageId)}` : '';
+        if (salonId) {
+          payloadObj.data.url = `/?salon=${encodeURIComponent(salonId)}${msgQuery}`;
+        } else if (contactId) {
+          payloadObj.data.url = `/?contact=${encodeURIComponent(contactId)}${msgQuery}`;
+        } else {
+          payloadObj.data.url = '/';
+        }
+        payloadObj.url = payloadObj.data.url;
+      }
+    }
+
+    const payloadString = JSON.stringify(payloadObj);
 
     // Topic for notification grouping and collapse
     let topic = 'digicom-msg';
     if (payloadObj.data) {
-      if (payloadObj.data.salonId) topic = 'salon-' + payloadObj.data.salonId;
-      else if (payloadObj.data.senderId) topic = 'user-' + payloadObj.data.senderId;
+      if (payloadObj.data.salonId) topic = 'salon-' + String(payloadObj.data.salonId).substring(0, 30);
+      else if (payloadObj.data.contactId) topic = 'contact-' + String(payloadObj.data.contactId).substring(0, 30);
+      else if (payloadObj.data.senderId) topic = 'user-' + String(payloadObj.data.senderId).substring(0, 30);
     }
 
-    // 15 minutes (900s) TTL: Real-time chat messages expire if not delivered within 15 min
     await webpush.sendNotification(pushSubscription, payloadString, {
       TTL: 900,
       urgency: 'high',
@@ -85,7 +113,7 @@ async function sendNotificationToSubscription(subscription, payload) {
     });
     return true;
   } catch (err) {
-    console.error(`[-] Push error for endpoint ${subscription.endpoint.substring(0, 30)}...:`, err.statusCode || err.message);
+    console.error(`[-] Push error for endpoint ${subscription.endpoint ? subscription.endpoint.substring(0, 30) : 'unknown'}...:`, err.statusCode || err.message);
     if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 400) {
       console.log('[*] Invalid/expired subscription removed from DB:', subscription.endpoint.substring(0, 40));
       await db.deleteSubscriptionByEndpoint(subscription.endpoint);

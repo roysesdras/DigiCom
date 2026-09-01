@@ -255,11 +255,47 @@ class DigiStore {
     }
   }
 
+  async pruneOldAudioNotes(maxDays = 30) {
+    if (!this.db) await this.init();
+    try {
+      const tx = this.db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      const cutoffDate = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
+      const index = store.index('timestamp');
+      const cursorReq = index.openCursor();
+
+      let prunedCount = 0;
+      cursorReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const m = cursor.value;
+          let isAudio = false;
+          if (m.type === 'audio' || (typeof m.content === 'string' && m.content.includes('"type":"audio"'))) {
+            isAudio = true;
+          }
+          if (isAudio && m.timestamp && m.timestamp < cutoffDate) {
+            cursor.delete();
+            prunedCount++;
+          }
+          cursor.continue();
+        } else if (prunedCount > 0) {
+          console.log(`[+] DigiStore IndexedDB pruned ${prunedCount} audio note(s) older than ${maxDays} days.`);
+        }
+      };
+    } catch (e) {
+      console.warn('[-] DigiStore audio prune warning:', e);
+    }
+  }
+
   scheduleBackgroundPrune() {
+    const runPrune = () => {
+      this.pruneOldMessages(100);
+      this.pruneOldAudioNotes(30);
+    };
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => this.pruneOldMessages(100), { timeout: 5000 });
+      requestIdleCallback(runPrune, { timeout: 5000 });
     } else {
-      setTimeout(() => this.pruneOldMessages(100), 3000);
+      setTimeout(runPrune, 3000);
     }
   }
 

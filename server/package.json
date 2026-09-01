@@ -1,6 +1,6 @@
 {
   "name": "digicom-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sovereign Real-Time Messaging & Support Engine with E2EE and VAPID Push",
   "main": "server.js",
   "scripts": {

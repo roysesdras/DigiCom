@@ -6645,3 +6645,25 @@ input[type="date"].form-input-date {
 .search-result-card:hover {
   background: #2a3942;
 }
+
+/* Deep link targeted message highlight pulse */
+.highlight-message {
+  animation: messageHighlightPulse 2.5s ease-out forwards !important;
+}
+
+@keyframes messageHighlightPulse {
+  0% {
+    background-color: rgba(16, 185, 129, 0.35) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+    transform: scale(1.02);
+  }
+  50% {
+    background-color: rgba(16, 185, 129, 0.2) !important;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+    transform: scale(1.0);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}

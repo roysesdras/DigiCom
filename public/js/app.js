@@ -368,54 +368,26 @@ async function initAppInterface() {
     }, 600);
   }
 
-  // Handle URL deep links (e.g. ?salon=salon_123 or ?contact=user_456)
-  if (urlParams.get('salon')) {
-    const targetSalonId = urlParams.get('salon');
-    console.log('[+] Deep link to salon detected:', targetSalonId);
-    setTimeout(async () => {
-      await switchTab('salons');
-      if (!state.salons || state.salons.length === 0) {
-        try {
-          const res = await authFetch('/api/salons');
-          if (res.ok) state.salons = await res.json();
-        } catch (e) {}
-      }
-      let found = state.salons ? state.salons.find(s => String(s.id) === String(targetSalonId)) : null;
-      if (!found) {
-        try {
-          const res = await authFetch(`/api/salons/${targetSalonId}`);
-          if (res.ok) found = await res.json();
-        } catch (e) {}
-      }
-      if (found) {
-        selectSalon(found);
-      }
-    }, 400);
-  } else if (urlParams.get('contact')) {
-    const targetContactId = urlParams.get('contact');
-    console.log('[+] Deep link to contact detected:', targetContactId);
-    setTimeout(async () => {
-      await switchTab('contacts');
-      if (!state.contacts || state.contacts.length === 0) {
-        try {
-          const res = await authFetch('/api/contacts');
-          if (res.ok) state.contacts = await res.json();
-        } catch (e) {}
-      }
-      let found = state.contacts ? state.contacts.find(c => String(c.id) === String(targetContactId)) : null;
-      if (!found) {
-        try {
-          const res = await authFetch(`/api/users/profile/${targetContactId}`);
-          if (res.ok) {
-            const uData = await res.json();
-            found = { id: uData.id, username: uData.username, display_name: uData.display_name, avatar: uData.avatar };
-          }
-        } catch (e) {}
-      }
-      if (found) {
-        selectContact(found);
-      }
-    }, 400);
+  // Handle URL deep links on cold start (?salon=... &msg=..., ?contact=..., ?support=...)
+  const coldSalon = urlParams.get('salon') || urlParams.get('salonId');
+  const coldContact = urlParams.get('contact') || urlParams.get('contactId');
+  const coldSender = urlParams.get('sender') || urlParams.get('senderId');
+  const coldChannel = urlParams.get('channel') || (urlParams.get('support') ? 'support' : null);
+  const coldMsg = urlParams.get('msg') || urlParams.get('messageId');
+
+  if (coldSalon || coldContact || coldSender || coldChannel) {
+    console.log('[+] Deep link detected at startup:', { coldSalon, coldContact, coldSender, coldChannel, coldMsg });
+    await navigateToTarget({
+      salonId: coldSalon,
+      contactId: coldContact || coldSender,
+      senderId: coldSender,
+      channel: coldChannel,
+      messageId: coldMsg
+    });
+  } else if (localStorage.getItem('digicom_active_contact') && window.innerWidth > 900) {
+    const savedContactId = localStorage.getItem('digicom_active_contact');
+    const found = state.contacts.find(c => String(c.id) === String(savedContactId));
+    if (found) selectContact(found);
   }
 
   // Trigger Guided Tour on first visit for new users only (Zero initial JS footprint for returning users)
@@ -425,6 +397,124 @@ async function initAppInterface() {
     }, 1500);
   }
 }
+
+function highlightAndScrollMessage(messageId) {
+  if (!messageId) return;
+  let attempts = 0;
+  const maxAttempts = 15;
+
+  const checkAndScroll = () => {
+    const el = document.getElementById(messageId) || 
+               document.getElementById(`msg_${messageId}`) || 
+               document.getElementById(`msg-${messageId}`) ||
+               document.querySelector(`[data-msg-id="${messageId}"]`);
+
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.remove('highlight-message');
+      void el.offsetWidth; // Force CSS reflow
+      el.classList.add('highlight-message');
+      setTimeout(() => {
+        el.classList.remove('highlight-message');
+      }, 3000);
+    } else if (attempts < maxAttempts) {
+      attempts++;
+      setTimeout(checkAndScroll, 200);
+    }
+  };
+
+  requestAnimationFrame(checkAndScroll);
+}
+
+async function navigateToTarget(targetData) {
+  if (!targetData) return;
+  const payloadData = targetData.data || targetData;
+  let salonId = payloadData.salonId || targetData.salonId;
+  let contactId = payloadData.contactId || payloadData.senderId || targetData.contactId || targetData.senderId;
+  let messageId = payloadData.messageId || targetData.messageId;
+  let channel = payloadData.channel || targetData.channel;
+  const senderName = payloadData.senderName || payloadData.sender_name || targetData.senderName || targetData.title || 'Contact';
+  const salonName = payloadData.salonName || payloadData.salon_name || targetData.salonName || targetData.title || 'Salon';
+
+  const rawUrl = targetData.url || targetData.targetUrl || (payloadData && (payloadData.url || payloadData.targetUrl));
+  if (rawUrl) {
+    try {
+      const parsedUrl = new URL(rawUrl, window.location.origin);
+      if (!salonId) salonId = parsedUrl.searchParams.get('salon') || parsedUrl.searchParams.get('salonId');
+      if (!contactId) contactId = parsedUrl.searchParams.get('contact') || parsedUrl.searchParams.get('contactId') || parsedUrl.searchParams.get('sender') || parsedUrl.searchParams.get('senderId');
+      if (!messageId) messageId = parsedUrl.searchParams.get('msg') || parsedUrl.searchParams.get('messageId');
+      if (!channel) channel = parsedUrl.searchParams.get('channel');
+    } catch (e) {}
+  }
+
+  console.log('[+] navigateToTarget -> switching active conversation to:', { salonId, contactId, messageId, channel, senderName, salonName });
+
+  if (targetData.openRequests || (targetData.url && targetData.url.includes('openRequests=true'))) {
+    await switchTab('contacts');
+    showModal('add-contact-modal');
+    switchAddContactModalTab('requests');
+    return;
+  }
+
+  if (channel === 'support' || targetData.type === 'support') {
+    if (contactId) {
+      if (window.openSupportConversationBySenderId) {
+        window.openSupportConversationBySenderId(contactId);
+      }
+    } else {
+      await switchTab('support');
+    }
+    if (messageId) highlightAndScrollMessage(messageId);
+    return;
+  }
+
+  if (salonId) {
+    await switchTab('salons');
+    let found = Array.isArray(state.salons) ? state.salons.find(s => String(s.id) === String(salonId)) : null;
+    if (!found) {
+      found = { id: salonId, name: salonName };
+    }
+    selectSalon(found);
+    document.body.classList.add('mobile-chat-open');
+    if (messageId) {
+      highlightAndScrollMessage(messageId);
+    }
+    // Background async refresh without blocking UI
+    if (!state.salons || !Array.isArray(state.salons) || state.salons.length === 0) {
+      authFetch('/api/salons').then(r => r.ok && r.json()).then(sData => {
+        if (sData) state.salons = sData.salons || sData || [];
+      }).catch(() => {});
+    }
+  } else if (contactId) {
+    // Strip any accidental admin_ prefix that might come from room naming conventions
+    const cleanContactId = String(contactId).replace(/^admin_/, '');
+    await switchTab('contacts');
+    let found = Array.isArray(state.contacts) ? state.contacts.find(c => String(c.id) === cleanContactId) : null;
+    if (!found) {
+      found = { id: cleanContactId, username: senderName, display_name: senderName };
+    }
+    selectContact(found);
+    document.body.classList.add('mobile-chat-open');
+    if (messageId) {
+      highlightAndScrollMessage(messageId);
+    }
+    // Background async refresh without blocking UI
+    if (!state.contacts || !Array.isArray(state.contacts) || state.contacts.length === 0) {
+      authFetch('/api/contacts').then(r => r.ok && r.json()).then(cData => {
+        if (cData) state.contacts = cData.contacts || cData || [];
+      }).catch(() => {});
+    }
+  }
+
+  // Clean URL parameters cleanly without reloading page
+  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender'))) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (e) {}
+  }
+}
+window.navigateToTarget = navigateToTarget;
+window.highlightAndScrollMessage = highlightAndScrollMessage;
 
 function isUserOnline(userId) {
   if (!userId || !Array.isArray(state.onlineUserIds)) return false;
@@ -1751,9 +1841,33 @@ function setupEventListeners() {
   // Handle Notification Click message from Service Worker to open direct chat, salon or SOS ticket
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', async (event) => {
-      if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
-        const notifData = event.data.data || {};
+      if (event.data && (event.data.action === 'NAVIGATE_TO_SALON' || event.data.type === 'NOTIFICATION_CLICK')) {
+        const notifData = event.data.data || event.data || {};
+        const targetUrl = event.data.url || event.data.targetUrl || '';
         const act = event.data.action;
+
+        // Merge URL params into notifData as fallback (in case SW data fields are missing)
+        if (targetUrl) {
+          try {
+            const parsedUrl = new URL(targetUrl, window.location.origin);
+            if (!notifData.contactId && !notifData.senderId) {
+              const urlContact = parsedUrl.searchParams.get('contact') || parsedUrl.searchParams.get('contactId') || parsedUrl.searchParams.get('sender') || parsedUrl.searchParams.get('senderId');
+              if (urlContact) notifData.contactId = urlContact;
+            }
+            if (!notifData.salonId) {
+              const urlSalon = parsedUrl.searchParams.get('salon') || parsedUrl.searchParams.get('salonId');
+              if (urlSalon) notifData.salonId = urlSalon;
+            }
+            if (!notifData.messageId) {
+              const urlMsg = parsedUrl.searchParams.get('msg') || parsedUrl.searchParams.get('messageId');
+              if (urlMsg) notifData.messageId = urlMsg;
+            }
+            if (!notifData.channel) {
+              const urlChannel = parsedUrl.searchParams.get('channel');
+              if (urlChannel) notifData.channel = urlChannel;
+            }
+          } catch (e) {}
+        }
 
         if (notifData.type === 'call_incoming' || notifData.callerId) {
           if (window.triggerIncomingCallUI) {
@@ -1768,58 +1882,7 @@ function setupEventListeners() {
           return;
         }
 
-        if (notifData.openRequests || notifData.type === 'contact_request' || (notifData.url && notifData.url.includes('openRequests=true'))) {
-          await switchTab('contacts');
-          showModal('add-contact-modal');
-          switchAddContactModalTab('requests');
-          return;
-        }
-        if (notifData.channel === 'support' || notifData.channel === 'sos') {
-          if (notifData.senderId) {
-            window.openSupportConversationBySenderId(notifData.senderId);
-          } else {
-            await switchTab('support');
-          }
-        } else if (notifData.salonId) {
-          await switchTab('salons');
-          if (!state.salons || state.salons.length === 0) {
-            try {
-              const res = await authFetch('/api/salons');
-              if (res.ok) state.salons = await res.json();
-            } catch (e) {}
-          }
-          let found = state.salons ? state.salons.find(s => String(s.id) === String(notifData.salonId)) : null;
-          if (!found) {
-            try {
-              const res = await authFetch(`/api/salons/${notifData.salonId}`);
-              if (res.ok) found = await res.json();
-            } catch (e) {}
-          }
-          if (found) {
-            selectSalon(found);
-          }
-        } else if (notifData.senderId) {
-          await switchTab('contacts');
-          if (!state.contacts || state.contacts.length === 0) {
-            try {
-              const res = await authFetch('/api/contacts');
-              if (res.ok) state.contacts = await res.json();
-            } catch (e) {}
-          }
-          let found = state.contacts ? state.contacts.find(c => String(c.id) === String(notifData.senderId)) : null;
-          if (!found) {
-            try {
-              const res = await authFetch(`/api/users/profile/${notifData.senderId}`);
-              if (res.ok) {
-                const uData = await res.json();
-                found = { id: uData.id, username: uData.username, display_name: uData.display_name, avatar: uData.avatar };
-              }
-            } catch (e) {}
-          }
-          if (found) {
-            selectContact(found);
-          }
-        }
+        await navigateToTarget(notifData);
       }
     });
   }
@@ -1831,6 +1894,26 @@ function setupEventListeners() {
   function syncActiveChatPresence() {
     if (activeRoomSyncTimeout) clearTimeout(activeRoomSyncTimeout);
     activeRoomSyncTimeout = setTimeout(() => {
+      // Check if URL parameters have deep link (e.g. from background notification navigation)
+      if (window.location.search) {
+        const currentSearchParams = new URLSearchParams(window.location.search);
+        const urlContact = currentSearchParams.get('contact') || currentSearchParams.get('contactId');
+        const urlSalon = currentSearchParams.get('salon') || currentSearchParams.get('salonId');
+        const urlMsg = currentSearchParams.get('msg') || currentSearchParams.get('messageId');
+        const urlChannel = currentSearchParams.get('channel');
+        const urlRequests = currentSearchParams.get('openRequests');
+
+        if (urlContact || urlSalon || urlMsg || urlChannel || urlRequests) {
+          navigateToTarget({
+            contactId: urlContact,
+            salonId: urlSalon,
+            messageId: urlMsg,
+            channel: urlChannel,
+            openRequests: urlRequests === 'true'
+          });
+        }
+      }
+
       if (!state.socket || !state.socket.connected) return;
 
       let targetRoomId = null;
@@ -1874,18 +1957,21 @@ function setupEventListeners() {
   });
 
   // Push subscription toggle & Immediate Test
-  document.getElementById('btn-push-toggle').addEventListener('click', async () => {
-    const ok = await state.pushClient.subscribeUser(state.user ? state.user.id : null);
-    if (ok) {
-      document.getElementById('btn-push-toggle').classList.add('active');
-      playNotificationSound();
-      showLocalNotification('DigiCom', 'Notifications activées avec succès !');
-      // Trigger background test push from server
-      fetch('/api/test-notification', { method: 'POST' }).catch(() => {});
-    } else {
-      alert('Veuillez autoriser les notifications dans votre navigateur pour recevoir les alertes.');
-    }
-  });
+  const btnPushToggle = document.getElementById('btn-push-toggle');
+  if (btnPushToggle) {
+    btnPushToggle.addEventListener('click', async () => {
+      const ok = await state.pushClient.subscribeUser(state.user ? state.user.id : null);
+      if (ok) {
+        btnPushToggle.classList.add('active');
+        playNotificationSound();
+        showLocalNotification('DigiCom', 'Notifications activées avec succès !');
+        // Trigger background test push from server
+        fetch('/api/test-notification', { method: 'POST' }).catch(() => {});
+      } else {
+        alert('Veuillez autoriser les notifications dans votre navigateur pour recevoir les alertes.');
+      }
+    });
+  }
 
   // ---------------- MENTIONS & TAGGING AUTOCOMPLETE ----------------
   function handleMessageInputMention() {
@@ -2329,42 +2415,49 @@ function setupEventListeners() {
   }
 
   // First time setup form
-  document.getElementById('setup-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('setup-username').value.trim();
-    const displayName = document.getElementById('setup-displayname').value.trim();
-    const password = document.getElementById('setup-password').value;
-    const errBox = document.getElementById('setup-error');
+  const setupForm = document.getElementById('setup-form');
+  if (setupForm) {
+    setupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('setup-username').value.trim();
+      const displayName = document.getElementById('setup-displayname').value.trim();
+      const password = document.getElementById('setup-password').value;
+      const errBox = document.getElementById('setup-error');
 
-    try {
-      const res = await fetch('/api/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, displayName, password })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'initialisation');
+      try {
+        const res = await fetch('/api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, displayName, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'initialisation');
 
-      state.user = data.user;
-      if (data.token) {
-        localStorage.setItem('digicom_token', data.token);
+        state.user = data.user;
+        if (data.token) {
+          localStorage.setItem('digicom_token', data.token);
+        }
+        localStorage.setItem('digicom_user', JSON.stringify(data.user));
+
+        hideModals();
+        initAppInterface();
+      } catch (err) {
+        if (errBox) {
+          errBox.textContent = err.message;
+          errBox.style.display = 'block';
+        }
       }
-      localStorage.setItem('digicom_user', JSON.stringify(data.user));
-
-      hideModals();
-      initAppInterface();
-    } catch (err) {
-      errBox.textContent = err.message;
-      errBox.style.display = 'block';
-    }
-  });
+    });
+  }
 
   // Login form
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value;
-    const errBox = document.getElementById('login-error');
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errBox = document.getElementById('login-error');
 
     try {
       const res = await fetch('/api/login', {
@@ -2388,10 +2481,13 @@ function setupEventListeners() {
       hideModals();
       initAppInterface();
     } catch (err) {
-      errBox.textContent = err.message;
-      errBox.style.display = 'block';
+      if (errBox) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
     }
   });
+}
 
   // Registration / Login Modal Switchers
   const linkShowRegister = document.getElementById('link-show-register');
@@ -2694,6 +2790,137 @@ function setupEventListeners() {
       window.location.reload();
     });
   }
+
+  // Chat options dropdown menu listeners
+  const btnChatMoreMenu = document.getElementById('btn-chat-more-menu');
+  if (btnChatMoreMenu) {
+    btnChatMoreMenu.onclick = (e) => {
+      if (window.toggleChatMoreMenu) window.toggleChatMoreMenu(e);
+    };
+    btnChatMoreMenu.ontouchend = (e) => {
+      e.preventDefault();
+      if (window.toggleChatMoreMenu) window.toggleChatMoreMenu(e);
+    };
+  }
+
+  const menuItemMeeting = document.getElementById('menu-item-meeting');
+  if (menuItemMeeting) {
+    menuItemMeeting.addEventListener('click', () => {
+      if (typeof startSalonMeeting === 'function') startSalonMeeting();
+      else if (window.startSalonMeeting) window.startSalonMeeting();
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemFiles = document.getElementById('menu-item-files');
+  if (menuItemFiles) {
+    menuItemFiles.addEventListener('click', () => {
+      if (typeof openSalonFilesDrawer === 'function') openSalonFilesDrawer();
+      else if (window.openSalonFilesDrawer) window.openSalonFilesDrawer();
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemMembers = document.getElementById('menu-item-members');
+  if (menuItemMembers) {
+    menuItemMembers.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof openSalonInfoModal === 'function') openSalonInfoModal(state.activeSalon.id);
+        else if (window.openSalonInfoModal) window.openSalonInfoModal(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSuperadmin = document.getElementById('menu-item-superadmin');
+  if (menuItemSuperadmin) {
+    menuItemSuperadmin.addEventListener('click', () => {
+      if (window.AdminDashboard) {
+        window.AdminDashboard.open();
+      } else {
+        const s = document.createElement('script');
+        s.src = '/js/admin-dashboard.min.js?v=1192';
+        s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
+        document.body.appendChild(s);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemRefresh = document.getElementById('menu-item-refresh');
+  if (menuItemRefresh) {
+    menuItemRefresh.addEventListener('click', () => {
+      if (typeof refreshActiveChat === 'function') refreshActiveChat();
+      else if (window.refreshActiveChat) window.refreshActiveChat();
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemAdmin = document.getElementById('menu-item-admin');
+  if (menuItemAdmin) {
+    menuItemAdmin.addEventListener('click', () => {
+      const adminModal = document.getElementById('admin-modal');
+      if (adminModal) adminModal.style.display = 'flex';
+      if (typeof loadAdminUsers === 'function') loadAdminUsers();
+      else if (window.loadAdminUsers) window.loadAdminUsers();
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSalonTasks = document.getElementById('menu-item-salon-tasks');
+  if (menuItemSalonTasks) {
+    menuItemSalonTasks.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof openSalonTasksModal === 'function') openSalonTasksModal(state.activeSalon.id);
+        else if (window.openSalonTasksModal) window.openSalonTasksModal(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSalonBroadcast = document.getElementById('menu-item-salon-broadcast');
+  if (menuItemSalonBroadcast) {
+    menuItemSalonBroadcast.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof toggleSalonBroadcastMode === 'function') toggleSalonBroadcastMode(state.activeSalon.id);
+        else if (window.toggleSalonBroadcastMode) window.toggleSalonBroadcastMode(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSalonSearch = document.getElementById('menu-item-salon-search');
+  if (menuItemSalonSearch) {
+    menuItemSalonSearch.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof openSalonSearchModal === 'function') openSalonSearchModal(state.activeSalon.id);
+        else if (window.openSalonSearchModal) window.openSalonSearchModal(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSalonDecisions = document.getElementById('menu-item-salon-decisions');
+  if (menuItemSalonDecisions) {
+    menuItemSalonDecisions.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof openSalonDecisionsModal === 'function') openSalonDecisionsModal(state.activeSalon.id);
+        else if (window.openSalonDecisionsModal) window.openSalonDecisionsModal(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
+
+  const menuItemSalonCaisse = document.getElementById('menu-item-salon-caisse');
+  if (menuItemSalonCaisse) {
+    menuItemSalonCaisse.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof openSalonCaisseModal === 'function') openSalonCaisseModal(state.activeSalon.id);
+        else if (window.openSalonCaisseModal) window.openSalonCaisseModal(state.activeSalon.id);
+      }
+      if (window.closeChatMoreMenu) window.closeChatMoreMenu();
+    });
+  }
 }
 
 // ---------------- CLIENT-SIDE IMAGE COMPRESSION ----------------
@@ -2980,6 +3207,8 @@ async function startVoiceRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        channelCount: 1,
+        sampleRate: 16000,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
@@ -2987,7 +3216,8 @@ async function startVoiceRecording() {
     });
 
     const mimeType = getSupportedAudioMimeType();
-    const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 };
+    // Fixed 16 kbps Opus mono encoding for ultra-low data usage (~120 KB/min)
+    const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 16000 } : { audioBitsPerSecond: 16000 };
 
     if (window.MediaRecorder) {
       try {
@@ -3131,28 +3361,23 @@ async function loadContacts() {
   renderCurrentActiveTabFeed();
   updateAllTabsBadges();
 
-  // Restore active salon, contact, or support session from URL
+  // Restore active salon, contact, or support session from URL on startup
   const urlParams = new URLSearchParams(window.location.search);
   const urlSalon = urlParams.get('salon') || urlParams.get('salonId');
-  const urlChannel = urlParams.get('channel');
+  const urlContact = urlParams.get('contact') || urlParams.get('contactId');
+  const urlChannel = urlParams.get('channel') || (urlParams.get('support') ? 'support' : null);
   const urlSender = urlParams.get('sender') || urlParams.get('senderId');
+  const urlMsg = urlParams.get('msg') || urlParams.get('messageId');
 
-  if (urlSalon) {
-    switchTab('salons').then(() => {
-      const found = state.salons.find(s => String(s.id) === String(urlSalon));
-      if (found) selectSalon(found);
+  if (urlSalon || urlContact || urlSender || urlChannel) {
+    navigateToTarget({
+      salonId: urlSalon,
+      contactId: urlContact || urlSender,
+      senderId: urlSender,
+      channel: urlChannel,
+      messageId: urlMsg
     });
     return;
-  }
-
-  if (urlChannel === 'support' || urlParams.get('support')) {
-    if (urlSender) {
-      window.openSupportConversationBySenderId(urlSender);
-      return;
-    } else {
-      switchTab('support');
-      return;
-    }
   }
 
   if (urlParams.get('openRequests') === 'true') {
@@ -3233,14 +3458,6 @@ async function loadContacts() {
     }
   }
 
-  const targetContactId = urlParams.get('contact') || localStorage.getItem('digicom_active_contact');
-  if (targetContactId) {
-    const found = state.contacts.find(c => String(c.id) === String(targetContactId));
-    if (found) {
-      selectContact(found);
-      return;
-    }
-  }
 }
 
 async function renderMyQrCode() {
@@ -4139,6 +4356,7 @@ function selectContact(contact) {
   state.activeTab = 'contacts';
   state.unreadCounts[contact.id] = 0;
   localStorage.setItem('digicom_active_contact', contact.id);
+  localStorage.removeItem('digicom_active_salon');
 
   // Reset scroll unread badge
   const scrollBadge = document.getElementById('scroll-unread-badge');
@@ -5362,6 +5580,11 @@ window.resetAudioPlayback = function(audioId) {
 
   if (audio) {
     try { audio.currentTime = 0; } catch (e) {}
+    if (audio.src && audio.src.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(audio.src);
+      } catch (e) {}
+    }
   }
 
   if (playIcon) playIcon.style.display = 'block';
@@ -6398,10 +6621,10 @@ async function selectSalon(salon) {
   state.activeTab = 'salons';
   state.unreadSalonCounts[salon.id] = 0;
   cancelReply();
+  localStorage.removeItem('digicom_active_contact');
+  localStorage.setItem('digicom_active_salon', salon.id);
 
-  if (window.innerWidth <= 768) {
-    document.body.classList.add('mobile-chat-open');
-  }
+  document.body.classList.add('mobile-chat-open');
 
   const formattedName = formatSalonName(salon.name);
 
@@ -7672,32 +7895,50 @@ function initSalonModulesBar() {
   const bar = document.getElementById('salon-modules-bar');
   if (!bar) return;
 
-  document.getElementById('tab-salon-tasks')?.addEventListener('click', () => {
-    if (state.activeSalon) openSalonTasksModal(state.activeSalon.id);
-  });
+  const tabTasks = document.getElementById('tab-salon-tasks');
+  if (tabTasks) {
+    tabTasks.addEventListener('click', () => {
+      if (state.activeSalon) openSalonTasksModal(state.activeSalon.id);
+    });
+  }
 
-  document.getElementById('tab-salon-threads')?.addEventListener('click', () => {
-    if (state.activeSalon) {
-      if (typeof showToast === 'function') showToast('Cliquez sur "Discuter en fil" sous un message du salon.');
-      else alert('Cliquez sur "Discuter en fil" sous un message du salon.');
-    }
-  });
+  const tabThreads = document.getElementById('tab-salon-threads');
+  if (tabThreads) {
+    tabThreads.addEventListener('click', () => {
+      if (state.activeSalon) {
+        if (typeof showToast === 'function') showToast('Cliquez sur "Discuter en fil" sous un message du salon.');
+        else alert('Cliquez sur "Discuter en fil" sous un message du salon.');
+      }
+    });
+  }
 
-  document.getElementById('tab-salon-broadcast')?.addEventListener('click', () => {
-    if (state.activeSalon) toggleSalonBroadcastMode(state.activeSalon.id);
-  });
+  const tabBroadcast = document.getElementById('tab-salon-broadcast');
+  if (tabBroadcast) {
+    tabBroadcast.addEventListener('click', () => {
+      if (state.activeSalon) toggleSalonBroadcastMode(state.activeSalon.id);
+    });
+  }
 
-  document.getElementById('tab-salon-search')?.addEventListener('click', () => {
-    if (state.activeSalon) openSalonSearchModal(state.activeSalon.id);
-  });
+  const tabSearch = document.getElementById('tab-salon-search');
+  if (tabSearch) {
+    tabSearch.addEventListener('click', () => {
+      if (state.activeSalon) openSalonSearchModal(state.activeSalon.id);
+    });
+  }
 
-  document.getElementById('tab-salon-decisions')?.addEventListener('click', () => {
-    if (state.activeSalon) openSalonDecisionsModal(state.activeSalon.id);
-  });
+  const tabDecisions = document.getElementById('tab-salon-decisions');
+  if (tabDecisions) {
+    tabDecisions.addEventListener('click', () => {
+      if (state.activeSalon) openSalonDecisionsModal(state.activeSalon.id);
+    });
+  }
 
-  document.getElementById('tab-salon-caisse')?.addEventListener('click', () => {
-    if (state.activeSalon) openSalonCaisseModal(state.activeSalon.id);
-  });
+  const tabCaisse = document.getElementById('tab-salon-caisse');
+  if (tabCaisse) {
+    tabCaisse.addEventListener('click', () => {
+      if (state.activeSalon) openSalonCaisseModal(state.activeSalon.id);
+    });
+  }
 }
 
 // 1. Tâches (Tasks & Kanban)
@@ -8272,35 +8513,38 @@ function populateSalonMembersDropdown(selectId) {
 }
 
 function initSalonForms() {
-  document.getElementById('form-create-salon-task')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!state.activeSalon) return;
-    const title = document.getElementById('task-input-title').value;
-    const assignedTo = document.getElementById('task-select-assigned').value;
-    const dueDate = document.getElementById('task-input-due').value;
+  const formTask = document.getElementById('form-create-salon-task');
+  if (formTask) {
+    formTask.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeSalon) return;
+      const title = document.getElementById('task-input-title').value;
+      const assignedTo = document.getElementById('task-select-assigned').value;
+      const dueDate = document.getElementById('task-input-due').value;
 
-    try {
-      const res = await authFetch(`/api/salons/${state.activeSalon.id}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, assignedTo, dueDate })
-      });
-      const data = await res.json();
-      if (data.tasks) {
-        window.salonModulesState.tasks = data.tasks;
-        renderKanbanBoard(data.tasks);
-        document.getElementById('task-input-title').value = '';
-        const dueInput = document.getElementById('task-input-due');
-        if (dueInput) {
-          dueInput.value = '';
-          dueInput.removeAttribute('value');
-          dueInput.classList.remove('has-value');
+      try {
+        const res = await authFetch(`/api/salons/${state.activeSalon.id}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, assignedTo, dueDate })
+        });
+        const data = await res.json();
+        if (data.tasks) {
+          window.salonModulesState.tasks = data.tasks;
+          renderKanbanBoard(data.tasks);
+          document.getElementById('task-input-title').value = '';
+          const dueInput = document.getElementById('task-input-due');
+          if (dueInput) {
+            dueInput.value = '';
+            dueInput.removeAttribute('value');
+            dueInput.classList.remove('has-value');
+          }
         }
+      } catch (err) {
+        console.error('[-] Error creating task:', err);
       }
-    } catch (err) {
-      console.error('[-] Error creating task:', err);
-    }
-  });
+    });
+  }
 
   const taskDueInput = document.getElementById('task-input-due');
   if (taskDueInput) {
@@ -8313,158 +8557,182 @@ function initSalonForms() {
     });
   }
 
-  document.getElementById('form-send-thread-reply')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!state.activeSalon || !window.salonModulesState.activeThreadParentId) return;
-    const input = document.getElementById('input-thread-reply');
-    const content = input.value;
-    if (!content.trim()) return;
+  const formThread = document.getElementById('form-send-thread-reply');
+  if (formThread) {
+    formThread.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeSalon || !window.salonModulesState.activeThreadParentId) return;
+      const input = document.getElementById('input-thread-reply');
+      const content = input.value;
+      if (!content.trim()) return;
 
-    try {
-      const res = await authFetch(`/api/salons/${state.activeSalon.id}/threads/${window.salonModulesState.activeThreadParentId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
-      const data = await res.json();
-      if (data.messages) {
-        renderThreadReplies(data.messages);
-        input.value = '';
-      }
-    } catch (err) {
-      console.error('[-] Error sending thread reply:', err);
-    }
-  });
-
-  document.getElementById('form-create-salon-decision')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!state.activeSalon) return;
-    const title = document.getElementById('decision-input-title').value;
-    const description = document.getElementById('decision-input-desc').value;
-
-    const selectedChips = document.querySelectorAll('#decision-members-chips .member-select-chip.selected');
-    const responsibleId = Array.from(selectedChips).map(c => c.getAttribute('data-user-id')).join(',');
-
-    try {
-      const res = await authFetch(`/api/salons/${state.activeSalon.id}/decisions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, responsibleId })
-      });
-      const data = await res.json();
-      if (data.error) {
-        if (typeof showToast === 'function') showToast(data.error);
-        else alert(data.error);
-        return;
-      }
-      if (data.decisions) {
-        window.salonModulesState.decisions = data.decisions;
-        applyDecisionFilters();
-        document.getElementById('decision-input-title').value = '';
-        const descEl = document.getElementById('decision-input-desc');
-        if (descEl) {
-          descEl.value = '';
-          descEl.style.height = 'auto';
+      try {
+        const res = await authFetch(`/api/salons/${state.activeSalon.id}/threads/${window.salonModulesState.activeThreadParentId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const data = await res.json();
+        if (data.messages) {
+          renderThreadReplies(data.messages);
+          input.value = '';
         }
-        document.querySelectorAll('#decision-members-chips .member-select-chip.selected').forEach(c => c.classList.remove('selected'));
-        if (typeof showToast === 'function') showToast('Décision enregistrée avec succès');
+      } catch (err) {
+        console.error('[-] Error sending thread reply:', err);
       }
-    } catch (err) {
-      console.error('[-] Error creating decision:', err);
-    }
-  });
+    });
+  }
 
-  document.getElementById('decision-filter-month')?.addEventListener('change', () => applyDecisionFilters());
-  document.getElementById('decision-filter-year')?.addEventListener('change', () => applyDecisionFilters());
+  const formDecision = document.getElementById('form-create-salon-decision');
+  if (formDecision) {
+    formDecision.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeSalon) return;
+      const title = document.getElementById('decision-input-title').value;
+      const description = document.getElementById('decision-input-desc').value;
+
+      const selectedChips = document.querySelectorAll('#decision-members-chips .member-select-chip.selected');
+      const responsibleId = Array.from(selectedChips).map(c => c.getAttribute('data-user-id')).join(',');
+
+      try {
+        const res = await authFetch(`/api/salons/${state.activeSalon.id}/decisions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description, responsibleId })
+        });
+        const data = await res.json();
+        if (data.error) {
+          if (typeof showToast === 'function') showToast(data.error);
+          else alert(data.error);
+          return;
+        }
+        if (data.decisions) {
+          window.salonModulesState.decisions = data.decisions;
+          applyDecisionFilters();
+          document.getElementById('decision-input-title').value = '';
+          const descEl = document.getElementById('decision-input-desc');
+          if (descEl) {
+            descEl.value = '';
+            descEl.style.height = 'auto';
+          }
+          document.querySelectorAll('#decision-members-chips .member-select-chip.selected').forEach(c => c.classList.remove('selected'));
+          if (typeof showToast === 'function') showToast('Décision enregistrée avec succès');
+        }
+      } catch (err) {
+        console.error('[-] Error creating decision:', err);
+      }
+    });
+  }
+
+  const filterMonth = document.getElementById('decision-filter-month');
+  if (filterMonth) filterMonth.addEventListener('change', () => applyDecisionFilters());
+
+  const filterYear = document.getElementById('decision-filter-year');
+  if (filterYear) filterYear.addEventListener('change', () => applyDecisionFilters());
 
   // Caisse Target Edit Listeners
-  document.getElementById('btn-edit-caisse-target')?.addEventListener('click', () => {
-    const box = document.getElementById('caisse-target-edit-box');
-    if (!box) return;
-    const isOpening = box.style.display === 'none';
-    box.style.display = isOpening ? 'flex' : 'none';
-    if (isOpening) {
+  const btnEditCaisse = document.getElementById('btn-edit-caisse-target');
+  if (btnEditCaisse) {
+    btnEditCaisse.addEventListener('click', () => {
+      const box = document.getElementById('caisse-target-edit-box');
+      if (!box) return;
+      const isOpening = box.style.display === 'none';
+      box.style.display = isOpening ? 'flex' : 'none';
+      if (isOpening) {
+        const input = document.getElementById('caisse-input-target-amount');
+        if (input) {
+          input.value = (window.salonModulesState.finances?.target_amount) || '';
+          input.focus();
+        }
+      }
+    });
+  }
+
+  const btnCancelCaisse = document.getElementById('btn-cancel-caisse-target');
+  if (btnCancelCaisse) {
+    btnCancelCaisse.addEventListener('click', () => {
+      const box = document.getElementById('caisse-target-edit-box');
+      if (box) box.style.display = 'none';
+    });
+  }
+
+  const btnSaveCaisse = document.getElementById('btn-save-caisse-target');
+  if (btnSaveCaisse) {
+    btnSaveCaisse.addEventListener('click', async () => {
+      if (!state.activeSalon) return;
       const input = document.getElementById('caisse-input-target-amount');
-      if (input) {
-        input.value = (window.salonModulesState.finances?.target_amount) || '';
-        input.focus();
+      const targetAmount = parseFloat(input?.value) || 0;
+
+      try {
+        const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/target`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetAmount })
+        });
+        const data = await res.json();
+        if (data.error) {
+          if (typeof showToast === 'function') showToast(data.error);
+          else alert(data.error);
+          return;
+        }
+        if (data.finances) {
+          window.salonModulesState.finances = data.finances;
+          renderCaisse(data.finances);
+          const box = document.getElementById('caisse-target-edit-box');
+          if (box) box.style.display = 'none';
+          if (typeof showToast === 'function') showToast('Objectif financier mis à jour');
+        }
+      } catch (err) {
+        console.error('[-] Error saving caisse target:', err);
       }
-    }
-  });
+    });
+  }
 
-  document.getElementById('btn-cancel-caisse-target')?.addEventListener('click', () => {
-    const box = document.getElementById('caisse-target-edit-box');
-    if (box) box.style.display = 'none';
-  });
+  const formTx = document.getElementById('form-create-salon-transaction');
+  if (formTx) {
+    formTx.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeSalon) return;
+      const type = document.getElementById('tx-select-type').value;
+      const amount = document.getElementById('tx-input-amount').value;
+      const category = document.getElementById('tx-select-category').value;
+      const memberSelect = document.getElementById('tx-select-member');
+      const memberId = memberSelect ? memberSelect.value : '';
+      const memberName = memberSelect && memberSelect.selectedOptions[0] && memberSelect.value ? memberSelect.selectedOptions[0].text : '';
+      const note = document.getElementById('tx-input-note').value;
 
-  document.getElementById('btn-save-caisse-target')?.addEventListener('click', async () => {
-    if (!state.activeSalon) return;
-    const input = document.getElementById('caisse-input-target-amount');
-    const targetAmount = parseFloat(input?.value) || 0;
-
-    try {
-      const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/target`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetAmount })
-      });
-      const data = await res.json();
-      if (data.error) {
-        if (typeof showToast === 'function') showToast(data.error);
-        else alert(data.error);
-        return;
+      try {
+        const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, amount, category, memberId, memberName, note })
+        });
+        const data = await res.json();
+        if (data.error) {
+          if (typeof showToast === 'function') showToast(data.error);
+          else alert(data.error);
+          return;
+        }
+        if (data.finances) {
+          window.salonModulesState.finances = data.finances;
+          renderCaisse(data.finances);
+          document.getElementById('tx-input-amount').value = '';
+          document.getElementById('tx-input-note').value = '';
+          if (memberSelect) memberSelect.value = '';
+          if (typeof showToast === 'function') showToast('Transaction enregistrée avec succès');
+        }
+      } catch (err) {
+        console.error('[-] Error creating transaction:', err);
       }
-      if (data.finances) {
-        window.salonModulesState.finances = data.finances;
-        renderCaisse(data.finances);
-        const box = document.getElementById('caisse-target-edit-box');
-        if (box) box.style.display = 'none';
-        if (typeof showToast === 'function') showToast('Objectif financier mis à jour');
-      }
-    } catch (err) {
-      console.error('[-] Error saving caisse target:', err);
-    }
-  });
+    });
+  }
 
-  document.getElementById('form-create-salon-transaction')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!state.activeSalon) return;
-    const type = document.getElementById('tx-select-type').value;
-    const amount = document.getElementById('tx-input-amount').value;
-    const category = document.getElementById('tx-select-category').value;
-    const memberSelect = document.getElementById('tx-select-member');
-    const memberId = memberSelect ? memberSelect.value : '';
-    const memberName = memberSelect && memberSelect.selectedOptions[0] && memberSelect.value ? memberSelect.selectedOptions[0].text : '';
-    const note = document.getElementById('tx-input-note').value;
-
-    try {
-      const res = await authFetch(`/api/salons/${state.activeSalon.id}/finances/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, amount, category, memberId, memberName, note })
-      });
-      const data = await res.json();
-      if (data.error) {
-        if (typeof showToast === 'function') showToast(data.error);
-        else alert(data.error);
-        return;
-      }
-      if (data.finances) {
-        window.salonModulesState.finances = data.finances;
-        renderCaisse(data.finances);
-        document.getElementById('tx-input-amount').value = '';
-        document.getElementById('tx-input-note').value = '';
-        if (memberSelect) memberSelect.value = '';
-        if (typeof showToast === 'function') showToast('Transaction enregistrée avec succès');
-      }
-    } catch (err) {
-      console.error('[-] Error creating transaction:', err);
-    }
-  });
-
-  document.getElementById('salon-search-keyword')?.addEventListener('input', (e) => {
-    renderSearchResults(e.target.value, window.salonModulesState.activeFilter);
-  });
+  const searchInput = document.getElementById('salon-search-keyword');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      renderSearchResults(e.target.value, window.salonModulesState.activeFilter);
+    });
+  }
 
   document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.addEventListener('click', (e) => {
@@ -8481,4 +8749,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initSalonModulesBar();
   initSalonForms();
 });
+
+window.openSalonTasksModal = openSalonTasksModal;
+window.toggleSalonBroadcastMode = toggleSalonBroadcastMode;
+window.openSalonSearchModal = openSalonSearchModal;
+window.openSalonDecisionsModal = openSalonDecisionsModal;
+window.openSalonCaisseModal = openSalonCaisseModal;
+window.openSalonFilesDrawer = openSalonFilesDrawer;
+window.openSalonInfoModal = openSalonInfoModal;
+window.startSalonMeeting = startSalonMeeting;
+
 

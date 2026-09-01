@@ -115,7 +115,13 @@ app.use(cors({
   credentials: true
 }));
 const compression = require('compression');
-app.use(compression());
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-elem * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-attr * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' data: blob:; img-src * data: blob:; media-src * data: blob:; connect-src * 'unsafe-inline' blob:; frame-src *;"
+  );
+  next();
+});
 
 app.use(express.json());
 app.use(cookieParser());
@@ -2436,8 +2442,17 @@ io.on('connection', (socket) => {
         pushService.sendNotificationToUser(receiverId, {
           title: senderName,
           body: pushBody,
-          icon: '/img/icon-192.png',
-          data: { url: `/?contact=${senderId}`, channel: 'direct', senderId: senderId }
+          icon: '/img/icon-192.webp',
+          badge: '/img/badge-72.webp',
+          tag: `contact-${senderId}`,
+          data: {
+            url: `/?contact=${senderId}&msg=${messageRecord.id}`,
+            channel: 'direct',
+            senderId: senderId,
+            contactId: senderId,
+            senderName: senderName,
+            messageId: messageRecord.id
+          }
         });
       }
     } catch (err) {
@@ -2658,12 +2673,16 @@ io.on('connection', (socket) => {
             pushService.sendNotificationToUser(member.id, {
               title: notificationTitle,
               body: pushBody.length > 70 ? pushBody.substring(0, 70) + '...' : pushBody,
-              icon: '/img/icon-192.png',
-              badge: '/img/badge-72.png',
+              icon: '/img/icon-192.webp',
+              badge: '/img/badge-72.webp',
+              tag: `salon-${salonId}`,
               data: {
-                url: `/?salon=${salonId}`,
+                url: `/?salon=${salonId}&msg=${messageRecord.id}`,
                 channel: 'salon',
-                salonId: salonId
+                salonId: salonId,
+                salonName: formattedSalonName,
+                senderName: senderName,
+                messageId: messageRecord.id
               }
             }).catch(e => console.error('[-] Push error to salon member:', e));
           }
@@ -2720,12 +2739,15 @@ io.on('connection', (socket) => {
       const courseTitle = context.courseTitle || context.pageTitle || '';
       pushService.sendNotificationToAdmin({
         title: `SOS Support - ${senderName}`,
-        body: courseTitle ? `[${courseTitle}] : ${data.content}` : data.content,
-        icon: '/img/icon-192.png',
+        body: courseTitle ? `[${courseTitle}] : ${data.content}` : (typeof data.content === 'string' ? data.content : 'Demande d\'assistance'),
+        icon: '/img/icon-192.webp',
+        badge: '/img/badge-72.webp',
+        tag: `support-${senderId}`,
         data: {
-          url: `/?channel=support&sender=${senderId}`,
+          url: `/?channel=support&sender=${senderId}&msg=${msgId}`,
           channel: 'support',
-          senderId: senderId
+          senderId: senderId,
+          messageId: msgId
         }
       });
 

@@ -35,9 +35,32 @@ function runCommand(cmd) {
   });
 }
 
+const { db: activeDb } = require('./database');
 const sqlite3 = require('sqlite3').verbose();
 
-function createSnapshotVacuum(sourcePath, targetPath) {
+function createDatabaseSnapshot(sourcePath, targetPath) {
+  return new Promise((resolve, reject) => {
+    // 1. Deleguer a la methode native db.backup() SQLite si l'instance active est disponible
+    if (activeDb && typeof activeDb.backup === 'function') {
+      try {
+        activeDb.backup(targetPath, (err) => {
+          if (!err) {
+            console.log('[+] Native db.backup() snapshot completed successfully.');
+            return resolve();
+          }
+          console.warn('[-] db.backup() notice, trying VACUUM INTO fallback:', err.message);
+          fallbackVacuum(sourcePath, targetPath).then(resolve).catch(reject);
+        });
+        return;
+      } catch (e) {
+        console.warn('[-] Native db.backup() exception, trying VACUUM INTO fallback:', e.message);
+      }
+    }
+    fallbackVacuum(sourcePath, targetPath).then(resolve).catch(reject);
+  });
+}
+
+function fallbackVacuum(sourcePath, targetPath) {
   return new Promise((resolve, reject) => {
     const db = new sqlite3.Database(sourcePath, sqlite3.OPEN_READWRITE, (err) => {
       if (err) return reject(err);
@@ -65,12 +88,12 @@ async function performBackup() {
   const encryptedBackup = path.join(backupDir, `digicom_backup_${timestamp}.db.enc`);
 
   try {
-    // 1. Create non-blocking atomic database snapshot using SQLite VACUUM INTO
+    // 1. Create non-blocking atomic database snapshot using native db.backup()
     try {
-      await createSnapshotVacuum(dbPath, tempSnapshot);
-      console.log('[+] Non-blocking SQLite snapshot created via VACUUM INTO:', tempSnapshot);
+      await createDatabaseSnapshot(dbPath, tempSnapshot);
+      console.log('[+] Non-blocking SQLite snapshot created:', tempSnapshot);
     } catch (vErr) {
-      console.warn('[-] VACUUM INTO snapshot fallback to copyFileSync:', vErr.message);
+      console.warn('[-] Snapshot fallback to copyFileSync:', vErr.message);
       fs.copyFileSync(dbPath, tempSnapshot);
     }
 
