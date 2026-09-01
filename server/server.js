@@ -128,9 +128,10 @@ app.use(cookieParser());
 
 function setStaticCacheHeaders(res, filePath) {
   // 1. Dynamic Entry Points (Always fresh)
-  if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  if (filePath.endsWith('.html') || filePath.includes('sw.js')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
   }
   // 2. Immutable Fonts
   else if (filePath.match(/\.(woff2?|ttf|eot|otf)$/i)) {

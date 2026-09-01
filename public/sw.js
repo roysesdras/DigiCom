@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1192';
+const CACHE_NAME = 'digicom-pwa-v1195';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -43,17 +43,19 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME && key !== MEDIA_CACHE_NAME) {
+            console.log('[SW] Purging stale cache key:', key);
             return caches.delete(key);
           }
         })
       );
-    })
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 // Helper: Trim media cache to max items
@@ -69,32 +71,33 @@ async function trimMediaCache(maxItems = 150) {
   } catch (e) {}
 }
 
-// Helper: Handle HTTP 206 Partial Content Range slicing for Audio/Video from Cache
+// Range 206 helper for offline audio/video streaming playback
 async function handleRangeMediaResponse(request, cachedResponse) {
   const rangeHeader = request.headers.get('range');
-  if (!rangeHeader || !cachedResponse) {
-    return cachedResponse;
-  }
+  if (!rangeHeader || !cachedResponse) return cachedResponse;
 
   try {
     const arrayBuffer = await cachedResponse.arrayBuffer();
-    const totalSize = arrayBuffer.byteLength;
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    const bytes = rangeHeader.replace(/bytes=/, '').split('-');
+    const total = arrayBuffer.byteLength;
+    const start = parseInt(bytes[0], 10);
+    const end = bytes[1] ? parseInt(bytes[1], 10) : total - 1;
 
-    if (!match) return cachedResponse;
+    if (start >= total || end >= total) {
+      return new Response('', {
+        status: 416,
+        statusText: 'Requested Range Not Satisfiable',
+        headers: { 'Content-Range': `bytes */${total}` }
+      });
+    }
 
-    const start = parseInt(match[1], 10);
-    const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-    const safeEnd = Math.min(end, totalSize - 1);
-    const chunk = arrayBuffer.slice(start, safeEnd + 1);
-
-    const contentType = cachedResponse.headers.get('content-type') || 'audio/webm';
+    const chunk = arrayBuffer.slice(start, end + 1);
     return new Response(chunk, {
       status: 206,
       statusText: 'Partial Content',
       headers: {
-        'Content-Type': contentType,
-        'Content-Range': `bytes ${start}-${safeEnd}/${totalSize}`,
+        'Content-Type': cachedResponse.headers.get('Content-Type') || 'audio/webm',
+        'Content-Range': `bytes ${start}-${end}/${total}`,
         'Content-Length': String(chunk.byteLength),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=31536000, immutable'
@@ -105,7 +108,7 @@ async function handleRangeMediaResponse(request, cachedResponse) {
   }
 }
 
-// Fetch event listener with Cache-First for Uploads & Fast Network-First with AbortController for App Assets
+// Fetch event listener with Smart Network-First for Navigation & Version-Exact Caching for Assets
 self.addEventListener('fetch', (event) => {
   let url;
   try {
@@ -137,7 +140,6 @@ self.addEventListener('fetch', (event) => {
         }
 
         try {
-          // Fetch full clean file from network without range to cache the whole asset
           const netRes = await fetch(cacheKey);
           if (netRes && netRes.status === 200) {
             await cache.put(cacheKey, netRes.clone());
@@ -153,14 +155,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Instant Cache-First (Stale-While-Revalidate) Strategy for App Shell Assets (< 1s Startup)
+  // 2. Network-First Strategy for Navigation & HTML Entry Points (Always fresh on F5/mobile refresh, offline fallback)
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      (async () => {
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.status === 200) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put('/index.html', networkResponse.clone()).catch(() => {});
+          }
+          return networkResponse;
+        } catch (err) {
+          // Offline fallback
+          const cache = await caches.open(CACHE_NAME);
+          const cachedHTML = await cache.match('/index.html');
+          if (cachedHTML) return cachedHTML;
+          return new Response('Application hors-ligne', { status: 503, statusText: 'Offline' });
+        }
+      })()
+    );
+    return;
+  }
+
+  // 3. Version-Exact Stale-While-Revalidate for Static Assets (CSS, JS, Fonts, Images)
   event.respondWith(
     (async () => {
       try {
         const cache = await caches.open(CACHE_NAME);
-        const cachedResponse = await cache.match(event.request, { ignoreSearch: true });
+        // Exact match respecting version queries (?v=...)
+        const cachedResponse = await cache.match(event.request);
 
-        // Background network update (Stale-While-Revalidate)
+        // Fetch in parallel to keep cache fresh
         const fetchPromise = fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -170,24 +196,18 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => null);
 
-        // If asset exists in cache, serve immediately for instant startup (< 10ms)
+        // If exact version is in cache, return immediately (< 10ms)
         if (cachedResponse) {
           return cachedResponse;
         }
 
-        // If not in cache, await network fetch or navigation fallback
+        // If not in cache (new version deployed), await network fetch
         const netResponse = await fetchPromise;
         if (netResponse && netResponse.status !== 0) return netResponse;
-
-        if (event.request.mode === 'navigate') {
-          const fallbackHTML = await cache.match('/index.html', { ignoreSearch: true });
-          if (fallbackHTML) return fallbackHTML;
-        }
 
         return new Response('Ressource indisponible hors-ligne', { status: 503, statusText: 'Offline' });
       } catch (err) {
         console.warn('[SW] Fetch handler error:', err);
-        // Last resort: try network directly
         try {
           return await fetch(event.request);
         } catch (e) {
