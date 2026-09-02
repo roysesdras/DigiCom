@@ -1605,7 +1605,7 @@ app.post('/api/direct/contracts', authenticateToken, async (req, res) => {
     const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const annRecord = {
       id: annMsgId,
-      channelType: 'direct',
+      channelType: 'private',
       senderId: req.user.id,
       senderName: senderName,
       receiverId: contactId,
@@ -1627,7 +1627,7 @@ app.post('/api/direct/contracts', authenticateToken, async (req, res) => {
       timestamp: new Date().toISOString()
     };
     await db.saveMessage(annRecord);
-    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('new_direct_message', annRecord);
+    io.to(`user_${contactId}`).emit('private_message', annRecord);
 
     pushService.sendNotificationToUser(contactId, {
       title: `Micro-Contrat de ${senderName}`,
@@ -1636,7 +1636,7 @@ app.post('/api/direct/contracts', authenticateToken, async (req, res) => {
       data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
     }).catch(e => console.error('[-] Push contract error:', e));
 
-    res.json({ success: true, contractId, contracts });
+    res.json({ success: true, contractId, contracts, contractRecord: annRecord });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1677,7 +1677,7 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
     const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const annRecord = {
       id: annMsgId,
-      channelType: 'direct',
+      channelType: 'private',
       senderId: req.user.id,
       senderName: actorName,
       receiverId: targetUserId,
@@ -1701,7 +1701,7 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
       timestamp: new Date().toISOString()
     };
     await db.saveMessage(annRecord);
-    io.to(`user_${contract.user1_id}`).to(`user_${contract.user2_id}`).emit('new_direct_message', annRecord);
+    io.to(`user_${targetUserId}`).emit('private_message', annRecord);
 
     pushService.sendNotificationToUser(targetUserId, {
       title: `Micro-Contrat : ${contract.title}`,
@@ -1710,7 +1710,7 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
       data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
     }).catch(e => console.error('[-] Push error:', e));
 
-    res.json({ success: true, status: newStatus, contracts });
+    res.json({ success: true, status: newStatus, contracts, actionRecord: annRecord });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1902,7 +1902,7 @@ app.post('/api/direct/payments', authenticateToken, async (req, res) => {
     const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const annRecord = {
       id: annMsgId,
-      channelType: 'direct',
+      channelType: 'private',
       senderId: req.user.id,
       senderName: senderName,
       receiverId: contactId,
@@ -1924,7 +1924,7 @@ app.post('/api/direct/payments', authenticateToken, async (req, res) => {
       timestamp: new Date().toISOString()
     };
     await db.saveMessage(annRecord);
-    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('new_direct_message', annRecord);
+    io.to(`user_${contactId}`).emit('private_message', annRecord);
 
     pushService.sendNotificationToUser(contactId, {
       title: `Paiement déclaré par ${senderName}`,

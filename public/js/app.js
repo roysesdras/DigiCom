@@ -9165,6 +9165,11 @@ async function handleContractAction(contractId, action) {
       const data = await res.json();
       window.directModulesState.contracts = data.contracts || [];
       renderDirectContracts(window.directModulesState.contracts);
+      if (data.actionRecord && state.activeContact) {
+        state.directMessages[state.activeContact.id] = state.directMessages[state.activeContact.id] || [];
+        state.directMessages[state.activeContact.id].push(data.actionRecord);
+        appendMessageToFeed(data.actionRecord, false, true);
+      }
       if (typeof showToast === 'function') {
         if (action === 'accept') showToast('Micro-Contrat accepté & scellé avec succès !');
         else if (action === 'reject') showToast('Proposition de micro-contrat rejetée');
@@ -9600,7 +9605,13 @@ function initDirectForms() {
           window.directModulesState.contracts = data.contracts || [];
           renderDirectContracts(window.directModulesState.contracts);
           formContract.reset();
+          if (window.closeModal) window.closeModal('modal-direct-contract');
           if (typeof showToast === 'function') showToast('Micro-Contrat proposé avec succès');
+          if (data.contractRecord && state.activeContact) {
+            state.directMessages[state.activeContact.id] = state.directMessages[state.activeContact.id] || [];
+            state.directMessages[state.activeContact.id].push(data.contractRecord);
+            appendMessageToFeed(data.contractRecord, false, true);
+          }
         }
       } catch (err) {
         console.error('[-] Error creating contract:', err);
@@ -9636,6 +9647,7 @@ function initDirectForms() {
           window.directModulesState.deadlines = data.deadlines || [];
           renderDirectDeadlines(window.directModulesState.deadlines);
           formDeadline.reset();
+          if (window.closeModal) window.closeModal('modal-direct-deadlines');
           if (typeof showToast === 'function') showToast('Échéance planifiée avec rappel Push');
         }
       } catch (err) {
@@ -9708,6 +9720,7 @@ function initDirectForms() {
           window.directModulesState.payments = data.payments || [];
           renderDirectPayments(window.directModulesState.payments, window.directModulesState.contracts);
           formPayment.reset();
+          if (window.closeModal) window.closeModal('modal-direct-payments');
           if (typeof showToast === 'function') showToast('Versement déclaré avec succès');
         }
       } catch (err) {
