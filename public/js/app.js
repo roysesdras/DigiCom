@@ -524,8 +524,15 @@ async function navigateToTarget(targetData) {
     }
   }
 
+  // Handle openDeadlines modal popup when coming from push notification
+  if (targetData.openDeadlines || (targetData.url && targetData.url.includes('openDeadlines=true')) || (rawUrl && rawUrl.includes('openDeadlines=true'))) {
+    setTimeout(() => {
+      if (window.openDirectDeadlinesModal) window.openDirectDeadlinesModal();
+    }, 400);
+  }
+
   // Clean URL parameters cleanly without reloading page
-  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender'))) {
+  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender') || window.location.search.includes('openDeadlines'))) {
     try {
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch (e) {}
@@ -3520,7 +3527,8 @@ async function loadContacts() {
       contactId: urlContact || urlSender,
       senderId: urlSender,
       channel: urlChannel,
-      messageId: urlMsg
+      messageId: urlMsg,
+      openDeadlines: urlParams.get('openDeadlines') === 'true'
     });
     return;
   }
@@ -5402,6 +5410,37 @@ function createMessageRowElement(msg, isSos = false) {
         <button type="button" class="btn-contract-action btn-contract-accept" style="margin-top:6px;" onclick="window.openDirectPaymentsModal && window.openDirectPaymentsModal()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
           <span>${isMe ? 'Consulter le règlement' : 'Confirmer la réception'}</span>
+        </button>
+      </div>
+    `;
+  } else if (parsedContent && parsedContent.type === 'direct_deadline_card') {
+    const dlTitle = escapeHtml(parsedContent.title || 'Échéance');
+    const dlDate = parsedContent.dueDate ? new Date(parsedContent.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'À définir';
+    const dlDesc = parsedContent.description ? escapeHtml(parsedContent.description) : '';
+
+    bodyHtml = `
+      <div class="chat-contract-card-premium" style="background: linear-gradient(145deg, #0b1f1a, #091814);">
+        <div class="contract-card-header-bar">
+          <div class="contract-card-badge-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <span>ÉCHÉANCE &amp; AGENDA</span>
+          </div>
+          <span class="contract-card-status-pill status-pill-pending">Planifié</span>
+        </div>
+
+        <div class="contract-box-title">
+          <div class="contract-title-text">${dlTitle}</div>
+          ${dlDesc ? `<div class="contract-desc-text">${dlDesc}</div>` : ''}
+        </div>
+
+        <div class="contract-box-deadline">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #34d399;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>Date limite : <strong>${dlDate}</strong></span>
+        </div>
+
+        <button type="button" class="btn-contract-btn btn-contract-accept-lg" style="margin-top: 8px; width: 100%;" onclick="window.openDirectDeadlinesModal && window.openDirectDeadlinesModal()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>Consulter dans l'Agenda</span>
         </button>
       </div>
     `;
@@ -9883,6 +9922,11 @@ function initDirectForms() {
           formDeadline.reset();
           if (window.closeModal) window.closeModal('modal-direct-deadlines');
           if (typeof showToast === 'function') showToast('Échéance planifiée avec rappel Push');
+          if (data.deadlineRecord && state.activeContact) {
+            state.directMessages[state.activeContact.id] = state.directMessages[state.activeContact.id] || [];
+            state.directMessages[state.activeContact.id].push(data.deadlineRecord);
+            appendMessageToFeed(data.deadlineRecord, false, true);
+          }
         }
       } catch (err) {
         console.error('[-] Error creating deadline:', err);

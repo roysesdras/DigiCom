@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1215';
+const CACHE_NAME = 'digicom-pwa-v1216';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -300,7 +300,9 @@ self.addEventListener('notificationclick', (event) => {
 
   const msgParam = notifData.messageId ? `&msg=${encodeURIComponent(notifData.messageId)}` : '';
 
-  if (notifData.type === 'call_incoming' || notifData.callerId) {
+  if (notifData.url) {
+    targetPath = notifData.url;
+  } else if (notifData.type === 'call_incoming' || notifData.callerId) {
     targetPath = `/?openCall=true&callerId=${encodeURIComponent(notifData.callerId)}&callerName=${encodeURIComponent(notifData.callerName || '')}&callType=${encodeURIComponent(notifData.callType || 'audio')}&action=${encodeURIComponent(action || '')}`;
   } else if (notifData.openRequests || notifData.type === 'contact_request') {
     targetPath = '/?openRequests=true';
@@ -311,8 +313,6 @@ self.addEventListener('notificationclick', (event) => {
   } else if (notifData.senderId || notifData.contactId) {
     const cid = notifData.contactId || notifData.senderId;
     targetPath = `/?contact=${encodeURIComponent(cid)}${msgParam}`;
-  } else if (notifData.url) {
-    targetPath = notifData.url;
   }
 
   const targetUrl = new URL(targetPath, self.location.origin).href;

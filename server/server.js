@@ -1775,14 +1775,40 @@ app.post('/api/direct/deadlines', authenticateToken, async (req, res) => {
     });
 
     const senderName = req.user.displayName || req.user.username;
+    
+    // In-chat announcement card
+    const annRecord = {
+      id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      channel_type: 'private',
+      channelType: 'private',
+      sender_id: req.user.id,
+      senderId: req.user.id,
+      sender_name: senderName,
+      senderName: senderName,
+      receiver_id: contactId,
+      receiverId: contactId,
+      content: JSON.stringify({
+        type: 'direct_deadline_card',
+        id: deadlineId,
+        title: title.trim(),
+        description: description ? description.trim() : '',
+        dueDate: dueDate,
+        typeLabel: type || 'deadline'
+      }),
+      is_read: 0,
+      timestamp: new Date().toISOString()
+    };
+    await db.saveMessage(annRecord);
+    io.to(`user_${contactId}`).emit('private_message', annRecord);
+
     pushService.sendNotificationToUser(contactId, {
       title: `Nouvelle Échéance : ${title.trim()}`,
       body: `Planifié par ${senderName} pour le ${new Date(dueDate).toLocaleDateString('fr-FR')}`,
       icon: '/img/icon-192.png',
-      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+      data: { url: `/?contact=${req.user.id}&openDeadlines=true`, channel: 'private', contactId: req.user.id, openDeadlines: true }
     }).catch(e => console.error('[-] Push error:', e));
 
-    res.json({ success: true, deadlineId, deadlines });
+    res.json({ success: true, deadlineId, deadlines, deadlineRecord: annRecord });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3622,7 +3648,7 @@ async function checkDirectDeadlinesReminders() {
         title: `Échéance Partagée avec ${u2Name}`,
         body: `Rappel : "${item.title}" est prévue pour aujourd'hui !`,
         icon: '/img/icon-192.png',
-        data: { url: `/?contact=${item.user2_id}`, channel: 'direct', contactId: item.user2_id }
+        data: { url: `/?contact=${item.user2_id}&openDeadlines=true`, channel: 'private', contactId: item.user2_id, openDeadlines: true }
       }).catch(e => console.error('[-] Push deadline error u1:', e));
 
       // Push to user2
@@ -3630,7 +3656,7 @@ async function checkDirectDeadlinesReminders() {
         title: `Échéance Partagée avec ${u1Name}`,
         body: `Rappel : "${item.title}" est prévue pour aujourd'hui !`,
         icon: '/img/icon-192.png',
-        data: { url: `/?contact=${item.user1_id}`, channel: 'direct', contactId: item.user1_id }
+        data: { url: `/?contact=${item.user1_id}&openDeadlines=true`, channel: 'private', contactId: item.user1_id, openDeadlines: true }
       }).catch(e => console.error('[-] Push deadline error u2:', e));
 
       await db.updateDirectDeadlineReminderDate(item.id, todayDateStr);
