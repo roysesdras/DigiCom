@@ -1777,7 +1777,42 @@ body {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 4px 12px var(--emerald-glow);
-  transition: var(--transition-smooth);
+.btn-recording-send:hover {
+  transform: scale(1.05);
+}
+
+.btn-recording-send.loading {
+  background: rgba(16, 185, 129, 0.4);
+  cursor: wait;
+  box-shadow: none;
+}
+
+.voice-recording-bar.uploading {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+.spinner-audio-upload {
+  animation: spinAudio 0.8s linear infinite;
+}
+
+@keyframes spinAudio {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.optimistic-voice-bubble {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+  padding: 0.75rem 1.15rem !important;
+  border-radius: 18px !important;
+  background: rgba(16, 185, 129, 0.15) !important;
+  border: 1px dashed rgba(16, 185, 129, 0.4) !important;
+  color: #a7f3d0 !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* Chat Media & Emoji Standalone Messages (No Background) */

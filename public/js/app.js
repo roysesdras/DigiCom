@@ -3319,6 +3319,59 @@ async function stopAndSendVoiceRecording() {
   const durationSec = Math.max(1, Math.floor((Date.now() - voiceRecorder.startTime) / 1000));
   voiceRecorder.isRecording = false;
 
+  const panel = document.getElementById('voice-recording-panel');
+  const btnSend = document.getElementById('btn-send-voice');
+  const btnCancel = document.getElementById('btn-cancel-voice');
+  const timerEl = document.getElementById('recording-timer');
+  const waveVisualizer = panel ? panel.querySelector('.recording-wave-visualizer') : null;
+
+  // 1. Instantly lock buttons & show spinner so user knows upload is processing
+  if (btnSend) {
+    btnSend.disabled = true;
+    btnSend.classList.add('loading');
+    btnSend.innerHTML = `
+      <svg class="spinner-audio-upload" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="2" x2="12" y2="6"></line>
+        <line x1="12" y1="18" x2="12" y2="22"></line>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+        <line x1="2" y1="12" x2="6" y2="12"></line>
+        <line x1="18" y1="12" x2="22" y2="12"></line>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+      </svg>
+    `;
+  }
+  if (btnCancel) btnCancel.disabled = true;
+  if (panel) panel.classList.add('uploading');
+  if (timerEl) timerEl.textContent = 'Envoi...';
+  if (waveVisualizer) waveVisualizer.style.opacity = '0.3';
+
+  // 2. Insert optimistic placeholder bubble in chat feed
+  const tempVoiceId = 'temp_voice_' + Date.now();
+  const feed = document.getElementById('messages-feed');
+  let tempBubble = null;
+  if (feed) {
+    tempBubble = document.createElement('div');
+    tempBubble.className = 'message-row outgoing temp-voice-row';
+    tempBubble.id = tempVoiceId;
+    tempBubble.innerHTML = `
+      <div class="message-bubble outgoing optimistic-voice-bubble">
+        <svg class="spinner-audio-upload" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="2" x2="12" y2="6"></line>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
+          <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+          <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+          <line x1="2" y1="12" x2="6" y2="12"></line>
+          <line x1="18" y1="12" x2="22" y2="12"></line>
+        </svg>
+        <span>🎤 Envoi de la note vocale (${durationSec}s)...</span>
+      </div>
+    `;
+    feed.appendChild(tempBubble);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
   try {
     const audioBlob = await new Promise((resolve, reject) => {
       if (!mediaRecorder) return reject(new Error('MediaRecorder non initialisé'));
@@ -3349,17 +3402,40 @@ async function stopAndSendVoiceRecording() {
 
     const uploaded = await uploadFile(audioFile);
 
+    // Remove optimistic placeholder before standard message insertion
+    if (tempBubble && tempBubble.parentNode) {
+      tempBubble.remove();
+    }
+
     sendMessage({
       type: 'audio',
       url: uploaded.url,
       duration: durationSec
     });
   } catch (err) {
+    if (tempBubble && tempBubble.parentNode) {
+      tempBubble.remove();
+    }
     alert('Erreur lors de l\'envoi de la note vocale : ' + err.message);
   } finally {
     recordedAudioChunks = [];
     mediaRecorder = null;
-    document.getElementById('voice-recording-panel').style.display = 'none';
+    if (panel) {
+      panel.classList.remove('uploading');
+      panel.style.display = 'none';
+    }
+    if (btnSend) {
+      btnSend.disabled = false;
+      btnSend.classList.remove('loading');
+      btnSend.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `;
+    }
+    if (btnCancel) btnCancel.disabled = false;
+    if (waveVisualizer) waveVisualizer.style.opacity = '1';
     document.getElementById('normal-composer-pill').style.display = 'flex';
   }
 }
