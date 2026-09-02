@@ -229,7 +229,7 @@
 
               <!-- Dropdown Menu Sheet -->
               <div class="chat-more-dropdown" id="chat-more-dropdown-menu" style="display: none;">
-                <button type="button" class="dropdown-item" id="menu-item-meeting" onclick="if(window.startSalonMeeting) window.startSalonMeeting(); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-meeting" onclick="window.startSalonMeeting && window.startSalonMeeting(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="23 7 16 12 23 17 23 7"></polygon>
@@ -238,7 +238,7 @@
                   <span>Réunion vidéo du salon</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-files" onclick="if(window.openSalonFilesDrawer) window.openSalonFilesDrawer(); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-files" onclick="window.openSalonFilesDrawer && window.openSalonFilesDrawer(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -250,7 +250,7 @@
                   <span>Documents &amp; Fichiers du salon</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-members" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.openSalonInfoModal) window.openSalonInfoModal(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-members" onclick="window.openSalonInfoModal && window.state && window.state.activeSalon && window.openSalonInfoModal(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -269,7 +269,7 @@
                   <span>SuperAdmin Control Center</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-refresh" onclick="if(window.refreshActiveChat) window.refreshActiveChat(); if(window.closeChatMoreMenu) window.closeChatMoreMenu();">
+                <button type="button" class="dropdown-item" id="menu-item-refresh" onclick="window.refreshActiveChat && window.refreshActiveChat(); window.closeChatMoreMenu && window.closeChatMoreMenu();">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -291,29 +291,55 @@
                 </button>
 
                 <!-- 5 Salon Modules Dropdown Items (SVG Only, Zero Border) -->
-                <button type="button" class="dropdown-item" id="menu-item-salon-tasks" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.openSalonTasksModal) window.openSalonTasksModal(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-salon-tasks" onclick="window.openSalonTasksModal && window.state && window.state.activeSalon && window.openSalonTasksModal(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
                   <span>Tâches du salon</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-salon-broadcast" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.toggleSalonBroadcastMode) window.toggleSalonBroadcastMode(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-salon-broadcast" onclick="window.toggleSalonBroadcastMode && window.state && window.state.activeSalon && window.toggleSalonBroadcastMode(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                   <span>Mode Annonces</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-salon-search" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.openSalonSearchModal) window.openSalonSearchModal(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-salon-search" onclick="window.openSalonSearchModal && window.state && window.state.activeSalon && window.openSalonSearchModal(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   <span>Recherche &amp; Filtres du salon</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-salon-decisions" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.openSalonDecisionsModal) window.openSalonDecisionsModal(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-salon-decisions" onclick="window.openSalonDecisionsModal && window.state && window.state.activeSalon && window.openSalonDecisionsModal(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                   <span>Registre des Décisions</span>
                 </button>
 
-                <button type="button" class="dropdown-item" id="menu-item-salon-caisse" onclick="if(window.state &amp;&amp; window.state.activeSalon &amp;&amp; window.openSalonCaisseModal) window.openSalonCaisseModal(window.state.activeSalon.id); if(window.closeChatMoreMenu) window.closeChatMoreMenu();" style="display: none;">
+                <button type="button" class="dropdown-item" id="menu-item-salon-caisse" onclick="window.openSalonCaisseModal && window.state && window.state.activeSalon && window.openSalonCaisseModal(window.state.activeSalon.id); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-                  <span>Caisse & Cotisations du salon</span>
+                  <span>Caisse &amp; Cotisations du salon</span>
+                </button>
+
+                <!-- 5 Direct 1-on-1 Modules Dropdown Items (SVG Only, Zero Border, Noms courts) -->
+                <button type="button" class="dropdown-item" id="menu-item-direct-contract" onclick="window.openDirectContractModal && window.openDirectContractModal(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  <span>Micro-Contrat</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-direct-deadlines" onclick="window.openDirectDeadlinesModal && window.openDirectDeadlinesModal(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  <span>Échéances &amp; Agenda</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-direct-privacy" onclick="window.openDirectPrivacyModal && window.openDirectPrivacyModal(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                  <span>Épingles &amp; Masquage</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-direct-payments" onclick="window.openDirectPaymentsModal && window.openDirectPaymentsModal(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                  <span>Règlements</span>
+                </button>
+
+                <button type="button" class="dropdown-item" id="menu-item-direct-files" onclick="window.openDirectFilesModal && window.openDirectFilesModal(); window.closeChatMoreMenu && window.closeChatMoreMenu();" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  <span>Documents</span>
                 </button>
               </div>
             </div>
@@ -1502,6 +1528,231 @@
       </div>
     </div>
 
+    <!-- ==================== DIRECT 1-ON-1 MODALS (ZERO EMOJI, SVG ONLY, ZERO BORDER) ==================== -->
+
+    <!-- MODAL 1: Micro-Contrat (Fiche d'Engagement Bilatéral) -->
+    <div class="modal-backdrop" id="modal-direct-contract" style="display: none;">
+      <div class="modal-card modal-large-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <h3>Micro-Contrat &amp; Engagement</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-direct-contract')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="form-create-direct-contract" class="direct-modal-form">
+            <div class="form-row-group">
+              <input type="text" id="contract-input-title" class="form-input-clean" placeholder="Intitulé de la mission ou prestation..." required>
+              <div style="display: flex; gap: 0.5rem;">
+                <input type="number" id="contract-input-amount" class="form-input-clean" placeholder="Montant convenu..." min="0" required style="flex: 2;">
+                <select id="contract-select-currency" class="form-select-clean" style="flex: 1;">
+                  <option value="FCFA">FCFA</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </div>
+              <div class="date-input-container">
+                <input type="date" id="contract-input-deadline" class="form-input-clean form-input-date" oninput="this.classList.toggle('has-value', !!this.value)" onchange="this.classList.toggle('has-value', !!this.value)">
+                <span class="date-placeholder-text">Date limite de livraison...</span>
+              </div>
+              <textarea id="contract-input-desc" class="form-input-clean form-textarea-elastic" placeholder="Livrables attendus &amp; conditions particulières..." rows="2"></textarea>
+              <button type="submit" class="btn-primary-clean">Proposer le Micro-Contrat</button>
+            </div>
+          </form>
+
+          <div class="direct-cards-timeline" id="list-direct-contracts"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Échéances & Agenda (Anti-Oubli & Rappel Push) -->
+    <div class="modal-backdrop" id="modal-direct-deadlines" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <h3>Échéances &amp; Agenda Partagé</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-direct-deadlines')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="form-create-direct-deadline" class="direct-modal-form">
+            <input type="text" id="deadline-input-title" class="form-input-clean" placeholder="Intitulé de l'échéance ou du RDV..." required>
+            <div style="display: flex; gap: 0.5rem;">
+              <select id="deadline-select-type" class="form-select-clean" style="flex: 1;">
+                <option value="deadline">Échéance livrable</option>
+                <option value="meeting">Rendez-vous visio</option>
+                <option value="call">Appel téléphonique</option>
+                <option value="payment">Paiement / Virement</option>
+                <option value="encounter">Rencontre physique</option>
+              </select>
+              <input type="datetime-local" id="deadline-input-date" class="form-input-clean" required style="flex: 1;">
+            </div>
+            <textarea id="deadline-input-desc" class="form-input-clean form-textarea-elastic" placeholder="Notes ou ordre du jour (optionnel)..." rows="1"></textarea>
+            <button type="submit" class="btn-primary-clean">Planifier avec Rappel Push Mutuel</button>
+          </form>
+
+          <div class="direct-deadlines-list" id="list-direct-deadlines"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: Épingles & Masquage (Privacy Shield) -->
+    <div class="modal-backdrop" id="modal-direct-privacy" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <h3>Épingles &amp; Bouclier Confidentialité</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-direct-privacy')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Privacy Blur Switch Card -->
+          <div class="privacy-shield-card">
+            <div class="privacy-shield-info">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></line><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                <strong>Masquage d'Écran (Privacy Shield)</strong>
+              </div>
+              <p>Floute temporairement les montants, numéros et données sensibles dans la discussion pour vos captures d'écran.</p>
+            </div>
+            <label class="switch-control">
+              <input type="checkbox" id="toggle-privacy-blur" onchange="window.togglePrivacyShield(this.checked)">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <!-- Section: Épingles Personnelles -->
+          <div class="direct-section-title">
+            <span>Mes Épingles Privées (Visibles uniquement par vous)</span>
+          </div>
+
+          <form id="form-create-direct-pin" class="direct-modal-form">
+            <div style="display: flex; gap: 0.5rem;">
+              <select id="pin-select-category" class="form-select-clean" style="flex: 1;">
+                <option value="iban">Coordonnées RIB / IBAN</option>
+                <option value="address">Adresse physique</option>
+                <option value="tariff">Tarifs / Barème</option>
+                <option value="note">Note confidentielle</option>
+                <option value="password">Code temporaire</option>
+              </select>
+              <input type="text" id="pin-input-title" class="form-input-clean" placeholder="Titre du mémo..." required style="flex: 2;">
+            </div>
+            <textarea id="pin-input-content" class="form-input-clean form-textarea-elastic" placeholder="Contenu confidentiel à mémoriser..." rows="2" required></textarea>
+            <button type="submit" class="btn-primary-clean">Enregistrer l'Épingle Privée</button>
+          </form>
+
+          <div class="direct-pins-list" id="list-direct-pins"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: Règlements (Suivi Financier & Quittances) -->
+    <div class="modal-backdrop" id="modal-direct-payments" style="display: none;">
+      <div class="modal-card modal-large-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            <h3>Suivi des Règlements &amp; Quittances</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-direct-payments')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Summary Cards Row -->
+          <div class="caisse-stats-grid">
+            <div class="caisse-stat-card">
+              <span class="stat-label">Total Convenu</span>
+              <span class="stat-value text-blue" id="direct-stat-concluded">0 FCFA</span>
+            </div>
+            <div class="caisse-stat-card">
+              <span class="stat-label">Total Versé &amp; Confirmé</span>
+              <span class="stat-value text-emerald" id="direct-stat-paid">0 FCFA</span>
+            </div>
+            <div class="caisse-stat-card">
+              <span class="stat-label">Restant Dû</span>
+              <span class="stat-value text-rose" id="direct-stat-remaining">0 FCFA</span>
+            </div>
+          </div>
+
+          <!-- Target Progress Bar -->
+          <div class="caisse-progress-bar-wrapper">
+            <div class="caisse-progress-info">
+              <span>Couverture du règlement</span>
+              <span id="direct-progress-pct">0%</span>
+            </div>
+            <div class="caisse-progress-track">
+              <div class="caisse-progress-fill" id="direct-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Form to Declare Payment -->
+          <form id="form-create-direct-payment" class="direct-modal-form">
+            <div class="direct-section-title"><span>Déclarer un versement</span></div>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" id="payment-input-amount" class="form-input-clean" placeholder="Montant versé..." min="1" required style="flex: 2;">
+              <select id="payment-select-currency" class="form-select-clean" style="flex: 1;">
+                <option value="FCFA">FCFA</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="USD">USD ($)</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <select id="payment-select-method" class="form-select-clean" style="flex: 1;">
+                <option value="Wave">Wave Mobile Money</option>
+                <option value="MTN Mobile Money">MTN Mobile Money</option>
+                <option value="Moov Money">Moov Money</option>
+                <option value="Virement Bancaire">Virement Bancaire</option>
+                <option value="Espèces">Espèces</option>
+                <option value="Autre">Autre</option>
+              </select>
+              <input type="text" id="payment-input-reference" class="form-input-clean" placeholder="Réf. transaction / N° reçu..." style="flex: 1;">
+            </div>
+            <textarea id="payment-input-note" class="form-input-clean form-textarea-elastic" placeholder="Note ou motif du versement (ex: Acompte 50%)..." rows="1"></textarea>
+            <button type="submit" class="btn-primary-clean">Déclarer le Règlement</button>
+          </form>
+
+          <div class="direct-payments-list" id="list-direct-payments"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: Documents (Coffre-fort Médias & Fichiers Partagés) -->
+    <div class="modal-backdrop" id="modal-direct-files" style="display: none;">
+      <div class="modal-card modal-large-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <h3>Coffre-fort Documents &amp; Médias</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-direct-files')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="search-filter-controls">
+            <input type="text" id="direct-files-search-keyword" class="form-input-clean" placeholder="Rechercher un document ou fichier..." oninput="window.filterDirectFilesList(this.value)">
+            <div class="filter-chips-row">
+              <button type="button" class="filter-chip active" data-direct-filter="all" onclick="window.setDirectFilesCategory('all', this)">Tous</button>
+              <button type="button" class="filter-chip" data-direct-filter="doc" onclick="window.setDirectFilesCategory('doc', this)">Documents PDF</button>
+              <button type="button" class="filter-chip" data-direct-filter="media" onclick="window.setDirectFilesCategory('media', this)">Photos &amp; Vidéos</button>
+              <button type="button" class="filter-chip" data-direct-filter="audio" onclick="window.setDirectFilesCategory('audio', this)">Notes Vocales</button>
+            </div>
+          </div>
+          <div class="direct-files-grid" id="list-direct-files"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Floating PWA Install Mini-Banner (Google Chrome Style) -->
     <div id="pwa-floating-banner" class="pwa-floating-banner" role="dialog" aria-label="Installer DigiCom">
       <div class="pwa-banner-left">
@@ -1512,11 +1763,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1202" defer></script>
-    <script src="/js/idb-store.min.js?v=1202" defer></script>
-    <script src="/js/push-client.min.js?v=1202" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1202" defer></script>
-    <script src="/js/app.min.js?v=1202" defer></script>
+    <script src="/socket.io/socket.io.js?v=1203" defer></script>
+    <script src="/js/idb-store.min.js?v=1203" defer></script>
+    <script src="/js/push-client.min.js?v=1203" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1203" defer></script>
+    <script src="/js/app.min.js?v=1203" defer></script>
   </body>
 
 </html>

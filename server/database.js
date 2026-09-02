@@ -298,7 +298,76 @@ async function initTables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await run(`CREATE INDEX IF NOT EXISTS idx_salon_finances ON salon_finance_transactions(salon_id, created_at)`);
+  await run(`
+    CREATE TABLE IF NOT EXISTS direct_contracts (
+      id TEXT PRIMARY KEY,
+      user1_id TEXT NOT NULL,
+      user2_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'FCFA',
+      deadline DATETIME,
+      status TEXT DEFAULT 'pending',
+      created_by TEXT NOT NULL,
+      accepted_by TEXT,
+      accepted_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_direct_contracts ON direct_contracts(user1_id, user2_id, status)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS direct_deadlines (
+      id TEXT PRIMARY KEY,
+      user1_id TEXT NOT NULL,
+      user2_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_date DATETIME NOT NULL,
+      type TEXT DEFAULT 'deadline',
+      status TEXT DEFAULT 'pending',
+      last_reminder_date TEXT,
+      created_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_direct_deadlines ON direct_deadlines(user1_id, user2_id, status)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS direct_user_pins (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      contact_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT DEFAULT 'note',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_direct_user_pins ON direct_user_pins(user_id, contact_id)`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS direct_payments (
+      id TEXT PRIMARY KEY,
+      user1_id TEXT NOT NULL,
+      user2_id TEXT NOT NULL,
+      contract_id TEXT,
+      amount REAL NOT NULL,
+      currency TEXT DEFAULT 'FCFA',
+      payment_method TEXT DEFAULT 'Mobile Money',
+      reference TEXT,
+      receipt_url TEXT,
+      note TEXT,
+      paid_by TEXT NOT NULL,
+      status TEXT DEFAULT 'declared',
+      confirmed_by TEXT,
+      confirmed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_direct_payments ON direct_payments(user1_id, user2_id, status)`);
 
   console.log('[+] Database tables & indexes initialized successfully.');
 }
@@ -1196,8 +1265,152 @@ async function setSalonBroadcastOnly(salonId, broadcastOnly) {
   return await run(`UPDATE salons SET broadcast_only = ? WHERE id = ?`, [broadcastOnly ? 1 : 0, salonId]);
 }
 
+// ==================== DIRECT 1-ON-1 MODULES HELPERS ====================
+
+// 1. Direct Contracts
+async function getDirectContracts(user1Id, user2Id) {
+  return await all(
+    `SELECT * FROM direct_contracts 
+     WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
+     ORDER BY created_at DESC`,
+    [user1Id, user2Id, user2Id, user1Id]
+  );
+}
+
+async function getDirectContractById(id) {
+  return await get(`SELECT * FROM direct_contracts WHERE id = ?`, [id]);
+}
+
+async function createDirectContract({ id, user1Id, user2Id, title, description, amount, currency = 'FCFA', deadline, createdBy }) {
+  return await run(
+    `INSERT INTO direct_contracts (id, user1_id, user2_id, title, description, amount, currency, deadline, status, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    [id, user1Id, user2Id, title, description || '', amount || 0, currency, deadline || null, createdBy]
+  );
+}
+
+async function updateDirectContractStatus(id, status, acceptedBy = null) {
+  if (status === 'accepted') {
+    return await run(
+      `UPDATE direct_contracts SET status = ?, accepted_by = ?, accepted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, acceptedBy, id]
+    );
+  }
+  return await run(
+    `UPDATE direct_contracts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [status, id]
+  );
+}
+
+// 2. Direct Deadlines
+async function getDirectDeadlines(user1Id, user2Id) {
+  return await all(
+    `SELECT * FROM direct_deadlines 
+     WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
+     ORDER BY due_date ASC`,
+    [user1Id, user2Id, user2Id, user1Id]
+  );
+}
+
+async function createDirectDeadline({ id, user1Id, user2Id, title, description, dueDate, type = 'deadline', createdBy }) {
+  return await run(
+    `INSERT INTO direct_deadlines (id, user1_id, user2_id, title, description, due_date, type, status, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    [id, user1Id, user2Id, title, description || '', dueDate, type, createdBy]
+  );
+}
+
+async function toggleDirectDeadlineStatus(id) {
+  const item = await get(`SELECT status FROM direct_deadlines WHERE id = ?`, [id]);
+  if (!item) return null;
+  const newStatus = item.status === 'completed' ? 'pending' : 'completed';
+  await run(`UPDATE direct_deadlines SET status = ? WHERE id = ?`, [newStatus, id]);
+  return newStatus;
+}
+
+async function deleteDirectDeadline(id) {
+  return await run(`DELETE FROM direct_deadlines WHERE id = ?`, [id]);
+}
+
+async function getDirectDeadlinesDueForReminder() {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const nowStr = now.toISOString().replace('T', ' ').slice(0, 19);
+
+  return await all(
+    `SELECT * FROM direct_deadlines
+     WHERE status != 'completed'
+       AND due_date >= ?
+       AND (last_reminder_date IS NULL OR last_reminder_date != ?)`,
+    [nowStr, todayStr]
+  );
+}
+
+async function updateDirectDeadlineReminderDate(id, dateStr) {
+  return await run(`UPDATE direct_deadlines SET last_reminder_date = ? WHERE id = ?`, [dateStr, id]);
+}
+
+// 3. Direct User Pins
+async function getUserDirectPins(userId, contactId) {
+  return await all(
+    `SELECT * FROM direct_user_pins WHERE user_id = ? AND contact_id = ? ORDER BY created_at DESC`,
+    [userId, contactId]
+  );
+}
+
+async function createUserDirectPin({ id, userId, contactId, title, content, category = 'note' }) {
+  return await run(
+    `INSERT INTO direct_user_pins (id, user_id, contact_id, title, content, category) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, userId, contactId, title, content, category]
+  );
+}
+
+async function deleteUserDirectPin(id, userId) {
+  return await run(`DELETE FROM direct_user_pins WHERE id = ? AND user_id = ?`, [id, userId]);
+}
+
+// 4. Direct Payments
+async function getDirectPayments(user1Id, user2Id) {
+  return await all(
+    `SELECT * FROM direct_payments 
+     WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
+     ORDER BY created_at DESC`,
+    [user1Id, user2Id, user2Id, user1Id]
+  );
+}
+
+async function createDirectPayment({ id, user1Id, user2Id, contractId, amount, currency = 'FCFA', paymentMethod = 'Mobile Money', reference, receiptUrl, note, paidBy }) {
+  return await run(
+    `INSERT INTO direct_payments (id, user1_id, user2_id, contract_id, amount, currency, payment_method, reference, receipt_url, note, paid_by, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'declared')`,
+    [id, user1Id, user2Id, contractId || null, amount, currency, paymentMethod, reference || '', receiptUrl || null, note || '', paidBy]
+  );
+}
+
+async function confirmDirectPayment(id, confirmedBy) {
+  return await run(
+    `UPDATE direct_payments SET status = 'confirmed', confirmed_by = ?, confirmed_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [confirmedBy, id]
+  );
+}
+
+// 5. Direct Files (Aggregated media & documents from messages)
+async function getDirectFiles(user1Id, user2Id) {
+  return await all(
+    `SELECT id, sender_id, receiver_id, media_url, media_type, text, created_at FROM messages
+     WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
+       AND is_deleted = 0
+       AND (media_url IS NOT NULL AND media_url != '')
+     ORDER BY created_at DESC`,
+    [user1Id, user2Id, user2Id, user1Id]
+  );
+}
+
 module.exports = {
   db,
+  get,
+  all,
+  run,
   getUserCount,
   createUser,
   getUserByUsername,
@@ -1267,6 +1480,24 @@ module.exports = {
   addSalonTransaction,
   deleteSalonTransaction,
   setSalonBroadcastOnly,
+  // Direct 1-on-1 Modules Exports
+  getDirectContracts,
+  getDirectContractById,
+  createDirectContract,
+  updateDirectContractStatus,
+  getDirectDeadlines,
+  createDirectDeadline,
+  toggleDirectDeadlineStatus,
+  deleteDirectDeadline,
+  getDirectDeadlinesDueForReminder,
+  updateDirectDeadlineReminderDate,
+  getUserDirectPins,
+  createUserDirectPin,
+  deleteUserDirectPin,
+  getDirectPayments,
+  createDirectPayment,
+  confirmDirectPayment,
+  getDirectFiles,
   // Contact Requests exports
   areUsersContacts,
   getUserByExactUsername,

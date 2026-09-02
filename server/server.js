@@ -1559,6 +1559,395 @@ app.delete('/api/salons/:id/finances/transactions/:txId', authenticateToken, asy
   }
 });
 
+// ==================== Direct 1-on-1 Modules REST Endpoints ====================
+
+// 1. Micro-Contrat (Direct Contracts)
+app.get('/api/direct/contracts', authenticateToken, async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    if (!contactId) return res.status(400).json({ error: 'contactId requis' });
+    const contracts = await db.getDirectContracts(req.user.id, contactId);
+    res.json({ contracts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/contracts', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, title, description, amount, currency, deadline } = req.body;
+    if (!contactId || !title || !title.trim()) {
+      return res.status(400).json({ error: 'Titre et destinataire requis' });
+    }
+
+    const contractId = 'ctr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createDirectContract({
+      id: contractId,
+      user1Id: req.user.id,
+      user2Id: contactId,
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      amount: parseFloat(amount) || 0,
+      currency: currency || 'FCFA',
+      deadline: deadline || null,
+      createdBy: req.user.id
+    });
+
+    const contracts = await db.getDirectContracts(req.user.id, contactId);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_contract_updated', {
+      user1Id: req.user.id,
+      user2Id: contactId,
+      contracts
+    });
+
+    // In-chat interactive announcement card
+    const senderName = req.user.displayName || req.user.username;
+    const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const annRecord = {
+      id: annMsgId,
+      channelType: 'direct',
+      senderId: req.user.id,
+      senderName: senderName,
+      receiverId: contactId,
+      content: JSON.stringify({
+        type: 'direct_contract_card',
+        contractId: contractId,
+        title: title.trim(),
+        description: description ? description.trim() : '',
+        amount: parseFloat(amount) || 0,
+        currency: currency || 'FCFA',
+        deadline: deadline || null,
+        status: 'pending',
+        createdBy: req.user.id,
+        senderName: senderName,
+        text: `Micro-Contrat proposé : ${title.trim()} (${amount || 0} ${currency || 'FCFA'})`
+      }),
+      contextData: null,
+      is_read: 0,
+      timestamp: new Date().toISOString()
+    };
+    await db.saveMessage(annRecord);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('new_direct_message', annRecord);
+
+    pushService.sendNotificationToUser(contactId, {
+      title: `Micro-Contrat de ${senderName}`,
+      body: `Proposition : "${title.trim()}" (${amount || 0} ${currency || 'FCFA'})`,
+      icon: '/img/icon-192.png',
+      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+    }).catch(e => console.error('[-] Push contract error:', e));
+
+    res.json({ success: true, contractId, contracts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, contactId, note } = req.body;
+    const contract = await db.getDirectContractById(id);
+    if (!contract) return res.status(404).json({ error: 'Contrat introuvable' });
+
+    let newStatus = 'pending';
+    if (action === 'accept') newStatus = 'accepted';
+    else if (action === 'adjust') newStatus = 'adjustment_requested';
+    else if (action === 'complete') newStatus = 'completed';
+    else if (action === 'cancel') newStatus = 'cancelled';
+
+    await db.updateDirectContractStatus(id, newStatus, req.user.id);
+    const contracts = await db.getDirectContracts(contract.user1_id, contract.user2_id);
+    io.to(`user_${contract.user1_id}`).to(`user_${contract.user2_id}`).emit('direct_contract_updated', {
+      user1Id: contract.user1_id,
+      user2Id: contract.user2_id,
+      contracts
+    });
+
+    const actorName = req.user.displayName || req.user.username;
+    const targetUserId = (contract.user1_id === req.user.id) ? contract.user2_id : contract.user1_id;
+
+    const actionTextMap = {
+      accepted: `Micro-Contrat accepté et scellé par ${actorName}`,
+      adjustment_requested: `${actorName} propose un ajustement : ${note || ''}`,
+      completed: `Micro-Contrat marqué comme terminé par ${actorName}`,
+      cancelled: `Micro-Contrat annulé par ${actorName}`
+    };
+
+    pushService.sendNotificationToUser(targetUserId, {
+      title: `Micro-Contrat : ${contract.title}`,
+      body: actionTextMap[newStatus] || `Mise à jour par ${actorName}`,
+      icon: '/img/icon-192.png',
+      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+    }).catch(e => console.error('[-] Push error:', e));
+
+    res.json({ success: true, status: newStatus, contracts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Échéances & Agenda (Direct Deadlines)
+app.get('/api/direct/deadlines', authenticateToken, async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    if (!contactId) return res.status(400).json({ error: 'contactId requis' });
+    const deadlines = await db.getDirectDeadlines(req.user.id, contactId);
+    res.json({ deadlines });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/deadlines', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, title, description, dueDate, type } = req.body;
+    if (!contactId || !title || !dueDate) {
+      return res.status(400).json({ error: 'Titre, destinataire et date requis' });
+    }
+
+    const deadlineId = 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createDirectDeadline({
+      id: deadlineId,
+      user1Id: req.user.id,
+      user2Id: contactId,
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      dueDate: dueDate,
+      type: type || 'deadline',
+      createdBy: req.user.id
+    });
+
+    const deadlines = await db.getDirectDeadlines(req.user.id, contactId);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_deadline_updated', {
+      user1Id: req.user.id,
+      user2Id: contactId,
+      deadlines
+    });
+
+    const senderName = req.user.displayName || req.user.username;
+    pushService.sendNotificationToUser(contactId, {
+      title: `Nouvelle Échéance : ${title.trim()}`,
+      body: `Planifié par ${senderName} pour le ${new Date(dueDate).toLocaleDateString('fr-FR')}`,
+      icon: '/img/icon-192.png',
+      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+    }).catch(e => console.error('[-] Push error:', e));
+
+    res.json({ success: true, deadlineId, deadlines });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/deadlines/:id/toggle', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contactId } = req.body;
+    const newStatus = await db.toggleDirectDeadlineStatus(id);
+    if (!newStatus) return res.status(404).json({ error: 'Échéance introuvable' });
+
+    if (contactId) {
+      const deadlines = await db.getDirectDeadlines(req.user.id, contactId);
+      io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_deadline_updated', {
+        user1Id: req.user.id,
+        user2Id: contactId,
+        deadlines
+      });
+    }
+
+    res.json({ success: true, status: newStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/direct/deadlines/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contactId } = req.query;
+    await db.deleteDirectDeadline(id);
+
+    if (contactId) {
+      const deadlines = await db.getDirectDeadlines(req.user.id, contactId);
+      io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_deadline_updated', {
+        user1Id: req.user.id,
+        user2Id: contactId,
+        deadlines
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Épingles Personnelles (Direct User Pins)
+app.get('/api/direct/pins', authenticateToken, async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    if (!contactId) return res.status(400).json({ error: 'contactId requis' });
+    const pins = await db.getUserDirectPins(req.user.id, contactId);
+    res.json({ pins });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/pins', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, title, content, category } = req.body;
+    if (!contactId || !title || !content) {
+      return res.status(400).json({ error: 'Titre et contenu requis' });
+    }
+
+    const pinId = 'pin_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createUserDirectPin({
+      id: pinId,
+      userId: req.user.id,
+      contactId: contactId,
+      title: title.trim(),
+      content: content.trim(),
+      category: category || 'note'
+    });
+
+    const pins = await db.getUserDirectPins(req.user.id, contactId);
+    res.json({ success: true, pinId, pins });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/direct/pins/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.deleteUserDirectPin(id, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Règlements & Quittances (Direct Payments)
+app.get('/api/direct/payments', authenticateToken, async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    if (!contactId) return res.status(400).json({ error: 'contactId requis' });
+    const payments = await db.getDirectPayments(req.user.id, contactId);
+    res.json({ payments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/payments', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, contractId, amount, currency, paymentMethod, reference, receiptUrl, note } = req.body;
+    if (!contactId || !amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ error: 'Montant et destinataire requis' });
+    }
+
+    const paymentId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    await db.createDirectPayment({
+      id: paymentId,
+      user1Id: req.user.id,
+      user2Id: contactId,
+      contractId: contractId || null,
+      amount: parseFloat(amount),
+      currency: currency || 'FCFA',
+      paymentMethod: paymentMethod || 'Mobile Money',
+      reference: reference ? reference.trim() : '',
+      receiptUrl: receiptUrl || null,
+      note: note ? note.trim() : '',
+      paidBy: req.user.id
+    });
+
+    const payments = await db.getDirectPayments(req.user.id, contactId);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_payment_updated', {
+      user1Id: req.user.id,
+      user2Id: contactId,
+      payments
+    });
+
+    const senderName = req.user.displayName || req.user.username;
+    const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const annRecord = {
+      id: annMsgId,
+      channelType: 'direct',
+      senderId: req.user.id,
+      senderName: senderName,
+      receiverId: contactId,
+      content: JSON.stringify({
+        type: 'direct_payment_card',
+        paymentId: paymentId,
+        amount: parseFloat(amount),
+        currency: currency || 'FCFA',
+        paymentMethod: paymentMethod || 'Mobile Money',
+        reference: reference || '',
+        note: note || '',
+        status: 'declared',
+        paidBy: req.user.id,
+        senderName: senderName,
+        text: `Versement déclaré : ${amount} ${currency || 'FCFA'} via ${paymentMethod || 'Mobile Money'}`
+      }),
+      contextData: null,
+      is_read: 0,
+      timestamp: new Date().toISOString()
+    };
+    await db.saveMessage(annRecord);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('new_direct_message', annRecord);
+
+    pushService.sendNotificationToUser(contactId, {
+      title: `Paiement déclaré par ${senderName}`,
+      body: `Montant : ${amount} ${currency || 'FCFA'} (${paymentMethod || 'Mobile Money'}) - Cliquez pour confirmer réception`,
+      icon: '/img/icon-192.png',
+      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+    }).catch(e => console.error('[-] Push error:', e));
+
+    res.json({ success: true, paymentId, payments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/direct/payments/:id/confirm', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contactId } = req.body;
+    await db.confirmDirectPayment(id, req.user.id);
+
+    const payments = await db.getDirectPayments(req.user.id, contactId);
+    io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_payment_updated', {
+      user1Id: req.user.id,
+      user2Id: contactId,
+      payments
+    });
+
+    const confirmerName = req.user.displayName || req.user.username;
+    pushService.sendNotificationToUser(contactId, {
+      title: `Réception de paiement confirmée`,
+      body: `${confirmerName} a confirmé la bonne réception des fonds !`,
+      icon: '/img/icon-192.png',
+      data: { url: `/?contact=${req.user.id}`, channel: 'direct', contactId: req.user.id }
+    }).catch(e => console.error('[-] Push error:', e));
+
+    res.json({ success: true, payments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Coffre-fort Documents & Médias Partagés (Direct Files)
+app.get('/api/direct/files', authenticateToken, async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    if (!contactId) return res.status(400).json({ error: 'contactId requis' });
+    const files = await db.getDirectFiles(req.user.id, contactId);
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 3e. Collaborative Salon Endpoints: Files, Pinned Messages, Polls & Meetings
 app.get('/api/salons/:id/files', authenticateToken, async (req, res) => {
   try {
@@ -3166,9 +3555,46 @@ async function checkDailyTaskReminders() {
   }
 }
 
-// Run task reminder check on startup and every 30 minutes
+// Mutual Push Reminders for Direct 1-on-1 Deadlines (Anti-Oubli)
+async function checkDirectDeadlinesReminders() {
+  try {
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const deadlinesDue = await db.getDirectDeadlinesDueForReminder();
+
+    for (const item of deadlinesDue) {
+      const u1 = await db.getUserById(item.user1_id);
+      const u2 = await db.getUserById(item.user2_id);
+      const u1Name = u1 ? (u1.display_name || u1.username) : 'Votre contact';
+      const u2Name = u2 ? (u2.display_name || u2.username) : 'Votre contact';
+
+      // Push to user1
+      pushService.sendNotificationToUser(item.user1_id, {
+        title: `Échéance Partagée avec ${u2Name}`,
+        body: `Rappel : "${item.title}" est prévue pour aujourd'hui !`,
+        icon: '/img/icon-192.png',
+        data: { url: `/?contact=${item.user2_id}`, channel: 'direct', contactId: item.user2_id }
+      }).catch(e => console.error('[-] Push deadline error u1:', e));
+
+      // Push to user2
+      pushService.sendNotificationToUser(item.user2_id, {
+        title: `Échéance Partagée avec ${u1Name}`,
+        body: `Rappel : "${item.title}" est prévue pour aujourd'hui !`,
+        icon: '/img/icon-192.png',
+        data: { url: `/?contact=${item.user1_id}`, channel: 'direct', contactId: item.user1_id }
+      }).catch(e => console.error('[-] Push deadline error u2:', e));
+
+      await db.updateDirectDeadlineReminderDate(item.id, todayDateStr);
+    }
+  } catch (err) {
+    console.error('[-] Error checking direct deadline reminders:', err);
+  }
+}
+
+// Run task reminder & direct deadline check on startup and every 30 minutes
 setTimeout(checkDailyTaskReminders, 10000);
 setInterval(checkDailyTaskReminders, 30 * 60 * 1000);
+setTimeout(checkDirectDeadlinesReminders, 15000);
+setInterval(checkDirectDeadlinesReminders, 15 * 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);

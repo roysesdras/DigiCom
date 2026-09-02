@@ -6702,3 +6702,490 @@ input[type="date"].form-input-date {
     box-shadow: none;
   }
 }
+
+/* ==================== DIRECT 1-ON-1 COLLABORATIVE MODULES (ZERO BORDER, SVG ONLY) ==================== */
+
+.direct-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: none !important;
+}
+
+.direct-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+/* --- 1. Micro-Contrat Cards --- */
+.direct-cards-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.direct-contract-card {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  border: none !important;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.direct-contract-card:hover {
+  background: #243447;
+  transform: translateY(-2px);
+}
+
+.direct-contract-card.status-accepted {
+  background: linear-gradient(145deg, #0f2e24 0%, #1e293b 100%);
+}
+
+.direct-contract-card.status-completed {
+  opacity: 0.85;
+}
+
+.direct-contract-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.direct-contract-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.direct-contract-amount-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 20px;
+  border: none !important;
+  white-space: nowrap;
+}
+
+.direct-contract-desc {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.direct-contract-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+}
+
+.direct-contract-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: none !important;
+}
+
+.badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.badge-accepted { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.badge-adjustment { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.badge-completed { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.badge-cancelled { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
+
+.direct-contract-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.btn-contract-action {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none !important;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.btn-contract-action:hover { opacity: 0.9; transform: scale(1.02); }
+.btn-contract-accept { background: #10b981; color: #fff; }
+.btn-contract-adjust { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+.btn-contract-complete { background: #6366f1; color: #fff; }
+
+/* In-Chat Direct Contract Bubble Card */
+.direct-chat-contract-card {
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+  border-radius: 12px;
+  padding: 0.75rem;
+  margin-top: 0.4rem;
+  border: none !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 300px;
+}
+
+/* --- 2. Échéances & Agenda List --- */
+.direct-deadlines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.direct-deadline-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: background 0.2s ease;
+}
+
+.direct-deadline-card:hover { background: #243447; }
+.direct-deadline-card.completed { opacity: 0.55; }
+.direct-deadline-card.completed .direct-deadline-title { text-decoration: line-through; }
+
+.direct-deadline-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.direct-deadline-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.direct-deadline-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.deadline-type-badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: none !important;
+}
+
+.type-deadline { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.type-meeting { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+.type-call { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.type-payment { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
+.type-encounter { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+
+.btn-delete-deadline {
+  background: none;
+  border: none !important;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s ease;
+}
+
+.btn-delete-deadline:hover { color: #f43f5e; }
+
+/* --- 3. Privacy Shield & Pins --- */
+.privacy-shield-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(30, 41, 59, 0.8) 100%);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  margin-bottom: 0.8rem;
+}
+
+.privacy-shield-info p {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+  line-height: 1.35;
+}
+
+/* Switch Toggle Component */
+.switch-control {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch-control input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #334155;
+  transition: .3s;
+  border-radius: 24px;
+  border: none !important;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+.switch-control input:checked + .switch-slider {
+  background-color: #10b981;
+}
+
+.switch-control input:checked + .switch-slider:before {
+  transform: translateX(20px);
+}
+
+/* Privacy Shield Active Filter */
+body.privacy-blur-active .msg-bubble .msg-text,
+body.privacy-blur-active .chat-user-status,
+body.privacy-blur-active .link-preview-desc {
+  filter: blur(5px) !important;
+  user-select: none !important;
+  transition: filter 0.2s ease;
+}
+
+/* Direct User Pins List */
+.direct-pins-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.direct-pin-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.direct-pin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.direct-pin-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.direct-pin-category {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border: none !important;
+}
+
+.direct-pin-content {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: inherit;
+  border: none !important;
+}
+
+.direct-pin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.btn-pin-action {
+  background: none;
+  border: none !important;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.btn-pin-action:hover { color: #f8fafc; background: rgba(255, 255, 255, 0.08); }
+.btn-pin-action.delete:hover { color: #f43f5e; }
+
+/* --- 4. Règlements & Quittances --- */
+.direct-payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.direct-payment-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.direct-payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.direct-payment-amount {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #10b981;
+}
+
+.direct-payment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+/* --- 5. Coffre-fort Documents & Médias --- */
+.direct-files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.6rem;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 0.2rem;
+}
+
+.direct-file-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.4rem;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease, background 0.2s ease;
+  text-decoration: none;
+  color: inherit;
+}
+
+.direct-file-card:hover {
+  background: #243447;
+  transform: translateY(-2px);
+}
+
+.direct-file-preview-img {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: none !important;
+}
+
+.direct-file-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+}
+
+.direct-file-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.direct-file-date {
+  font-size: 0.68rem;
+  color: #94a3b8;
+}

@@ -1304,6 +1304,31 @@ function initSocket() {
       updatePinnedMessageBanner('salon', data.salonId, data.pinnedMessages || []);
     }
   });
+
+  // Direct 1-on-1 Modules Realtime Socket Listeners
+  state.socket.on('direct_contract_updated', (data) => {
+    if (state.activeContact && (state.activeContact.id === data.contactId || (state.user && state.user.id === data.contactId))) {
+      if (document.getElementById('modal-direct-contract')?.style.display !== 'none') {
+        if (typeof openDirectContractModal === 'function') openDirectContractModal();
+      }
+    }
+  });
+
+  state.socket.on('direct_deadline_updated', (data) => {
+    if (state.activeContact && (state.activeContact.id === data.contactId || (state.user && state.user.id === data.contactId))) {
+      if (document.getElementById('modal-direct-deadlines')?.style.display !== 'none') {
+        if (typeof openDirectDeadlinesModal === 'function') openDirectDeadlinesModal();
+      }
+    }
+  });
+
+  state.socket.on('direct_payment_updated', (data) => {
+    if (state.activeContact && (state.activeContact.id === data.contactId || (state.user && state.user.id === data.contactId))) {
+      if (document.getElementById('modal-direct-payments')?.style.display !== 'none') {
+        if (typeof openDirectPaymentsModal === 'function') openDirectPaymentsModal();
+      }
+    }
+  });
 }
 
 function playNotificationSound() {
@@ -4028,6 +4053,8 @@ function getCleanMessageDisplayText(content) {
 
   if (typeof parsed === 'object' && parsed !== null) {
     if (parsed.text) return parsed.text;
+    if (parsed.type === 'direct_contract_card') return `📜 [Micro-Contrat] ${parsed.title || ''}`;
+    if (parsed.type === 'direct_payment_card') return `💳 [Règlement] ${Number(parsed.amount || 0).toLocaleString('fr-FR')} ${parsed.currency || 'FCFA'}`;
     if (parsed.type === 'decision_announcement' || parsed.isDecisionAnnouncement) return '📌 [Décision] ' + (parsed.title || '');
     if (parsed.type === 'task_announcement' || parsed.isTaskAnnouncement) return '📌 [Tâche] ' + (parsed.title || '');
     if (parsed.type === 'task_reminder') return '⏰ [Rappel Tâche] ' + (parsed.title || '');
@@ -4522,6 +4549,12 @@ function selectContact(contact) {
   ['menu-item-meeting', 'menu-item-files', 'menu-item-members', 'menu-item-salon-tasks', 'menu-item-salon-broadcast', 'menu-item-salon-search', 'menu-item-salon-decisions', 'menu-item-salon-caisse'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
+  });
+
+  // Show Direct 1-on-1 items in 3-dots dropdown
+  ['menu-item-direct-contract', 'menu-item-direct-deadlines', 'menu-item-direct-privacy', 'menu-item-direct-payments', 'menu-item-direct-files'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'flex';
   });
 
   renderContactsList();
@@ -5243,6 +5276,46 @@ function createMessageRowElement(msg, isSos = false) {
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
           </svg>
           Rejoindre la réunion
+        </button>
+      </div>
+    `;
+  } else if (parsedContent && parsedContent.type === 'direct_contract_card') {
+    const ctrTitle = escapeHtml(parsedContent.title || 'Micro-Contrat');
+    const ctrAmount = `${Number(parsedContent.amount || 0).toLocaleString('fr-FR')} ${escapeHtml(parsedContent.currency || 'FCFA')}`;
+    const ctrDeadline = parsedContent.deadline ? new Date(parsedContent.deadline).toLocaleDateString('fr-FR') : null;
+    const isMe = (parsedContent.createdBy === (state.user ? state.user.id : ''));
+
+    bodyHtml = `
+      <div class="direct-chat-contract-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+          <span style="font-size:0.7rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.04em;">Micro-Contrat Proposé</span>
+          <span class="direct-contract-amount-badge">${ctrAmount}</span>
+        </div>
+        <div style="font-size:0.88rem; font-weight:700; color:#f8fafc; margin-top:2px;">${ctrTitle}</div>
+        ${parsedContent.description ? `<div style="font-size:0.76rem; color:#cbd5e1; line-height:1.35;">${escapeHtml(parsedContent.description)}</div>` : ''}
+        ${ctrDeadline ? `<div style="font-size:0.72rem; color:#94a3b8;">Livraison : <strong>${ctrDeadline}</strong></div>` : ''}
+        <button type="button" class="btn-contract-action btn-contract-accept" style="margin-top:6px;" onclick="window.openDirectContractModal && window.openDirectContractModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          <span>${isMe ? 'Consulter le Contrat' : 'Voir & Valider l\'accord'}</span>
+        </button>
+      </div>
+    `;
+  } else if (parsedContent && parsedContent.type === 'direct_payment_card') {
+    const payAmount = `${Number(parsedContent.amount || 0).toLocaleString('fr-FR')} ${escapeHtml(parsedContent.currency || 'FCFA')}`;
+    const payMethod = escapeHtml(parsedContent.paymentMethod || 'Mobile Money');
+    const isMe = (parsedContent.paidBy === (state.user ? state.user.id : ''));
+
+    bodyHtml = `
+      <div class="direct-chat-contract-card" style="background: linear-gradient(145deg, #064e3b, #0f172a);">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+          <span style="font-size:0.7rem; font-weight:700; color:#34d399; text-transform:uppercase; letter-spacing:0.04em;">Versement Déclaré</span>
+          <span style="background:rgba(52,211,153,0.2); color:#34d399; font-weight:700; font-size:0.8rem; padding:2px 8px; border-radius:12px;">${payAmount}</span>
+        </div>
+        <div style="font-size:0.82rem; color:#e2e8f0; margin-top:2px;">Via <strong>${payMethod}</strong> ${parsedContent.reference ? `• Réf: ${escapeHtml(parsedContent.reference)}` : ''}</div>
+        ${parsedContent.note ? `<div style="font-size:0.75rem; color:#cbd5e1; font-style:italic;">"${escapeHtml(parsedContent.note)}"</div>` : ''}
+        <button type="button" class="btn-contract-action btn-contract-accept" style="margin-top:6px;" onclick="window.openDirectPaymentsModal && window.openDirectPaymentsModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+          <span>${isMe ? 'Consulter le règlement' : 'Confirmer la réception'}</span>
         </button>
       </div>
     `;
@@ -6783,6 +6856,12 @@ async function selectSalon(salon) {
   ['menu-item-meeting', 'menu-item-files', 'menu-item-members', 'menu-item-salon-tasks', 'menu-item-salon-search', 'menu-item-salon-decisions', 'menu-item-salon-caisse'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'flex';
+  });
+
+  // Hide Direct 1-on-1 items
+  ['menu-item-direct-contract', 'menu-item-direct-deadlines', 'menu-item-direct-privacy', 'menu-item-direct-payments', 'menu-item-direct-files'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
   });
 
   // Load universal pinned message banner
@@ -8860,6 +8939,7 @@ function initSalonForms() {
 document.addEventListener('DOMContentLoaded', () => {
   initSalonModulesBar();
   initSalonForms();
+  initDirectForms();
 });
 
 window.openSalonTasksModal = openSalonTasksModal;
@@ -8870,5 +8950,684 @@ window.openSalonCaisseModal = openSalonCaisseModal;
 window.openSalonFilesDrawer = openSalonFilesDrawer;
 window.openSalonInfoModal = openSalonInfoModal;
 window.startSalonMeeting = startSalonMeeting;
+
+// ==================== DIRECT 1-ON-1 COLLABORATIVE MODULES ====================
+
+window.directModulesState = {
+  contracts: [],
+  deadlines: [],
+  pins: [],
+  payments: [],
+  files: [],
+  activeFilesFilter: 'all',
+  filesSearchQuery: '',
+  privacyShieldActive: false
+};
+
+// 1. Micro-Contrat
+async function openDirectContractModal() {
+  if (!state.activeContact) return;
+  const modal = document.getElementById('modal-direct-contract');
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const res = await authFetch(`/api/direct/contracts?contactId=${state.activeContact.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.contracts = data.contracts || [];
+      renderDirectContracts(window.directModulesState.contracts);
+    }
+  } catch (err) {
+    console.error('[-] Error fetching direct contracts:', err);
+  }
+}
+
+function renderDirectContracts(contracts) {
+  const container = document.getElementById('list-direct-contracts');
+  if (!container) return;
+
+  if (!contracts || contracts.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 0.5rem; opacity: 0.5;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        <p>Aucun micro-contrat actif avec ce contact.<br>Proposez un accord clair ci-dessus pour sceller vos engagements.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const myId = state.user ? state.user.id : '';
+  container.innerHTML = contracts.map(c => {
+    const isCreator = (c.created_by === myId);
+    const amountStr = `${Number(c.amount || 0).toLocaleString('fr-FR')} ${escapeHtml(c.currency || 'FCFA')}`;
+    const deadlineStr = c.deadline ? new Date(c.deadline).toLocaleDateString('fr-FR') : 'Non spécifiée';
+
+    let badgeClass = 'badge-pending';
+    let statusText = 'En attente';
+    if (c.status === 'accepted') { badgeClass = 'badge-accepted'; statusText = 'Accepté & Scellé'; }
+    else if (c.status === 'adjustment_requested') { badgeClass = 'badge-adjustment'; statusText = 'Ajustement demandé'; }
+    else if (c.status === 'completed') { badgeClass = 'badge-completed'; statusText = 'Terminé'; }
+    else if (c.status === 'cancelled') { badgeClass = 'badge-cancelled'; statusText = 'Annulé'; }
+
+    let actionsHtml = '';
+    if (c.status === 'pending' && !isCreator) {
+      actionsHtml = `
+        <div class="direct-contract-actions">
+          <button type="button" class="btn-contract-action btn-contract-accept" onclick="window.handleContractAction('${c.id}', 'accept')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span>Accepter &amp; Sceller</span>
+          </button>
+          <button type="button" class="btn-contract-action btn-contract-adjust" onclick="window.handleContractAction('${c.id}', 'adjust')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            <span>Ajuster</span>
+          </button>
+        </div>
+      `;
+    } else if (c.status === 'accepted') {
+      actionsHtml = `
+        <div class="direct-contract-actions">
+          <button type="button" class="btn-contract-action btn-contract-complete" onclick="window.handleContractAction('${c.id}', 'complete')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            <span>Marquer comme Terminé</span>
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="direct-contract-card status-${c.status}">
+        <div class="direct-contract-header">
+          <span class="direct-contract-title">${escapeHtml(c.title)}</span>
+          <span class="direct-contract-amount-badge">${amountStr}</span>
+        </div>
+        ${c.description ? `<div class="direct-contract-desc">${escapeHtml(c.description)}</div>` : ''}
+        <div class="direct-contract-meta">
+          <span>Date limite : <strong>${deadlineStr}</strong></span>
+          <span class="direct-contract-badge ${badgeClass}">${statusText}</span>
+        </div>
+        ${actionsHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+async function handleContractAction(contractId, action) {
+  if (!state.activeContact) return;
+  let note = '';
+  if (action === 'adjust') {
+    note = prompt('Précisez les modifications souhaitées (ex: ajuster le tarif ou décaler la date) :');
+    if (note === null) return;
+  }
+
+  try {
+    const res = await authFetch(`/api/direct/contracts/${contractId}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, note, contactId: state.activeContact.id })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.contracts = data.contracts || [];
+      renderDirectContracts(window.directModulesState.contracts);
+      if (typeof showToast === 'function') showToast('Statut du micro-contrat mis à jour');
+    }
+  } catch (err) {
+    console.error('[-] Error updating contract action:', err);
+  }
+}
+
+// 2. Échéances & Agenda
+async function openDirectDeadlinesModal() {
+  if (!state.activeContact) return;
+  const modal = document.getElementById('modal-direct-deadlines');
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const res = await authFetch(`/api/direct/deadlines?contactId=${state.activeContact.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.deadlines = data.deadlines || [];
+      renderDirectDeadlines(window.directModulesState.deadlines);
+    }
+  } catch (err) {
+    console.error('[-] Error fetching direct deadlines:', err);
+  }
+}
+
+function renderDirectDeadlines(deadlines) {
+  const container = document.getElementById('list-direct-deadlines');
+  if (!container) return;
+
+  if (!deadlines || deadlines.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 0.5rem; opacity: 0.5;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        <p>Aucune échéance planifiée.<br>Ajoutez une date clé pour déclencher des rappels Push mutuels.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const typeLabels = {
+    deadline: 'Livrable',
+    meeting: 'Visio',
+    call: 'Appel',
+    payment: 'Paiement',
+    encounter: 'Rencontre'
+  };
+
+  container.innerHTML = deadlines.map(d => {
+    const isDone = (d.status === 'completed');
+    const dateObj = new Date(d.due_date);
+    const dateStr = !isNaN(dateObj.getTime()) ? `${dateObj.toLocaleDateString('fr-FR')} à ${dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : d.due_date;
+    const typeLbl = typeLabels[d.type] || 'Échéance';
+
+    return `
+      <div class="direct-deadline-card ${isDone ? 'completed' : ''}">
+        <input type="checkbox" ${isDone ? 'checked' : ''} onchange="window.toggleDirectDeadline('${d.id}')" style="cursor: pointer; width: 18px; height: 18px; accent-color: #10b981; border: none !important;">
+        <div class="direct-deadline-info">
+          <span class="direct-deadline-title">${escapeHtml(d.title)}</span>
+          <div class="direct-deadline-meta">
+            <span class="deadline-type-badge type-${d.type}">${typeLbl}</span>
+            <span>${dateStr}</span>
+          </div>
+        </div>
+        <button type="button" class="btn-delete-deadline" onclick="window.deleteDirectDeadline('${d.id}')" title="Supprimer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleDirectDeadline(id) {
+  if (!state.activeContact) return;
+  try {
+    const res = await authFetch(`/api/direct/deadlines/${id}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactId: state.activeContact.id })
+    });
+    if (res.ok) {
+      const dl = window.directModulesState.deadlines.find(x => x.id === id);
+      if (dl) dl.status = (dl.status === 'completed' ? 'pending' : 'completed');
+      renderDirectDeadlines(window.directModulesState.deadlines);
+    }
+  } catch (err) {
+    console.error('[-] Error toggling deadline:', err);
+  }
+}
+
+async function deleteDirectDeadline(id) {
+  if (!state.activeContact) return;
+  try {
+    const res = await authFetch(`/api/direct/deadlines/${id}?contactId=${state.activeContact.id}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      window.directModulesState.deadlines = window.directModulesState.deadlines.filter(x => x.id !== id);
+      renderDirectDeadlines(window.directModulesState.deadlines);
+      if (typeof showToast === 'function') showToast('Échéance supprimée');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting deadline:', err);
+  }
+}
+
+// 3. Épingles & Masquage (Privacy Shield)
+async function openDirectPrivacyModal() {
+  if (!state.activeContact) return;
+  const modal = document.getElementById('modal-direct-privacy');
+  if (modal) modal.style.display = 'flex';
+
+  const toggle = document.getElementById('toggle-privacy-blur');
+  if (toggle) toggle.checked = window.directModulesState.privacyShieldActive;
+
+  try {
+    const res = await authFetch(`/api/direct/pins?contactId=${state.activeContact.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.pins = data.pins || [];
+      renderDirectPins(window.directModulesState.pins);
+    }
+  } catch (err) {
+    console.error('[-] Error fetching direct pins:', err);
+  }
+}
+
+function togglePrivacyShield(isActive) {
+  window.directModulesState.privacyShieldActive = Boolean(isActive);
+  document.body.classList.toggle('privacy-blur-active', window.directModulesState.privacyShieldActive);
+  if (typeof showToast === 'function') {
+    showToast(window.directModulesState.privacyShieldActive ? 'Bouclier activé : données sensibles floutées' : 'Bouclier désactivé');
+  }
+}
+
+function renderDirectPins(pins) {
+  const container = document.getElementById('list-direct-pins');
+  if (!container) return;
+
+  if (!pins || pins.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; color: #64748b; padding: 1.5rem 1rem; font-size: 0.82rem;">
+        <p>Aucune note confidentielle épinglée pour ce contact.<br>Enregistrez un RIB, une adresse ou un tarif ci-dessus.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const categoryLabels = {
+    iban: 'RIB / IBAN',
+    address: 'Adresse',
+    tariff: 'Tarif',
+    note: 'Note',
+    password: 'Code / MDP'
+  };
+
+  container.innerHTML = pins.map(p => `
+    <div class="direct-pin-card">
+      <div class="direct-pin-header">
+        <span class="direct-pin-title">${escapeHtml(p.title)}</span>
+        <span class="direct-pin-category">${categoryLabels[p.category] || 'Mémo'}</span>
+      </div>
+      <div class="direct-pin-content">${escapeHtml(p.content)}</div>
+      <div class="direct-pin-actions">
+        <button type="button" class="btn-pin-action" onclick="navigator.clipboard.writeText('${escapeHtml(p.content).replace(/'/g, "\\'")}'); if(typeof showToast === 'function') showToast('Copié dans le presse-papiers');">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>Copier</span>
+        </button>
+        <button type="button" class="btn-pin-action delete" onclick="window.deleteDirectPin('${p.id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          <span>Supprimer</span>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function deleteDirectPin(id) {
+  try {
+    const res = await authFetch(`/api/direct/pins/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      window.directModulesState.pins = window.directModulesState.pins.filter(x => x.id !== id);
+      renderDirectPins(window.directModulesState.pins);
+      if (typeof showToast === 'function') showToast('Épingle supprimée');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting pin:', err);
+  }
+}
+
+// 4. Règlements & Quittances
+async function openDirectPaymentsModal() {
+  if (!state.activeContact) return;
+  const modal = document.getElementById('modal-direct-payments');
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const [payRes, ctrRes] = await Promise.all([
+      authFetch(`/api/direct/payments?contactId=${state.activeContact.id}`),
+      authFetch(`/api/direct/contracts?contactId=${state.activeContact.id}`)
+    ]);
+
+    if (payRes.ok) {
+      const data = await payRes.json();
+      window.directModulesState.payments = data.payments || [];
+    }
+    if (ctrRes.ok) {
+      const ctrData = await ctrRes.json();
+      window.directModulesState.contracts = ctrData.contracts || [];
+    }
+
+    renderDirectPayments(window.directModulesState.payments, window.directModulesState.contracts);
+  } catch (err) {
+    console.error('[-] Error fetching direct payments:', err);
+  }
+}
+
+function renderDirectPayments(payments, contracts) {
+  const container = document.getElementById('list-direct-payments');
+  if (!container) return;
+
+  // Compute financial stats
+  let totalConcluded = 0;
+  if (contracts && contracts.length > 0) {
+    contracts.filter(c => c.status === 'accepted' || c.status === 'completed').forEach(c => {
+      totalConcluded += Number(c.amount || 0);
+    });
+  }
+
+  let totalPaid = 0;
+  if (payments && payments.length > 0) {
+    payments.filter(p => p.status === 'confirmed').forEach(p => {
+      totalPaid += Number(p.amount || 0);
+    });
+  }
+
+  const remaining = Math.max(0, totalConcluded - totalPaid);
+  const pct = totalConcluded > 0 ? Math.min(100, Math.round((totalPaid / totalConcluded) * 100)) : (totalPaid > 0 ? 100 : 0);
+
+  const elConcluded = document.getElementById('direct-stat-concluded');
+  const elPaid = document.getElementById('direct-stat-paid');
+  const elRem = document.getElementById('direct-stat-remaining');
+  const elPct = document.getElementById('direct-progress-pct');
+  const elFill = document.getElementById('direct-progress-fill');
+
+  if (elConcluded) elConcluded.textContent = `${totalConcluded.toLocaleString('fr-FR')} FCFA`;
+  if (elPaid) elPaid.textContent = `${totalPaid.toLocaleString('fr-FR')} FCFA`;
+  if (elRem) elRem.textContent = `${remaining.toLocaleString('fr-FR')} FCFA`;
+  if (elPct) elPct.textContent = `${pct}%`;
+  if (elFill) elFill.style.width = `${pct}%`;
+
+  if (!payments || payments.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; color: #64748b; padding: 1.5rem 1rem; font-size: 0.82rem;">
+        <p>Aucun versement enregistré.<br>Déclarez un acompte ou solde ci-dessus pour le consigner.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const myId = state.user ? state.user.id : '';
+  container.innerHTML = payments.map(p => {
+    const isPayer = (p.paid_by === myId);
+    const dateObj = new Date(p.created_at);
+    const dateStr = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('fr-FR') : p.created_at;
+    const isConfirmed = (p.status === 'confirmed');
+
+    return `
+      <div class="direct-payment-card">
+        <div class="direct-payment-header">
+          <span class="direct-payment-amount">+ ${Number(p.amount).toLocaleString('fr-FR')} ${escapeHtml(p.currency || 'FCFA')}</span>
+          <span class="direct-contract-badge ${isConfirmed ? 'badge-accepted' : 'badge-pending'}">${isConfirmed ? 'Confirmé' : 'Déclaré'}</span>
+        </div>
+        <div class="direct-contract-desc">
+          <strong>${escapeHtml(p.payment_method || 'Mobile Money')}</strong> ${p.reference ? `• Réf: ${escapeHtml(p.reference)}` : ''}
+          ${p.note ? `<br>${escapeHtml(p.note)}` : ''}
+        </div>
+        <div class="direct-payment-meta">
+          <span>${isPayer ? 'Versé par vous' : 'Versé par votre contact'} le ${dateStr}</span>
+          ${(!isConfirmed && !isPayer) ? `
+            <button type="button" class="btn-contract-action btn-contract-accept" style="padding: 2px 8px; font-size: 0.7rem;" onclick="window.confirmDirectPayment('${p.id}')">
+              <span>Confirmer réception</span>
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function confirmDirectPayment(id) {
+  if (!state.activeContact) return;
+  try {
+    const res = await authFetch(`/api/direct/payments/${id}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactId: state.activeContact.id })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.payments = data.payments || [];
+      renderDirectPayments(window.directModulesState.payments, window.directModulesState.contracts);
+      if (typeof showToast === 'function') showToast('Réception du paiement confirmée');
+    }
+  } catch (err) {
+    console.error('[-] Error confirming payment:', err);
+  }
+}
+
+// 5. Coffre-fort Documents & Médias
+async function openDirectFilesModal() {
+  if (!state.activeContact) return;
+  const modal = document.getElementById('modal-direct-files');
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const res = await authFetch(`/api/direct/files?contactId=${state.activeContact.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.files = data.files || [];
+      renderDirectFiles();
+    }
+  } catch (err) {
+    console.error('[-] Error fetching direct files:', err);
+  }
+}
+
+function setDirectFilesCategory(category, buttonEl) {
+  window.directModulesState.activeFilesFilter = category;
+  document.querySelectorAll('[data-direct-filter]').forEach(b => b.classList.remove('active'));
+  if (buttonEl) buttonEl.classList.add('active');
+  renderDirectFiles();
+}
+
+function filterDirectFilesList(query) {
+  window.directModulesState.filesSearchQuery = (query || '').toLowerCase().trim();
+  renderDirectFiles();
+}
+
+function renderDirectFiles() {
+  const container = document.getElementById('list-direct-files');
+  if (!container) return;
+
+  const files = window.directModulesState.files || [];
+  const filter = window.directModulesState.activeFilesFilter || 'all';
+  const query = window.directModulesState.filesSearchQuery || '';
+
+  const filtered = files.filter(f => {
+    // Type filter
+    if (filter === 'doc' && !['file', 'pdf', 'document'].includes(f.media_type) && !String(f.media_url).endsWith('.pdf')) return false;
+    if (filter === 'media' && !['image', 'video'].includes(f.media_type)) return false;
+    if (filter === 'audio' && !['audio', 'voice'].includes(f.media_type)) return false;
+
+    // Search query filter
+    if (query) {
+      const name = (f.text || f.media_url || '').toLowerCase();
+      if (!name.includes(query)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 0.5rem; opacity: 0.5;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <p>Aucun document ou média trouvé pour ce filtre.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map(f => {
+    const isImg = (f.media_type === 'image');
+    const isAudio = ['audio', 'voice'].includes(f.media_type);
+    const dateObj = new Date(f.created_at);
+    const dateStr = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('fr-FR') : '';
+    const displayName = f.text || (f.media_url ? f.media_url.split('/').pop() : 'Fichier');
+
+    return `
+      <a href="${escapeHtml(f.media_url)}" target="_blank" download class="direct-file-card">
+        ${isImg ? `
+          <img src="${escapeHtml(f.media_url)}" alt="" class="direct-file-preview-img" loading="lazy">
+        ` : `
+          <div class="direct-file-icon-box">
+            ${isAudio ? `
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+            ` : `
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            `}
+          </div>
+        `}
+        <span class="direct-file-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span>
+        <span class="direct-file-date">${dateStr}</span>
+      </a>
+    `;
+  }).join('');
+}
+
+// Initialise Direct Form Submissions
+function initDirectForms() {
+  const formContract = document.getElementById('form-create-direct-contract');
+  if (formContract) {
+    formContract.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeContact) return;
+
+      const title = document.getElementById('contract-input-title')?.value || '';
+      const amount = document.getElementById('contract-input-amount')?.value || '0';
+      const currency = document.getElementById('contract-select-currency')?.value || 'FCFA';
+      const deadline = document.getElementById('contract-input-deadline')?.value || '';
+      const desc = document.getElementById('contract-input-desc')?.value || '';
+
+      try {
+        const res = await authFetch('/api/direct/contracts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contactId: state.activeContact.id,
+            title,
+            amount,
+            currency,
+            deadline,
+            description: desc
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.directModulesState.contracts = data.contracts || [];
+          renderDirectContracts(window.directModulesState.contracts);
+          formContract.reset();
+          if (typeof showToast === 'function') showToast('Micro-Contrat proposé avec succès');
+        }
+      } catch (err) {
+        console.error('[-] Error creating contract:', err);
+      }
+    });
+  }
+
+  const formDeadline = document.getElementById('form-create-direct-deadline');
+  if (formDeadline) {
+    formDeadline.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeContact) return;
+
+      const title = document.getElementById('deadline-input-title')?.value || '';
+      const type = document.getElementById('deadline-select-type')?.value || 'deadline';
+      const dueDate = document.getElementById('deadline-input-date')?.value || '';
+      const desc = document.getElementById('deadline-input-desc')?.value || '';
+
+      try {
+        const res = await authFetch('/api/direct/deadlines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contactId: state.activeContact.id,
+            title,
+            type,
+            dueDate,
+            description: desc
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.directModulesState.deadlines = data.deadlines || [];
+          renderDirectDeadlines(window.directModulesState.deadlines);
+          formDeadline.reset();
+          if (typeof showToast === 'function') showToast('Échéance planifiée avec rappel Push');
+        }
+      } catch (err) {
+        console.error('[-] Error creating deadline:', err);
+      }
+    });
+  }
+
+  const formPin = document.getElementById('form-create-direct-pin');
+  if (formPin) {
+    formPin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeContact) return;
+
+      const category = document.getElementById('pin-select-category')?.value || 'note';
+      const title = document.getElementById('pin-input-title')?.value || '';
+      const content = document.getElementById('pin-input-content')?.value || '';
+
+      try {
+        const res = await authFetch('/api/direct/pins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contactId: state.activeContact.id,
+            category,
+            title,
+            content
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.directModulesState.pins = data.pins || [];
+          renderDirectPins(window.directModulesState.pins);
+          formPin.reset();
+          if (typeof showToast === 'function') showToast('Épingle privée enregistrée');
+        }
+      } catch (err) {
+        console.error('[-] Error creating pin:', err);
+      }
+    });
+  }
+
+  const formPayment = document.getElementById('form-create-direct-payment');
+  if (formPayment) {
+    formPayment.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.activeContact) return;
+
+      const amount = document.getElementById('payment-input-amount')?.value || '';
+      const currency = document.getElementById('payment-select-currency')?.value || 'FCFA';
+      const method = document.getElementById('payment-select-method')?.value || 'Mobile Money';
+      const reference = document.getElementById('payment-input-reference')?.value || '';
+      const note = document.getElementById('payment-input-note')?.value || '';
+
+      try {
+        const res = await authFetch('/api/direct/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contactId: state.activeContact.id,
+            amount,
+            currency,
+            paymentMethod: method,
+            reference,
+            note
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.directModulesState.payments = data.payments || [];
+          renderDirectPayments(window.directModulesState.payments, window.directModulesState.contracts);
+          formPayment.reset();
+          if (typeof showToast === 'function') showToast('Versement déclaré avec succès');
+        }
+      } catch (err) {
+        console.error('[-] Error creating payment:', err);
+      }
+    });
+  }
+}
+
+window.openDirectContractModal = openDirectContractModal;
+window.handleContractAction = handleContractAction;
+window.openDirectDeadlinesModal = openDirectDeadlinesModal;
+window.toggleDirectDeadline = toggleDirectDeadline;
+window.deleteDirectDeadline = deleteDirectDeadline;
+window.openDirectPrivacyModal = openDirectPrivacyModal;
+window.togglePrivacyShield = togglePrivacyShield;
+window.deleteDirectPin = deleteDirectPin;
+window.openDirectPaymentsModal = openDirectPaymentsModal;
+window.confirmDirectPayment = confirmDirectPayment;
+window.openDirectFilesModal = openDirectFilesModal;
+window.setDirectFilesCategory = setDirectFilesCategory;
+window.filterDirectFilesList = filterDirectFilesList;
+
 
 
