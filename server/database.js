@@ -1302,6 +1302,13 @@ async function updateDirectContractStatus(id, status, acceptedBy = null) {
   );
 }
 
+async function deleteDirectContract(id, userId) {
+  return await run(
+    `DELETE FROM direct_contracts WHERE id = ? AND (user1_id = ? OR user2_id = ? OR created_by = ?)`,
+    [id, userId, userId, userId]
+  );
+}
+
 // 2. Direct Deadlines
 async function getDirectDeadlines(user1Id, user2Id) {
   return await all(
@@ -1485,6 +1492,7 @@ module.exports = {
   getDirectContractById,
   createDirectContract,
   updateDirectContractStatus,
+  deleteDirectContract,
   getDirectDeadlines,
   createDirectDeadline,
   toggleDirectDeadlineStatus,

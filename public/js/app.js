@@ -5359,7 +5359,12 @@ function createMessageRowElement(msg, isSos = false) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             <span>MICRO-CONTRAT D'ENGAGEMENT</span>
           </div>
-          <span class="contract-card-status-pill ${statusPillClass}">${statusLabel}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="contract-card-status-pill ${statusPillClass}">${statusLabel}</span>
+            <button type="button" class="btn-contract-btn btn-contract-reject-sm" style="padding: 2px 6px; min-width: auto; border-radius: 6px;" onclick="window.deleteDirectContract('${ctrId}')" title="Supprimer ce contrat">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
         </div>
 
         <div class="contract-box-title">
@@ -9138,7 +9143,12 @@ function renderDirectContracts(contracts) {
       <div class="direct-contract-card status-${c.status}">
         <div class="direct-contract-header">
           <span class="direct-contract-title">${escapeHtml(c.title)}</span>
-          <span class="direct-contract-amount-badge">${amountStr}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="direct-contract-amount-badge">${amountStr}</span>
+            <button type="button" class="btn-delete-deadline" onclick="window.deleteDirectContract('${c.id}')" title="Supprimer ce contrat">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
         </div>
         ${c.description ? `<div class="direct-contract-desc">${escapeHtml(c.description)}</div>` : ''}
         <div class="direct-contract-meta">
@@ -9149,6 +9159,24 @@ function renderDirectContracts(contracts) {
       </div>
     `;
   }).join('');
+}
+
+async function deleteDirectContract(id) {
+  if (!confirm('Voulez-vous supprimer définitivement ce micro-contrat ?')) return;
+  if (!state.activeContact) return;
+  try {
+    const res = await authFetch(`/api/direct/contracts/${id}?contactId=${state.activeContact.id}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      window.directModulesState.contracts = data.contracts || [];
+      renderDirectContracts(window.directModulesState.contracts);
+      if (typeof showToast === 'function') showToast('Micro-contrat supprimé');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting contract:', err);
+  }
 }
 
 async function handleContractAction(contractId, action) {
@@ -9740,6 +9768,7 @@ function initDirectForms() {
 
 window.openDirectContractModal = openDirectContractModal;
 window.handleContractAction = handleContractAction;
+window.deleteDirectContract = deleteDirectContract;
 window.openDirectDeadlinesModal = openDirectDeadlinesModal;
 window.toggleDirectDeadline = toggleDirectDeadline;
 window.deleteDirectDeadline = deleteDirectDeadline;

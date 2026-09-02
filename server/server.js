@@ -1716,6 +1716,26 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
   }
 });
 
+app.delete('/api/direct/contracts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contactId } = req.query;
+    await db.deleteDirectContract(id, req.user.id);
+    let contracts = [];
+    if (contactId) {
+      contracts = await db.getDirectContracts(req.user.id, contactId);
+      io.to(`user_${req.user.id}`).to(`user_${contactId}`).emit('direct_contract_updated', {
+        user1Id: req.user.id,
+        user2Id: contactId,
+        contracts
+      });
+    }
+    res.json({ success: true, contracts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 2. Échéances & Agenda (Direct Deadlines)
 app.get('/api/direct/deadlines', authenticateToken, async (req, res) => {
   try {
