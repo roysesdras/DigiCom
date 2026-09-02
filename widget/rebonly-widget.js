@@ -54,8 +54,8 @@
       position: fixed;
       bottom: 20px;
       ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
-      width: 60px;
-      height: 60px;
+      width: 78px;
+      height: 78px;
       background: transparent !important;
       border: none !important;
       outline: none !important;
@@ -77,14 +77,14 @@
       height: 100%;
       object-fit: contain;
       display: block;
-      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
       pointer-events: none;
       user-select: none;
     }
     #rebonly-floating-btn:hover img {
-      transform: scale(1.1);
-      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+      transform: scale(1.08);
+      filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
     }
     #rebonly-floating-btn:active img {
       transform: scale(0.94);
@@ -98,8 +98,8 @@
       color: #ffffff;
       font-size: 10px;
       font-weight: 700;
-      width: 20px;
-      height: 20px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       display: none;
       align-items: center;
@@ -118,9 +118,81 @@
       animation: rebonlyPulseImg 1.6s infinite ease-in-out !important;
     }
     @keyframes rebonlyPulseImg {
-      0% { transform: scale(1); filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)); }
-      50% { transform: scale(1.12); filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.6)); }
-      100% { transform: scale(1); filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)); }
+      0% { transform: scale(1); filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)); }
+      50% { transform: scale(1.12); filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.65)); }
+      100% { transform: scale(1); filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)); }
+    }
+
+    /* Welcome Speech Bubble */
+    #rebonly-welcome-bubble {
+      position: fixed;
+      bottom: 106px;
+      ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
+      z-index: 99999999 !important;
+      background: #0f172a;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: #f1f5f9;
+      padding: 10px 14px;
+      padding-right: 28px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 16px rgba(16, 185, 129, 0.18);
+      font-size: 12px;
+      max-width: 250px;
+      cursor: pointer;
+      display: none;
+      pointer-events: auto !important;
+      animation: rebonlyBubbleSlide 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    #rebonly-welcome-bubble:hover {
+      transform: translateY(-2px);
+      border-color: #10b981;
+    }
+    #rebonly-welcome-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -7px;
+      ${config.position === 'bottom-left' ? 'left: 32px;' : 'right: 32px;'}
+      width: 12px;
+      height: 12px;
+      background: #0f172a;
+      border-right: 1px solid rgba(16, 185, 129, 0.45);
+      border-bottom: 1px solid rgba(16, 185, 129, 0.45);
+      transform: rotate(45deg);
+    }
+    #rebonly-welcome-title {
+      font-weight: 700;
+      font-size: 12px;
+      color: #34d399;
+      margin-bottom: 3px;
+    }
+    #rebonly-welcome-text {
+      font-size: 11.5px;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    #rebonly-welcome-close {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1;
+      padding: 3px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: color 0.15s ease;
+    }
+    #rebonly-welcome-close:hover {
+      color: #f1f5f9;
+    }
+    @keyframes rebonlyBubbleSlide {
+      from { transform: translateY(12px) scale(0.92); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
     }
 
     #rebonly-toast-tooltip {
@@ -427,9 +499,15 @@
     root.innerHTML = `
       <div id="rebonly-floating-wrap" style="position: fixed; bottom: 20px; ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'} z-index: 99999999; display: inline-block;">
         <button id="rebonly-floating-btn" title="Besoin d'aide ? Support DigiCom" aria-label="Support DigiCom">
-          <img src="${config.serverUrl}/img/bot.png" alt="DigiCom" width="60" height="60" loading="eager">
+          <img src="${config.serverUrl}/img/bot.png" alt="DigiCom" width="78" height="78" loading="eager">
         </button>
         <span id="rebonly-floating-badge">0</span>
+      </div>
+
+      <div id="rebonly-welcome-bubble">
+        <button type="button" id="rebonly-welcome-close" aria-label="Fermer" title="Fermer">✕</button>
+        <div id="rebonly-welcome-title">Bonjour ! 👋</div>
+        <div id="rebonly-welcome-text">Vous avez besoin d'aide ? Écrivez-nous en direct !</div>
       </div>
 
       <div id="rebonly-toast-tooltip">
@@ -489,6 +567,8 @@
     const sendRecBtn = document.getElementById('rebonly-send-rec');
     const recTimer = document.getElementById('rebonly-rec-timer');
     const toastTooltip = document.getElementById('rebonly-toast-tooltip');
+    const welcomeBubble = document.getElementById('rebonly-welcome-bubble');
+    const welcomeCloseBtn = document.getElementById('rebonly-welcome-close');
 
     let unreadWidgetCount = 0;
 
@@ -501,10 +581,36 @@
         badge.textContent = '0';
       }
       if (toastTooltip) toastTooltip.style.display = 'none';
+      if (welcomeBubble) welcomeBubble.style.display = 'none';
       unreadWidgetCount = 0;
       textarea.focus();
       const feed = document.getElementById('rebonly-feed');
       if (feed) feed.scrollTop = feed.scrollHeight;
+    }
+
+    // Auto display welcome speech bubble after 2.2 seconds if chat not opened
+    setTimeout(() => {
+      try {
+        if (win.style.display !== 'flex' && welcomeBubble && !sessionStorage.getItem('rebonly_welcome_dismissed')) {
+          welcomeBubble.style.display = 'block';
+        }
+      } catch (e) {}
+    }, 2200);
+
+    if (welcomeCloseBtn) {
+      welcomeCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (welcomeBubble) welcomeBubble.style.display = 'none';
+        try { sessionStorage.setItem('rebonly_welcome_dismissed', '1'); } catch (e) {}
+      });
+    }
+
+    if (welcomeBubble) {
+      welcomeBubble.addEventListener('click', () => {
+        if (welcomeBubble) welcomeBubble.style.display = 'none';
+        try { sessionStorage.setItem('rebonly_welcome_dismissed', '1'); } catch (e) {}
+        openChatWindow();
+      });
     }
 
     btn.addEventListener('click', () => {
