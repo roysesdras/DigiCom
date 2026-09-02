@@ -54,8 +54,8 @@
       position: fixed;
       bottom: 20px;
       ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
-      width: 78px;
-      height: 78px;
+      width: 96px;
+      height: 96px;
       background: transparent !important;
       border: none !important;
       outline: none !important;
@@ -77,14 +77,14 @@
       height: 100%;
       object-fit: contain;
       display: block;
-      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+      filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5));
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
       pointer-events: none;
       user-select: none;
     }
     #rebonly-floating-btn:hover img {
       transform: scale(1.08);
-      filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+      filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.65));
     }
     #rebonly-floating-btn:active img {
       transform: scale(0.94);
@@ -96,10 +96,10 @@
       right: -2px;
       background: #f43f5e;
       color: #ffffff;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       display: none;
       align-items: center;
@@ -118,15 +118,15 @@
       animation: rebonlyPulseImg 1.6s infinite ease-in-out !important;
     }
     @keyframes rebonlyPulseImg {
-      0% { transform: scale(1); filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)); }
-      50% { transform: scale(1.12); filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.65)); }
-      100% { transform: scale(1); filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)); }
+      0% { transform: scale(1); filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5)); }
+      50% { transform: scale(1.12); filter: drop-shadow(0 0 18px rgba(16, 185, 129, 0.7)); }
+      100% { transform: scale(1); filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5)); }
     }
 
     /* Welcome Speech Bubble */
     #rebonly-welcome-bubble {
       position: fixed;
-      bottom: 106px;
+      bottom: 124px;
       ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
       z-index: 99999999 !important;
       background: #0f172a;
@@ -154,7 +154,7 @@
       content: '';
       position: absolute;
       bottom: -7px;
-      ${config.position === 'bottom-left' ? 'left: 32px;' : 'right: 32px;'}
+      ${config.position === 'bottom-left' ? 'left: 42px;' : 'right: 42px;'}
       width: 12px;
       height: 12px;
       background: #0f172a;
@@ -499,7 +499,7 @@
     root.innerHTML = `
       <div id="rebonly-floating-wrap" style="position: fixed; bottom: 20px; ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'} z-index: 99999999; display: inline-block;">
         <button id="rebonly-floating-btn" title="Besoin d'aide ? Support DigiCom" aria-label="Support DigiCom">
-          <img src="${config.serverUrl}/img/bot.png" alt="DigiCom" width="78" height="78" loading="eager">
+          <img src="${config.serverUrl}/img/bot.png" alt="DigiCom" width="96" height="96" loading="eager">
         </button>
         <span id="rebonly-floating-badge">0</span>
       </div>
