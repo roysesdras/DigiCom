@@ -328,11 +328,17 @@ app.get('/api/link-preview', authenticateToken, async (req, res) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
 
+    const isSocial = /facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|twitter\.com|x\.com|threads\.net/i.test(parsedUrl.hostname);
+    const userAgent = isSocial
+      ? 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php) Facebot Twitterbot/1.0 WhatsApp/2.23.20'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
     const fetchRes = await fetch(normalizedUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        'User-Agent': userAgent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
       },
       redirect: 'follow'
     });
