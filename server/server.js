@@ -2705,7 +2705,8 @@ app.post('/api/messages/clear-conversation', authenticateToken, async (req, res)
       io.to(`user_${contactId}`).emit('conversation_cleared', { contactId: req.user.id });
       return res.json({ success: true, message: 'Discussion effacée avec succès.' });
     } else if (salonId) {
-      if (req.user.role === 'admin') {
+      const isAllowed = await db.isSalonAdmin(salonId, req.user.id);
+      if (isAllowed) {
         await db.run(
           `UPDATE messages SET deleted_scope = 'all', deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE channel_type = 'salon' AND receiver_id = ?`,
           [req.user.id, salonId]
@@ -2713,7 +2714,7 @@ app.post('/api/messages/clear-conversation', authenticateToken, async (req, res)
         io.to(`salon_${salonId}`).emit('conversation_cleared', { salonId });
         return res.json({ success: true, message: 'Salon effacé avec succès.' });
       }
-      return res.status(403).json({ error: 'Seul un administrateur peut effacer un salon.' });
+      return res.status(403).json({ error: 'Seul un administrateur ou créateur du salon peut effacer les messages.' });
     }
     return res.status(400).json({ error: 'Paramètre contactId ou salonId manquant.' });
   } catch (err) {

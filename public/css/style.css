@@ -7774,3 +7774,61 @@ body.privacy-blur-active .msg-sender {
   background: rgba(255, 255, 255, 0.08);
   margin: 3px 0;
 }
+
+/* Quick DigiCom In-App Toast */
+.digi-toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999999999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 90vw;
+}
+
+.digi-toast-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: digiToastIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: auto;
+}
+
+.digi-toast-item.success {
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+
+.digi-toast-item.warning {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+.digi-toast-item.error {
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #f87171;
+}
+
+.digi-toast-item.hide {
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+}
+
+@keyframes digiToastIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

@@ -224,7 +224,7 @@ async function authFetch(url, options = {}, retries = 1) {
       headers,
       credentials: 'include'
     });
-    if ((res.status === 401 || res.status === 403) && url !== '/api/login' && url !== '/api/setup') {
+    if (res.status === 401 && url !== '/api/login' && url !== '/api/setup') {
       if (token) {
         console.warn('[!] Session token invalid or expired. Prompting login.');
         localStorage.removeItem('digicom_token');
@@ -1408,6 +1408,37 @@ function showLocalNotification(title, body) {
     }
   }
 }
+
+window.showToast = function(msg, type = 'info') {
+  if (!msg) return;
+  let container = document.getElementById('digi-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'digi-toast-container';
+    container.className = 'digi-toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `digi-toast-item ${type}`;
+
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✓';
+  else if (type === 'warning') icon = '⚠️';
+  else if (type === 'error') icon = '✕';
+
+  toast.innerHTML = `
+    <span class="digi-toast-icon">${icon}</span>
+    <span class="digi-toast-msg">${escapeHtml(msg)}</span>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('hide');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+};
 
 function showInAppToast({ title, body, type = 'private', senderId = null, onClick = null }) {
   let container = document.getElementById('toast-notifications-container');
