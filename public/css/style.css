@@ -7283,24 +7283,33 @@ input[type="date"].form-input-date {
 }
 
 /* Privacy Shield Active Filter */
-body.privacy-blur-active .messages-feed .msg-bubble,
+body.privacy-blur-active .msg-bubble,
+body.privacy-blur-active .msg-bubble img,
+body.privacy-blur-active .msg-bubble video,
+body.privacy-blur-active .chat-image-card,
+body.privacy-blur-active .chat-video-card,
+body.privacy-blur-active .chat-file-card,
+body.privacy-blur-active .audio-bubble,
+body.privacy-blur-active .voice-player,
 body.privacy-blur-active .chat-contract-card-premium,
 body.privacy-blur-active .poll-card,
 body.privacy-blur-active .chat-task-card,
-body.privacy-blur-active .chat-file-card,
 body.privacy-blur-active .link-preview-card,
 body.privacy-blur-active .msg-quoted-reply,
 body.privacy-blur-active #active-contact-status,
 body.privacy-blur-active #active-contact-title,
 body.privacy-blur-active .chat-user-status {
-  filter: blur(8px) !important;
+  filter: blur(10px) !important;
+  -webkit-filter: blur(10px) !important;
   user-select: none !important;
+  -webkit-user-select: none !important;
   transition: filter 0.25s ease !important;
 }
 
 body.privacy-blur-active .msg-meta,
 body.privacy-blur-active .msg-sender {
-  filter: blur(4px) !important;
+  filter: blur(5px) !important;
+  -webkit-filter: blur(5px) !important;
 }
 
 /* Direct User Pins List */
