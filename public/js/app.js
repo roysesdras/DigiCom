@@ -9564,6 +9564,14 @@ function filterDirectFilesList(query) {
   renderDirectFiles();
 }
 
+function formatFileSizeHuman(bytes) {
+  if (!bytes || isNaN(bytes)) return '';
+  const num = Number(bytes);
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} Ko`;
+  return `${(num / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
 function renderDirectFiles() {
   const container = document.getElementById('list-direct-files');
   if (!container) return;
@@ -9573,14 +9581,17 @@ function renderDirectFiles() {
   const query = window.directModulesState.filesSearchQuery || '';
 
   const filtered = files.filter(f => {
+    const url = String(f.media_url || f.file_url || '');
+    const mType = f.media_type || f.file_type || 'file';
+
     // Type filter
-    if (filter === 'doc' && !['file', 'pdf', 'document'].includes(f.media_type) && !String(f.media_url).endsWith('.pdf')) return false;
-    if (filter === 'media' && !['image', 'video'].includes(f.media_type)) return false;
-    if (filter === 'audio' && !['audio', 'voice'].includes(f.media_type)) return false;
+    if (filter === 'doc' && !['file', 'pdf', 'document', 'doc'].includes(mType) && !url.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar|csv)$/i)) return false;
+    if (filter === 'media' && !['image', 'video'].includes(mType) && !url.match(/\.(jpg|jpeg|png|webp|gif|svg|mp4|webm|mov)$/i)) return false;
+    if (filter === 'audio' && !['audio', 'voice'].includes(mType) && !url.match(/\.(mp3|wav|ogg|m4a|weba)$/i)) return false;
 
     // Search query filter
     if (query) {
-      const name = (f.text || f.media_url || '').toLowerCase();
+      const name = (f.file_name || f.text || url).toLowerCase();
       if (!name.includes(query)) return false;
     }
     return true;
@@ -9588,36 +9599,44 @@ function renderDirectFiles() {
 
   if (filtered.length === 0) {
     container.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 0.5rem; opacity: 0.5;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-        <p>Aucun document ou média trouvé pour ce filtre.</p>
+      <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 2.5rem 1rem; font-size: 0.85rem;">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 0.75rem; opacity: 0.5;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <p>Aucun document ou média trouvé pour ce filtre.<br>Les photos, fichiers et audios partagés apparaîtront ici automatiquement.</p>
       </div>
     `;
     return;
   }
 
   container.innerHTML = filtered.map(f => {
-    const isImg = (f.media_type === 'image');
-    const isAudio = ['audio', 'voice'].includes(f.media_type);
-    const dateObj = new Date(f.created_at);
-    const dateStr = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('fr-FR') : '';
-    const displayName = f.text || (f.media_url ? f.media_url.split('/').pop() : 'Fichier');
+    const url = f.media_url || f.file_url || '';
+    const isImg = (f.media_type === 'image') || url.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i);
+    const isVideo = (f.media_type === 'video') || url.match(/\.(mp4|webm|mov)$/i);
+    const isAudio = ['audio', 'voice'].includes(f.media_type) || url.match(/\.(mp3|wav|ogg|m4a|weba)$/i);
+    const isPdf = url.match(/\.pdf$/i) || f.file_type === 'pdf';
+    const dateObj = new Date(f.timestamp || f.created_at);
+    const dateStr = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+    const displayName = f.file_name || f.text || (url ? url.split('/').pop() : 'Fichier');
+    const sizeStr = f.file_size ? ` • ${formatFileSizeHuman(f.file_size)}` : '';
 
     return `
-      <a href="${escapeHtml(f.media_url)}" target="_blank" download class="direct-file-card">
+      <a href="${escapeHtml(url)}" target="_blank" download class="direct-file-card">
         ${isImg ? `
-          <img src="${escapeHtml(f.media_url)}" alt="" class="direct-file-preview-img" loading="lazy">
+          <img src="${escapeHtml(url)}" alt="" class="direct-file-preview-img" loading="lazy">
         ` : `
-          <div class="direct-file-icon-box">
+          <div class="direct-file-icon-box ${isPdf ? 'pdf-box' : (isVideo ? 'video-box' : (isAudio ? 'audio-box' : ''))}">
             ${isAudio ? `
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            ` : isVideo ? `
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+            ` : isPdf ? `
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #f43f5e;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             ` : `
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
             `}
           </div>
         `}
         <span class="direct-file-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span>
-        <span class="direct-file-date">${dateStr}</span>
+        <span class="direct-file-date">${dateStr}${sizeStr}</span>
       </a>
     `;
   }).join('');

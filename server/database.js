@@ -1403,14 +1403,58 @@ async function confirmDirectPayment(id, confirmedBy) {
 
 // 5. Direct Files (Aggregated media & documents from messages)
 async function getDirectFiles(user1Id, user2Id) {
-  return await all(
-    `SELECT id, sender_id, receiver_id, media_url, media_type, text, created_at FROM messages
-     WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
-       AND is_deleted = 0
-       AND (media_url IS NOT NULL AND media_url != '')
-     ORDER BY created_at DESC`,
+  const msgs = await all(
+    `SELECT id, sender_id, sender_name, receiver_id, content, timestamp
+     FROM messages
+     WHERE (
+       (sender_id = ? AND receiver_id = ?) OR 
+       (sender_id = ? AND receiver_id = ?)
+     )
+     AND (channel_type = 'private' OR channel_type = 'direct')
+     AND (deleted_scope IS NULL OR deleted_scope != 'all')
+     ORDER BY timestamp DESC`,
     [user1Id, user2Id, user2Id, user1Id]
   );
+
+  const files = [];
+  for (const m of msgs) {
+    let parsed = null;
+    if (typeof m.content === 'object' && m.content !== null) {
+      parsed = m.content;
+    } else if (typeof m.content === 'string') {
+      try {
+        parsed = JSON.parse(m.content);
+      } catch (e) {}
+    }
+
+    if (parsed && (parsed.url || parsed.fileUrl)) {
+      const url = parsed.url || parsed.fileUrl;
+      const fileName = parsed.fileName || parsed.name || (typeof url === 'string' ? url.split('/').pop() : 'Fichier');
+      let mediaType = parsed.type || 'file';
+      if (typeof url === 'string') {
+        if (url.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) mediaType = 'image';
+        else if (url.match(/\.(mp4|webm|mov|mkv)$/i)) mediaType = 'video';
+        else if (url.match(/\.(mp3|wav|ogg|m4a|weba)$/i) || mediaType === 'audio') mediaType = 'audio';
+        else if (url.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i)) mediaType = 'file';
+      }
+
+      files.push({
+        id: m.id,
+        sender_id: m.sender_id,
+        sender_name: m.sender_name,
+        text: fileName,
+        file_name: fileName,
+        media_url: url,
+        file_url: url,
+        file_size: parsed.fileSize || parsed.size || null,
+        file_type: parsed.fileType || mediaType,
+        media_type: mediaType,
+        timestamp: m.timestamp,
+        created_at: m.timestamp
+      });
+    }
+  }
+  return files;
 }
 
 module.exports = {

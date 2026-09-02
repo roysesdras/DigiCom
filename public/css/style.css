@@ -7495,3 +7495,18 @@ body.privacy-blur-active .msg-sender {
   font-size: 0.68rem;
   color: #94a3b8;
 }
+
+.direct-file-icon-box.pdf-box {
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+}
+
+.direct-file-icon-box.video-box {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.direct-file-icon-box.audio-box {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+}
