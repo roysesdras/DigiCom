@@ -350,13 +350,22 @@ app.get('/api/link-preview', authenticateToken, async (req, res) => {
     const decodeEntities = (str) => {
       if (!str) return null;
       return str
+        .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        .replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)))
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
+        .replace(/&#039;/g, "'")
         .replace(/&#x27;/g, "'")
         .replace(/&nbsp;/g, ' ')
+        .replace(/&eacute;/g, 'é')
+        .replace(/&egrave;/g, 'è')
+        .replace(/&agrave;/g, 'à')
+        .replace(/&ecirc;/g, 'ê')
+        .replace(/&ocirc;/g, 'ô')
+        .replace(/&ccedil;/g, 'ç')
         .trim();
     };
 
