@@ -1673,6 +1673,36 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
       cancelled: `Micro-Contrat refusé / annulé par ${actorName}`
     };
 
+    // In-chat interactive update card
+    const annMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const annRecord = {
+      id: annMsgId,
+      channelType: 'direct',
+      senderId: req.user.id,
+      senderName: actorName,
+      receiverId: targetUserId,
+      content: JSON.stringify({
+        type: 'direct_contract_card',
+        contractId: id,
+        title: contract.title,
+        description: contract.description || '',
+        amount: contract.amount || 0,
+        currency: contract.currency || 'FCFA',
+        deadline: contract.deadline || null,
+        status: newStatus,
+        createdBy: contract.created_by,
+        actionActor: actorName,
+        actionNote: note || '',
+        senderName: actorName,
+        text: actionTextMap[newStatus] || `Micro-Contrat mis à jour`
+      }),
+      contextData: null,
+      is_read: 0,
+      timestamp: new Date().toISOString()
+    };
+    await db.saveMessage(annRecord);
+    io.to(`user_${contract.user1_id}`).to(`user_${contract.user2_id}`).emit('new_direct_message', annRecord);
+
     pushService.sendNotificationToUser(targetUserId, {
       title: `Micro-Contrat : ${contract.title}`,
       body: actionTextMap[newStatus] || `Mise à jour par ${actorName}`,

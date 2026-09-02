@@ -192,10 +192,6 @@
             <div class="user-meta">
               <span class="user-name" id="active-contact-name">Sélectionnez une discussion</span>
               <span class="user-status" id="active-contact-status" style="display: none;"></span>
-              <div class="direct-contract-mini-pill" id="direct-contract-mini-pill" style="display: none;" onclick="window.openDirectContractModal && window.openDirectContractModal();">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                <span id="direct-contract-mini-pill-text">Micro-Contrat</span>
-              </div>
             </div>
           </div>
 
@@ -369,32 +365,6 @@
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
-          </button>
-        </div>
-
-        <!-- Micro-Contrat Active Top Pill Banner -->
-        <div class="direct-contract-pill-banner" id="direct-contract-top-pill" style="display: none;" onclick="window.openDirectContractModal && window.openDirectContractModal();">
-          <div class="contract-pill-left">
-            <div class="contract-pill-icon">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-            </div>
-            <div class="contract-pill-info">
-              <div class="contract-pill-title-row">
-                <strong id="contract-pill-title">Micro-Contrat</strong>
-                <span class="contract-pill-amount-tag" id="contract-pill-amount">0 FCFA</span>
-              </div>
-              <span class="contract-pill-status-text" id="contract-pill-status">En attente de validation</span>
-            </div>
-          </div>
-          <button type="button" class="contract-pill-action-btn" id="contract-pill-action-btn" onclick="event.stopPropagation(); window.openDirectContractModal && window.openDirectContractModal();">
-            <span>Consulter</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </button>
         </div>
 
@@ -1793,11 +1763,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1204" defer></script>
-    <script src="/js/idb-store.min.js?v=1204" defer></script>
-    <script src="/js/push-client.min.js?v=1204" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1204" defer></script>
-    <script src="/js/app.min.js?v=1204" defer></script>
+    <script src="/socket.io/socket.io.js?v=1205" defer></script>
+    <script src="/js/idb-store.min.js?v=1205" defer></script>
+    <script src="/js/push-client.min.js?v=1205" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1205" defer></script>
+    <script src="/js/app.min.js?v=1205" defer></script>
   </body>
 
 </html>

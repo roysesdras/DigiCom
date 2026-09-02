@@ -1315,7 +1315,6 @@ function initSocket() {
     if (isRelated) {
       if (data.contracts) {
         window.directModulesState.contracts = data.contracts;
-        if (typeof updateActiveDirectContractPill === 'function') updateActiveDirectContractPill(data.contracts);
       }
       if (document.getElementById('modal-direct-contract')?.style.display !== 'none') {
         if (typeof openDirectContractModal === 'function') openDirectContractModal();
@@ -4569,7 +4568,6 @@ function selectContact(contact) {
   renderContactsList();
   loadDirectHistory(contact.id);
   loadPinnedMessageForActiveChat();
-  if (typeof fetchActiveDirectContractPill === 'function') fetchActiveDirectContractPill(contact.id);
 }
 
 function updateActiveContactStatus() {
@@ -5290,24 +5288,89 @@ function createMessageRowElement(msg, isSos = false) {
       </div>
     `;
   } else if (parsedContent && parsedContent.type === 'direct_contract_card') {
+    const ctrId = parsedContent.contractId || '';
     const ctrTitle = escapeHtml(parsedContent.title || 'Micro-Contrat');
+    const ctrDesc = escapeHtml(parsedContent.description || '');
     const ctrAmount = `${Number(parsedContent.amount || 0).toLocaleString('fr-FR')} ${escapeHtml(parsedContent.currency || 'FCFA')}`;
-    const ctrDeadline = parsedContent.deadline ? new Date(parsedContent.deadline).toLocaleDateString('fr-FR') : null;
-    const isMe = (parsedContent.createdBy === (state.user ? state.user.id : ''));
+    const ctrDeadline = parsedContent.deadline ? new Date(parsedContent.deadline).toLocaleDateString('fr-FR') : 'Non spécifiée';
+    const ctrStatus = parsedContent.status || 'pending';
+    const myId = state.user ? state.user.id : '';
+    const isCreator = (parsedContent.createdBy === myId);
+
+    let badgeClass = 'badge-pending';
+    let statusLabel = 'En attente de validation';
+    if (ctrStatus === 'accepted') { badgeClass = 'badge-accepted'; statusLabel = 'Accepté & Scellé'; }
+    else if (ctrStatus === 'adjustment_requested') { badgeClass = 'badge-adjustment'; statusLabel = 'Ajustement proposé'; }
+    else if (ctrStatus === 'completed') { badgeClass = 'badge-completed'; statusLabel = 'Mission terminée'; }
+    else if (ctrStatus === 'cancelled') { badgeClass = 'badge-cancelled'; statusLabel = 'Annulé / Rejeté'; }
+
+    let actionsHtml = '';
+    if (['pending', 'adjustment_requested'].includes(ctrStatus)) {
+      if (!isCreator) {
+        actionsHtml = `
+          <div class="chat-contract-actions">
+            <button type="button" class="btn-contract-action btn-contract-accept" onclick="window.handleContractAction('${ctrId}', 'accept')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Accepter &amp; Sceller</span>
+            </button>
+            <button type="button" class="btn-contract-action btn-contract-adjust" onclick="window.handleContractAction('${ctrId}', 'adjust')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              <span>Ajuster</span>
+            </button>
+            <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'reject')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span>Rejeter</span>
+            </button>
+          </div>
+        `;
+      } else {
+        actionsHtml = `
+          <div class="chat-contract-actions">
+            <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'cancel')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Annuler la proposition</span>
+            </button>
+          </div>
+        `;
+      }
+    } else if (ctrStatus === 'accepted') {
+      actionsHtml = `
+        <div class="chat-contract-actions">
+          <button type="button" class="btn-contract-action btn-contract-complete" onclick="window.handleContractAction('${ctrId}', 'complete')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            <span>Marquer comme Terminé</span>
+          </button>
+          <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'cancel')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <span>Annuler l'engagement</span>
+          </button>
+        </div>
+      `;
+    }
 
     bodyHtml = `
-      <div class="direct-chat-contract-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-          <span style="font-size:0.7rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.04em;">Micro-Contrat Proposé</span>
-          <span class="direct-contract-amount-badge">${ctrAmount}</span>
+      <div class="chat-contract-card-premium status-${ctrStatus}">
+        <div class="chat-contract-badge-row">
+          <div class="chat-contract-tag">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <span>MICRO-CONTRAT D'ENGAGEMENT</span>
+          </div>
+          <span class="chat-contract-amount">${ctrAmount}</span>
         </div>
-        <div style="font-size:0.88rem; font-weight:700; color:#f8fafc; margin-top:2px;">${ctrTitle}</div>
-        ${parsedContent.description ? `<div style="font-size:0.76rem; color:#cbd5e1; line-height:1.35;">${escapeHtml(parsedContent.description)}</div>` : ''}
-        ${ctrDeadline ? `<div style="font-size:0.72rem; color:#94a3b8;">Livraison : <strong>${ctrDeadline}</strong></div>` : ''}
-        <button type="button" class="btn-contract-action btn-contract-accept" style="margin-top:6px;" onclick="window.openDirectContractModal && window.openDirectContractModal()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-          <span>${isMe ? 'Consulter le Contrat' : 'Voir & Valider l\'accord'}</span>
-        </button>
+
+        <div class="chat-contract-title">${ctrTitle}</div>
+        ${ctrDesc ? `<div class="chat-contract-desc">${ctrDesc}</div>` : ''}
+        ${parsedContent.actionNote ? `<div class="chat-contract-action-note"><strong>Note d'ajustement :</strong> "${escapeHtml(parsedContent.actionNote)}"</div>` : ''}
+
+        <div class="chat-contract-meta-row">
+          <div class="chat-contract-meta-item">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <span>Livraison : <strong>${ctrDeadline}</strong></span>
+          </div>
+          <span class="direct-contract-badge ${badgeClass}">${statusLabel}</span>
+        </div>
+
+        ${actionsHtml}
       </div>
     `;
   } else if (parsedContent && parsedContent.type === 'direct_payment_card') {
@@ -6873,11 +6936,6 @@ async function selectSalon(salon) {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
-
-  const topPill = document.getElementById('direct-contract-top-pill');
-  if (topPill) topPill.style.display = 'none';
-  const miniPill = document.getElementById('direct-contract-mini-pill');
-  if (miniPill) miniPill.style.display = 'none';
 
   // Load universal pinned message banner
   loadPinnedMessageForActiveChat();
@@ -8991,105 +9049,15 @@ async function openDirectContractModal() {
       const data = await res.json();
       window.directModulesState.contracts = data.contracts || [];
       renderDirectContracts(window.directModulesState.contracts);
-      updateActiveDirectContractPill(window.directModulesState.contracts);
     }
   } catch (err) {
     console.error('[-] Error fetching direct contracts:', err);
   }
 }
 
-function updateActiveDirectContractPill(contracts) {
-  const topPill = document.getElementById('direct-contract-top-pill');
-  const miniPill = document.getElementById('direct-contract-mini-pill');
-  const miniPillText = document.getElementById('direct-contract-mini-pill-text');
-
-  if (!state.activeContact || state.activeTab !== 'contacts' || !contracts || contracts.length === 0) {
-    if (topPill) topPill.style.display = 'none';
-    if (miniPill) miniPill.style.display = 'none';
-    return;
-  }
-
-  // Find active micro-contract (pending, adjustment_requested, or accepted)
-  // Strictly disappears only if completed or cancelled/rejected
-  const activeContract = contracts.find(c => ['pending', 'adjustment_requested', 'accepted'].includes(c.status));
-
-  if (!activeContract) {
-    if (topPill) topPill.style.display = 'none';
-    if (miniPill) miniPill.style.display = 'none';
-    return;
-  }
-
-  const myId = state.user ? state.user.id : '';
-  const isCreator = (activeContract.created_by === myId);
-  const amountStr = `${Number(activeContract.amount || 0).toLocaleString('fr-FR')} ${escapeHtml(activeContract.currency || 'FCFA')}`;
-
-  let statusText = 'En attente de validation';
-  let miniText = `Contrat : ${amountStr}`;
-  let actionBtnText = 'Consulter';
-
-  if (activeContract.status === 'pending') {
-    if (isCreator) {
-      statusText = 'En attente de validation par votre contact';
-      actionBtnText = 'Voir l\'accord';
-    } else {
-      statusText = 'En attente de votre validation';
-      actionBtnText = 'Valider / Répondre';
-    }
-    miniText = `Micro-Contrat (${amountStr})`;
-  } else if (activeContract.status === 'adjustment_requested') {
-    statusText = 'Ajustement proposé en cours';
-    actionBtnText = 'Voir ajustement';
-    miniText = `Ajustement contrat (${amountStr})`;
-  } else if (activeContract.status === 'accepted') {
-    statusText = 'Scellé & En cours d\'exécution';
-    actionBtnText = 'Gérer l\'accord';
-    miniText = `Contrat scellé (${amountStr})`;
-  }
-
-  if (topPill) {
-    const elTitle = document.getElementById('contract-pill-title');
-    const elAmount = document.getElementById('contract-pill-amount');
-    const elStatus = document.getElementById('contract-pill-status');
-    const elBtn = document.getElementById('contract-pill-action-btn');
-
-    if (elTitle) elTitle.textContent = activeContract.title || 'Micro-Contrat';
-    if (elAmount) elAmount.textContent = amountStr;
-    if (elStatus) elStatus.textContent = statusText;
-    if (elBtn) {
-      elBtn.innerHTML = `
-        <span>${actionBtnText}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      `;
-    }
-    topPill.style.display = 'flex';
-  }
-
-  if (miniPill) {
-    if (miniPillText) miniPillText.textContent = miniText;
-    miniPill.style.display = 'inline-flex';
-  }
-}
-
-async function fetchActiveDirectContractPill(contactId) {
-  if (!contactId) return;
-  try {
-    const res = await authFetch(`/api/direct/contracts?contactId=${contactId}`);
-    if (res.ok) {
-      const data = await res.json();
-      window.directModulesState.contracts = data.contracts || [];
-      updateActiveDirectContractPill(window.directModulesState.contracts);
-    }
-  } catch (err) {
-    console.error('[-] Error fetching active contract pill:', err);
-  }
-}
-
 function renderDirectContracts(contracts) {
   const container = document.getElementById('list-direct-contracts');
   if (!container) return;
-
-  // Sync floating pills
-  updateActiveDirectContractPill(contracts);
 
   if (!contracts || contracts.length === 0) {
     container.innerHTML = `
@@ -9124,7 +9092,7 @@ function renderDirectContracts(contracts) {
               <span>Accepter &amp; Sceller</span>
             </button>
             <button type="button" class="btn-contract-action btn-contract-adjust" onclick="window.handleContractAction('${c.id}', 'adjust')">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
               <span>Ajuster</span>
             </button>
             <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${c.id}', 'reject')">
@@ -9197,7 +9165,6 @@ async function handleContractAction(contractId, action) {
       const data = await res.json();
       window.directModulesState.contracts = data.contracts || [];
       renderDirectContracts(window.directModulesState.contracts);
-      updateActiveDirectContractPill(window.directModulesState.contracts);
       if (typeof showToast === 'function') {
         if (action === 'accept') showToast('Micro-Contrat accepté & scellé avec succès !');
         else if (action === 'reject') showToast('Proposition de micro-contrat rejetée');
@@ -9752,8 +9719,6 @@ function initDirectForms() {
 
 window.openDirectContractModal = openDirectContractModal;
 window.handleContractAction = handleContractAction;
-window.updateActiveDirectContractPill = updateActiveDirectContractPill;
-window.fetchActiveDirectContractPill = fetchActiveDirectContractPill;
 window.openDirectDeadlinesModal = openDirectDeadlinesModal;
 window.toggleDirectDeadline = toggleDirectDeadline;
 window.deleteDirectDeadline = deleteDirectDeadline;
