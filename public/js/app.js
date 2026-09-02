@@ -9619,7 +9619,7 @@ function renderDirectFiles() {
     const sizeStr = f.file_size ? ` • ${formatFileSizeHuman(f.file_size)}` : '';
 
     return `
-      <a href="${escapeHtml(url)}" target="_blank" download class="direct-file-card">
+      <div class="direct-file-card" onclick="window.open('${escapeHtml(url)}', '_blank')">
         ${isImg ? `
           <img src="${escapeHtml(url)}" alt="" class="direct-file-preview-img" loading="lazy">
         ` : `
@@ -9637,9 +9637,172 @@ function renderDirectFiles() {
         `}
         <span class="direct-file-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span>
         <span class="direct-file-date">${dateStr}${sizeStr}</span>
-      </a>
+
+        <div class="direct-file-actions" onclick="event.stopPropagation()">
+          <button type="button" class="btn-file-action forward" onclick="window.openForwardFileModal('${f.id}', event)" title="Transférer à un contact ou salon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
+            <span>Transférer</span>
+          </button>
+          <button type="button" class="btn-file-action delete" onclick="window.deleteDirectFile('${f.id}', event)" title="Supprimer ce document">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Supprimer</span>
+          </button>
+        </div>
+      </div>
     `;
   }).join('');
+}
+
+window.currentForwardingFile = null;
+
+async function deleteDirectFile(msgId, e) {
+  if (e) e.stopPropagation();
+  if (!msgId) return;
+  const isConfirmed = confirm('Voulez-vous vraiment supprimer ce document de la discussion ?');
+  if (!isConfirmed) return;
+
+  if (state.socket && state.socket.connected) {
+    state.socket.emit('delete_message', { messageId: msgId });
+  }
+  try {
+    await authFetch(`/api/messages/${encodeURIComponent(msgId)}`, { method: 'DELETE' });
+    window.directModulesState.files = (window.directModulesState.files || []).filter(f => f.id !== msgId);
+    renderDirectFiles();
+    const row = document.getElementById(msgId);
+    if (row) row.remove();
+    if (typeof showToast === 'function') showToast('Document supprimé de la discussion');
+  } catch (err) {
+    console.error('[-] Error deleting file:', err);
+  }
+}
+
+function openForwardFileModal(fileId, e) {
+  if (e) e.stopPropagation();
+  const file = (window.directModulesState.files || []).find(f => f.id === fileId);
+  if (!file) return;
+  window.currentForwardingFile = file;
+
+  const banner = document.getElementById('forward-file-preview-banner');
+  if (banner) {
+    banner.innerHTML = `
+      <div class="forward-preview-chip">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        <span class="forward-file-title">${escapeHtml(file.file_name || file.text || 'Document')}</span>
+      </div>
+    `;
+  }
+
+  const searchInput = document.getElementById('forward-search-input');
+  if (searchInput) searchInput.value = '';
+
+  renderForwardDestinations();
+  const modal = document.getElementById('modal-forward-file');
+  if (modal) modal.style.display = 'flex';
+}
+
+function renderForwardDestinations(query = '') {
+  const list = document.getElementById('forward-destinations-list');
+  if (!list) return;
+
+  const cleanQ = (query || '').toLowerCase().trim();
+  const contacts = (state.contacts || []).filter(c => !cleanQ || (c.displayName || c.username || '').toLowerCase().includes(cleanQ));
+  const salons = (state.salons || []).filter(s => !cleanQ || (s.name || '').toLowerCase().includes(cleanQ));
+
+  let html = '';
+
+  if (contacts.length > 0) {
+    html += `<div class="forward-section-heading">Contacts</div>`;
+    contacts.forEach(c => {
+      const name = c.displayName || c.username || 'Contact';
+      html += `
+        <div class="forward-dest-item" onclick="window.confirmForwardToFile('contact', '${c.id}', '${escapeHtml(name).replace(/'/g, "\\'")}')">
+          <div class="forward-dest-avatar">${(name[0] || 'C').toUpperCase()}</div>
+          <div class="forward-dest-info">
+            <span class="forward-dest-name">${escapeHtml(name)}</span>
+            <span class="forward-dest-sub">Discussion privée</span>
+          </div>
+          <button type="button" class="btn-forward-send">Envoyer</button>
+        </div>
+      `;
+    });
+  }
+
+  if (salons.length > 0) {
+    html += `<div class="forward-section-heading" style="margin-top: 0.75rem;">Salons &amp; Groupes</div>`;
+    salons.forEach(s => {
+      html += `
+        <div class="forward-dest-item" onclick="window.confirmForwardToFile('salon', '${s.id}', '${escapeHtml(s.name).replace(/'/g, "\\'")}')">
+          <div class="forward-dest-avatar salon-av">#</div>
+          <div class="forward-dest-info">
+            <span class="forward-dest-name">${escapeHtml(s.name)}</span>
+            <span class="forward-dest-sub">${s.membersCount || 1} membre(s)</span>
+          </div>
+          <button type="button" class="btn-forward-send">Envoyer</button>
+        </div>
+      `;
+    });
+  }
+
+  if (!html) {
+    html = `<div style="text-align: center; color: #64748b; padding: 1.5rem; font-size: 0.85rem;">Aucun destinataire trouvé</div>`;
+  }
+
+  list.innerHTML = html;
+}
+
+function filterForwardDestinations(query) {
+  renderForwardDestinations(query);
+}
+
+async function confirmForwardToFile(destType, destId, destName) {
+  if (!window.currentForwardingFile) return;
+  const file = window.currentForwardingFile;
+  const payload = {
+    type: file.media_type || file.file_type || 'file',
+    url: file.media_url || file.file_url,
+    fileName: file.file_name || file.text || 'Fichier',
+    fileSize: file.file_size || null
+  };
+
+  const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  const isConnected = state.socket && state.socket.connected;
+
+  if (destType === 'contact') {
+    const msgRecord = {
+      id: msgId,
+      senderId: state.user.id,
+      senderName: state.user.displayName || state.user.username,
+      receiverId: destId,
+      content: payload,
+      status: isConnected ? 'sent' : 'pending',
+      timestamp: new Date().toISOString()
+    };
+    if (isConnected) {
+      state.socket.emit('private_message', msgRecord);
+    }
+    if (state.directMessages[destId]) {
+      state.directMessages[destId].push(msgRecord);
+    }
+  } else if (destType === 'salon') {
+    const msgRecord = {
+      id: msgId,
+      salonId: destId,
+      senderId: state.user.id,
+      senderName: state.user.displayName || state.user.username,
+      content: payload,
+      status: isConnected ? 'sent' : 'pending',
+      timestamp: new Date().toISOString()
+    };
+    if (isConnected) {
+      state.socket.emit('salon_message', msgRecord);
+    }
+    if (state.salonMessages[destId]) {
+      state.salonMessages[destId].push(msgRecord);
+    }
+  }
+
+  if (window.closeModal) window.closeModal('modal-forward-file');
+  if (typeof showToast === 'function') showToast(`Document transféré à ${destName} avec succès !`);
 }
 
 // Initialise Direct Form Submissions
@@ -9813,6 +9976,10 @@ window.confirmDirectPayment = confirmDirectPayment;
 window.openDirectFilesModal = openDirectFilesModal;
 window.setDirectFilesCategory = setDirectFilesCategory;
 window.filterDirectFilesList = filterDirectFilesList;
+window.deleteDirectFile = deleteDirectFile;
+window.openForwardFileModal = openForwardFileModal;
+window.filterForwardDestinations = filterForwardDestinations;
+window.confirmForwardToFile = confirmForwardToFile;
 
 
 

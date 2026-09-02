@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1213" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1213">
+    <link rel="preload" href="/css/style.min.css?v=1214" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1214">
   </head>
 
   <body>
@@ -1753,6 +1753,26 @@
       </div>
     </div>
 
+    <!-- MODAL: Transférer un Document / Média -->
+    <div class="modal-backdrop" id="modal-forward-file" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
+            <h3>Transférer le Document</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-forward-file')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="forward-file-preview-banner" id="forward-file-preview-banner"></div>
+          <input type="text" id="forward-search-input" class="form-input-clean" placeholder="Rechercher un contact ou salon..." oninput="window.filterForwardDestinations(this.value)">
+          <div class="forward-destinations-list" id="forward-destinations-list"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Floating PWA Install Mini-Banner (Google Chrome Style) -->
     <div id="pwa-floating-banner" class="pwa-floating-banner" role="dialog" aria-label="Installer DigiCom">
       <div class="pwa-banner-left">
@@ -1763,11 +1783,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1213" defer></script>
-    <script src="/js/idb-store.min.js?v=1213" defer></script>
-    <script src="/js/push-client.min.js?v=1213" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1213" defer></script>
-    <script src="/js/app.min.js?v=1213" defer></script>
+    <script src="/socket.io/socket.io.js?v=1214" defer></script>
+    <script src="/js/idb-store.min.js?v=1214" defer></script>
+    <script src="/js/push-client.min.js?v=1214" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1214" defer></script>
+    <script src="/js/app.min.js?v=1214" defer></script>
   </body>
 
 </html>

@@ -7510,3 +7510,158 @@ body.privacy-blur-active .msg-sender {
   background: rgba(168, 85, 247, 0.15);
   color: #a855f7;
 }
+
+.direct-file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.2rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.btn-file-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: none !important;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.07);
+  color: #cbd5e1;
+  transition: all 0.15s ease;
+  -webkit-appearance: none;
+}
+
+.btn-file-action.forward {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.btn-file-action.forward:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.btn-file-action.delete {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.btn-file-action.delete:hover {
+  background: rgba(244, 63, 94, 0.25);
+}
+
+/* Forward Modal Styles */
+.forward-file-preview-banner {
+  margin-bottom: 0.75rem;
+}
+
+.forward-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  font-size: 0.8rem;
+  font-weight: 600;
+  max-width: 100%;
+}
+
+.forward-file-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+}
+
+.forward-destinations-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.forward-section-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  padding: 0.2rem 0.4rem;
+}
+
+.forward-dest-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: #1e293b;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.forward-dest-item:hover {
+  background: #273549;
+}
+
+.forward-dest-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.forward-dest-avatar.salon-av {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+}
+
+.forward-dest-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.forward-dest-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.forward-dest-sub {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.btn-forward-send {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none !important;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-forward-send:hover {
+  opacity: 0.9;
+}
