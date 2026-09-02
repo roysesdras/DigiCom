@@ -119,6 +119,14 @@ async function buildMinifiedAssets() {
     console.log(`  [HTML] index.html pre-compressed (${rawHtml.length} bytes -> min ${minHtml.length} bytes)`);
   }
 
+  // 3.1 Pre-compress widget/rebonly-widget.js
+  const widgetPath = path.join(__dirname, '../widget/rebonly-widget.js');
+  if (fs.existsSync(widgetPath)) {
+    const widgetCode = fs.readFileSync(widgetPath, 'utf8');
+    precompressFile(widgetPath, Buffer.from(widgetCode, 'utf8'));
+    console.log(`  [WIDGET] rebonly-widget.js pre-compressed (${widgetCode.length} bytes)`);
+  }
+
   // 4. WebP Image Optimization
   if (fs.existsSync(IMG_DIR)) {
     try {

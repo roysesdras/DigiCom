@@ -54,23 +54,41 @@
       position: fixed;
       bottom: 20px;
       ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'}
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      background: #0f172a;
-      color: #f43f5e;
-      border: 1.5px solid rgba(244, 63, 94, 0.6);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 12px rgba(244, 63, 94, 0.3);
+      width: 60px;
+      height: 60px;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      padding: 0 !important;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer !important;
       z-index: 99999999 !important;
       pointer-events: auto !important;
-      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      -webkit-appearance: none;
+      appearance: none;
     }
-    #rebonly-floating-btn:hover { transform: scale(1.06); border-color: #f43f5e; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 18px rgba(244, 63, 94, 0.45); }
-    #rebonly-floating-btn:active { transform: scale(0.95); }
+    #rebonly-floating-btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+      pointer-events: none;
+      user-select: none;
+    }
+    #rebonly-floating-btn:hover img {
+      transform: scale(1.1);
+      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+    }
+    #rebonly-floating-btn:active img {
+      transform: scale(0.94);
+    }
 
     #rebonly-floating-badge {
       position: absolute;
@@ -80,8 +98,8 @@
       color: #ffffff;
       font-size: 10px;
       font-weight: 700;
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       display: none;
       align-items: center;
@@ -96,13 +114,13 @@
       100% { transform: scale(1); }
     }
 
-    .rebonly-pulse {
-      animation: rebonlyPulse 1.8s infinite !important;
+    .rebonly-pulse img {
+      animation: rebonlyPulseImg 1.6s infinite ease-in-out !important;
     }
-    @keyframes rebonlyPulse {
-      0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7); }
-      70% { box-shadow: 0 0 0 12px rgba(244, 63, 94, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
+    @keyframes rebonlyPulseImg {
+      0% { transform: scale(1); filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)); }
+      50% { transform: scale(1.12); filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.6)); }
+      100% { transform: scale(1); filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)); }
     }
 
     #rebonly-toast-tooltip {
@@ -408,7 +426,9 @@
     root.id = 'rebonly-widget-root';
     root.innerHTML = `
       <div id="rebonly-floating-wrap" style="position: fixed; bottom: 20px; ${config.position === 'bottom-left' ? 'left: 20px;' : 'right: 20px;'} z-index: 99999999; display: inline-block;">
-        <button id="rebonly-floating-btn" title="Besoin d'aide ? SOS Support"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"></path></svg></button>
+        <button id="rebonly-floating-btn" title="Besoin d'aide ? Support DigiCom" aria-label="Support DigiCom">
+          <img src="${config.serverUrl}/img/bot.png" alt="DigiCom" width="60" height="60" loading="eager">
+        </button>
         <span id="rebonly-floating-badge">0</span>
       </div>
 
