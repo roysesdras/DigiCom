@@ -6816,32 +6816,223 @@ input[type="date"].form-input-date {
 .badge-completed { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
 .badge-cancelled { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
 
+/* ==================== MICRO-CONTRAT FLOATING PILL BANNERS & BUTTONS ==================== */
+
+/* Mini Pill under contact name */
+.direct-contract-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-top: 3px;
+  width: fit-content;
+  border: none !important;
+  transition: background 0.2s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.direct-contract-mini-pill:hover {
+  background: rgba(16, 185, 129, 0.22);
+  transform: translateY(-1px);
+}
+
+/* Top Banner under Header */
+.direct-contract-pill-banner {
+  background: linear-gradient(135deg, rgba(15, 46, 36, 0.92) 0%, rgba(30, 41, 59, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 12px;
+  margin: 0.5rem 0.85rem 0.25rem 0.85rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 12px rgba(16, 185, 129, 0.12);
+  cursor: pointer;
+  border: none !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  z-index: 5;
+}
+
+.direct-contract-pill-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 16px rgba(16, 185, 129, 0.2);
+}
+
+.contract-pill-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.contract-pill-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none !important;
+}
+
+.contract-pill-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.contract-pill-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.contract-pill-title-row strong {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contract-pill-amount-tag {
+  background: rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  border: none !important;
+}
+
+.contract-pill-status-text {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contract-pill-action-btn {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: none !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.contract-pill-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+}
+
+/* Premium Aesthetic Contract Actions Buttons */
 .direct-contract-actions {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.6rem;
 }
 
 .btn-contract-action {
   flex: 1;
-  padding: 0.45rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  min-width: 110px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
   cursor: pointer;
   border: none !important;
   outline: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  transition: opacity 0.2s ease, transform 0.1s ease;
+  gap: 6px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
 }
 
-.btn-contract-action:hover { opacity: 0.9; transform: scale(1.02); }
-.btn-contract-accept { background: #10b981; color: #fff; }
-.btn-contract-adjust { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
-.btn-contract-complete { background: #6366f1; color: #fff; }
+.btn-contract-action:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+
+.btn-contract-action:active {
+  transform: scale(0.97);
+}
+
+/* 1. Accepter & Sceller (Emerald Glow) */
+.btn-contract-accept {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+.btn-contract-accept:hover {
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.55);
+}
+
+/* 2. Proposer un ajustement (Cyan / Sky Frost) */
+.btn-contract-adjust {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8 !important;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.15);
+}
+
+.btn-contract-adjust:hover {
+  background: rgba(56, 189, 248, 0.25);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+}
+
+/* 3. Rejeter l'engagement (Rose / Crimson Frost) */
+.btn-contract-reject {
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e !important;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.15);
+}
+
+.btn-contract-reject:hover {
+  background: rgba(244, 63, 94, 0.25);
+  box-shadow: 0 4px 14px rgba(244, 63, 94, 0.3);
+}
+
+/* 4. Marquer comme Terminé (Indigo / Violet Glow) */
+.btn-contract-complete {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.btn-contract-complete:hover {
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.55);
+}
 
 /* In-Chat Direct Contract Bubble Card */
 .direct-chat-contract-card {

@@ -1653,7 +1653,7 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
     if (action === 'accept') newStatus = 'accepted';
     else if (action === 'adjust') newStatus = 'adjustment_requested';
     else if (action === 'complete') newStatus = 'completed';
-    else if (action === 'cancel') newStatus = 'cancelled';
+    else if (action === 'reject' || action === 'cancel') newStatus = 'cancelled';
 
     await db.updateDirectContractStatus(id, newStatus, req.user.id);
     const contracts = await db.getDirectContracts(contract.user1_id, contract.user2_id);
@@ -1670,7 +1670,7 @@ app.post('/api/direct/contracts/:id/action', authenticateToken, async (req, res)
       accepted: `Micro-Contrat accepté et scellé par ${actorName}`,
       adjustment_requested: `${actorName} propose un ajustement : ${note || ''}`,
       completed: `Micro-Contrat marqué comme terminé par ${actorName}`,
-      cancelled: `Micro-Contrat annulé par ${actorName}`
+      cancelled: `Micro-Contrat refusé / annulé par ${actorName}`
     };
 
     pushService.sendNotificationToUser(targetUserId, {
