@@ -8,7 +8,7 @@ let state = {
   user: null,
   socket: null,
   pushClient: null,
-  activeTab: 'all',      // 'all' | 'contacts' | 'salons' | 'support'
+  activeTab: 'all',      // 'all' | 'unread' | 'contacts' | 'salons' | 'archived' | 'support'
   activeContact: null,   // { id, username, displayName, role }
   activeSupportSession: null, // targetUserId for support replies
   contacts: [],
@@ -27,10 +27,24 @@ let state = {
   supportConversations: [],
   replyingTo: null,      // { id, senderName, previewText, type }
   editingMessage: null,  // { id, text }
-  processedMsgIds: new Set()
+  processedMsgIds: new Set(),
+  pinned: new Set(JSON.parse(localStorage.getItem('digicom_pinned') || '[]')),
+  archived: new Set(JSON.parse(localStorage.getItem('digicom_archived') || '[]'))
 };
 
 window.state = state;
+
+function savePinnedConversations() {
+  try {
+    localStorage.setItem('digicom_pinned', JSON.stringify(Array.from(state.pinned)));
+  } catch (e) {}
+}
+
+function saveArchivedConversations() {
+  try {
+    localStorage.setItem('digicom_archived', JSON.stringify(Array.from(state.archived)));
+  } catch (e) {}
+}
 
 // Voice recording state
 let voiceRecorder = {
@@ -1178,6 +1192,28 @@ function initSocket() {
     }
   });
 
+  // Realtime Conversation Cleared (Option A)
+  state.socket.on('conversation_cleared', (data) => {
+    if (!data) return;
+    if (data.contactId) {
+      state.directMessages[data.contactId] = [];
+      if (state.activeContact && String(state.activeContact.id) === String(data.contactId)) {
+        const feed = document.getElementById('messages-feed');
+        if (feed) feed.innerHTML = '';
+        showEmptyFeed(true, 'Discussion effacée.');
+      }
+    } else if (data.salonId) {
+      state.salonMessages[data.salonId] = [];
+      if (state.activeSalon && String(state.activeSalon.id) === String(data.salonId)) {
+        const feed = document.getElementById('messages-feed');
+        if (feed) feed.innerHTML = '';
+        showEmptyFeed(true, 'L\'historique du salon a été effacé.');
+      }
+    }
+    renderCurrentActiveTabFeed();
+    updateAllTabsBadges();
+  });
+
   // Helper for applying message edit across Memory, DOM, and IndexedDB
   window.applyMessageEditLocally = function(messageId, newContent, isEdited = 1, editedAt = null) {
     if (!messageId || newContent === undefined || newContent === null) return;
@@ -1473,10 +1509,14 @@ function setupEventListeners() {
 
   const btnTabAll = document.getElementById('tab-btn-all');
   if (btnTabAll) btnTabAll.addEventListener('click', () => switchTab('all'));
+  const btnTabUnread = document.getElementById('tab-btn-unread');
+  if (btnTabUnread) btnTabUnread.addEventListener('click', () => switchTab('unread'));
   const btnTabContacts = document.getElementById('tab-btn-contacts');
   if (btnTabContacts) btnTabContacts.addEventListener('click', () => switchTab('contacts'));
   const btnTabSalons = document.getElementById('tab-btn-salons');
   if (btnTabSalons) btnTabSalons.addEventListener('click', () => switchTab('salons'));
+  const btnTabArchived = document.getElementById('tab-btn-archived');
+  if (btnTabArchived) btnTabArchived.addEventListener('click', () => switchTab('archived'));
   const btnTabSupport = document.getElementById('tab-btn-support');
   if (btnTabSupport) btnTabSupport.addEventListener('click', () => switchTab('support'));
 
@@ -4153,6 +4193,18 @@ function getLastMessageInfo(type, id, item) {
   };
 }
 
+function sortConversationsWithPin(items) {
+  return items.sort((a, b) => {
+    const isPinnedA = Boolean(state.pinned && state.pinned.has(String(a.id)));
+    const isPinnedB = Boolean(state.pinned && state.pinned.has(String(b.id)));
+    if (isPinnedA && !isPinnedB) return -1;
+    if (!isPinnedA && isPinnedB) return 1;
+    const timeA = a.lastInfo ? (a.lastInfo.timestamp || 0) : 0;
+    const timeB = b.lastInfo ? (b.lastInfo.timestamp || 0) : 0;
+    return timeB - timeA;
+  });
+}
+
 function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, isActive, unreadCount, categoryTag, categoryClass, lastInfo }) {
   const eyeHtml = lastInfo.isMe ? renderEyeStatusHtml(lastInfo.isRead, lastInfo.isPending) : '';
   const isUnreadMsg = !lastInfo.isMe && unreadCount > 0;
@@ -4172,6 +4224,8 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, 
 
   const categoryTagHtml = categoryTag ? `<span class="conversation-category-tag ${categoryClass}">${categoryTag}</span>` : '';
   const unreadBadgeHtml = unreadCount > 0 ? `<span class="contact-unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : '';
+  const isPinned = Boolean(state.pinned && state.pinned.has(String(id)));
+  const pinIconHtml = isPinned ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="color: #34d399; margin-left: 3px; flex-shrink: 0;" title="Épinglé en haut"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V7h1a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1v3.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path></svg>` : '';
 
   return `
     <div class="${avatarClass}">
@@ -4182,6 +4236,7 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, 
       <div class="contact-row-top">
         <div style="display: flex; align-items: center; min-width: 0; gap: 4px; overflow: hidden;">
           <span class="contact-name-text">${escapeHtml(title)}</span>
+          ${pinIconHtml}
           ${categoryTagHtml}
         </div>
         <span class="${timeClass}">${escapeHtml(lastInfo.timeStr || '')}</span>
@@ -4193,6 +4248,15 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, 
         </div>
         ${unreadBadgeHtml}
       </div>
+    </div>
+    <div class="contact-card-actions">
+      <button type="button" class="btn-card-more" onclick="event.preventDefault(); event.stopPropagation(); window.openConversationMenu('${type}', '${id}', '${escapeHtml(title).replace(/'/g, "\\'")}', event)" title="Options de discussion">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="5" r="2"></circle>
+          <circle cx="12" cy="12" r="2"></circle>
+          <circle cx="12" cy="19" r="2"></circle>
+        </svg>
+      </button>
     </div>
   `;
 }
@@ -4234,8 +4298,9 @@ function renderAllConversationsList() {
 
   const allItems = [];
 
-  // Add Direct Contacts
+  // Add Direct Contacts (excluding archived)
   (state.contacts || []).forEach(c => {
+    if (state.archived && state.archived.has(String(c.id))) return;
     const lastInfo = getLastMessageInfo('contact', c.id, c);
     const unreadCount = state.unreadCounts[c.id] || 0;
     const isOnline = state.onlineUserIds.includes(c.id);
@@ -4253,8 +4318,9 @@ function renderAllConversationsList() {
     });
   });
 
-  // Add Salons
+  // Add Salons (excluding archived)
   (state.salons || []).forEach(s => {
+    if (state.archived && state.archived.has(String(s.id))) return;
     const lastInfo = getLastMessageInfo('salon', s.id, s);
     const unreadCount = state.unreadSalonCounts[s.id] || 0;
     allItems.push({
@@ -4271,9 +4337,10 @@ function renderAllConversationsList() {
     });
   });
 
-  // Add Support SOS if Admin
+  // Add Support SOS if Admin (excluding archived)
   if (state.user && state.user.role === 'admin') {
     (state.supportConversations || []).forEach(conv => {
+      if (state.archived && state.archived.has(String(conv.sender_id))) return;
       const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
       const unreadCount = conv.unread_count || 0;
       const title = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
@@ -4314,7 +4381,268 @@ function renderAllConversationsList() {
     });
   }
 
-  // Sort by latest message timestamp descending
+  sortConversationsWithPin(filteredItems);
+
+  filteredItems.forEach(item => {
+    let isActive = false;
+    if (item.type === 'contact') isActive = state.activeContact && String(state.activeContact.id) === String(item.id);
+    else if (item.type === 'salon') isActive = state.activeSalon && String(state.activeSalon.id) === String(item.id);
+    else if (item.type === 'support') isActive = state.activeSupportSession && String(state.activeSupportSession) === String(item.id);
+
+    const card = document.createElement('div');
+    card.className = `contact-card ${isActive ? 'active' : ''}`;
+    card.dataset.userId = item.id;
+    card.innerHTML = renderConversationCardHtml({
+      type: item.type,
+      id: item.id,
+      title: item.title,
+      avatarInitial: item.avatarInitial,
+      isOnline: item.isOnline,
+      isActive,
+      unreadCount: item.unreadCount,
+      categoryTag: item.categoryTag,
+      categoryClass: item.categoryClass,
+      lastInfo: item.lastInfo
+    });
+
+    card.addEventListener('click', () => {
+      if (item.type === 'contact') selectContact(item.rawItem);
+      else if (item.type === 'salon') selectSalon(item.rawItem);
+      else if (item.type === 'support') window.openSupportConversationBySenderId(item.rawItem.sender_id);
+    });
+
+    container.appendChild(card);
+  });
+}
+
+function renderUnreadConversationsList() {
+  const container = document.getElementById('unread-list-container');
+  if (!container || state.activeTab !== 'unread') return;
+
+  container.innerHTML = '';
+
+  const unreadItems = [];
+
+  // Direct Contacts
+  (state.contacts || []).forEach(c => {
+    if (state.archived && state.archived.has(String(c.id))) return;
+    const unreadCount = state.unreadCounts[c.id] || 0;
+    if (unreadCount > 0) {
+      const lastInfo = getLastMessageInfo('contact', c.id, c);
+      const isOnline = state.onlineUserIds.includes(c.id);
+      unreadItems.push({
+        type: 'contact',
+        id: c.id,
+        title: c.display_name || c.username,
+        rawItem: c,
+        avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+        isOnline,
+        unreadCount,
+        categoryTag: '',
+        categoryClass: '',
+        lastInfo
+      });
+    }
+  });
+
+  // Salons
+  (state.salons || []).forEach(s => {
+    if (state.archived && state.archived.has(String(s.id))) return;
+    const unreadCount = state.unreadSalonCounts[s.id] || 0;
+    if (unreadCount > 0) {
+      const lastInfo = getLastMessageInfo('salon', s.id, s);
+      unreadItems.push({
+        type: 'salon',
+        id: s.id,
+        title: formatSalonName(s.name),
+        rawItem: s,
+        avatarInitial: '#',
+        isOnline: false,
+        unreadCount,
+        categoryTag: 'Salon',
+        categoryClass: 'salon',
+        lastInfo
+      });
+    }
+  });
+
+  // Support SOS
+  if (state.user && state.user.role === 'admin') {
+    (state.supportConversations || []).forEach(conv => {
+      if (state.archived && state.archived.has(String(conv.sender_id))) return;
+      const unreadCount = conv.unread_count || 0;
+      if (unreadCount > 0) {
+        const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
+        const title = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
+        const isOnline = isUserOnline(conv.sender_id);
+        unreadItems.push({
+          type: 'support',
+          id: conv.sender_id,
+          title,
+          rawItem: conv,
+          avatarInitial: title.charAt(0).toUpperCase(),
+          isOnline,
+          unreadCount,
+          categoryTag: 'SOS',
+          categoryClass: 'support',
+          lastInfo
+        });
+      }
+    });
+  }
+
+  if (unreadItems.length === 0) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.style.cssText = 'padding: 2.5rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;';
+    emptyDiv.innerHTML = `
+      <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">✨</div>
+      <strong>Aucun message non lu</strong><br>
+      Vous êtes parfaitement à jour dans toutes vos discussions !
+    `;
+    container.appendChild(emptyDiv);
+    return;
+  }
+
+  // Filter with Search query
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  let filteredItems = unreadItems;
+  if (query) {
+    filteredItems = unreadItems.filter(item => {
+      return item.title.toLowerCase().includes(query) ||
+             (item.lastInfo && item.lastInfo.snippet.toLowerCase().includes(query));
+    });
+  }
+
+  sortConversationsWithPin(filteredItems);
+
+  filteredItems.forEach(item => {
+    let isActive = false;
+    if (item.type === 'contact') isActive = state.activeContact && String(state.activeContact.id) === String(item.id);
+    else if (item.type === 'salon') isActive = state.activeSalon && String(state.activeSalon.id) === String(item.id);
+    else if (item.type === 'support') isActive = state.activeSupportSession && String(state.activeSupportSession) === String(item.id);
+
+    const card = document.createElement('div');
+    card.className = `contact-card ${isActive ? 'active' : ''}`;
+    card.dataset.userId = item.id;
+    card.innerHTML = renderConversationCardHtml({
+      type: item.type,
+      id: item.id,
+      title: item.title,
+      avatarInitial: item.avatarInitial,
+      isOnline: item.isOnline,
+      isActive,
+      unreadCount: item.unreadCount,
+      categoryTag: item.categoryTag,
+      categoryClass: item.categoryClass,
+      lastInfo: item.lastInfo
+    });
+
+    card.addEventListener('click', () => {
+      if (item.type === 'contact') selectContact(item.rawItem);
+      else if (item.type === 'salon') selectSalon(item.rawItem);
+      else if (item.type === 'support') window.openSupportConversationBySenderId(item.rawItem.sender_id);
+    });
+
+    container.appendChild(card);
+  });
+}
+
+function renderArchivedConversationsList() {
+  const container = document.getElementById('archived-list-container');
+  if (!container || state.activeTab !== 'archived') return;
+
+  container.innerHTML = '';
+
+  const archivedItems = [];
+
+  // Direct Contacts
+  (state.contacts || []).forEach(c => {
+    if (state.archived && state.archived.has(String(c.id))) {
+      const lastInfo = getLastMessageInfo('contact', c.id, c);
+      const unreadCount = state.unreadCounts[c.id] || 0;
+      const isOnline = state.onlineUserIds.includes(c.id);
+      archivedItems.push({
+        type: 'contact',
+        id: c.id,
+        title: c.display_name || c.username,
+        rawItem: c,
+        avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+        isOnline,
+        unreadCount,
+        categoryTag: 'Archivé',
+        categoryClass: '',
+        lastInfo
+      });
+    }
+  });
+
+  // Salons
+  (state.salons || []).forEach(s => {
+    if (state.archived && state.archived.has(String(s.id))) {
+      const lastInfo = getLastMessageInfo('salon', s.id, s);
+      const unreadCount = state.unreadSalonCounts[s.id] || 0;
+      archivedItems.push({
+        type: 'salon',
+        id: s.id,
+        title: formatSalonName(s.name),
+        rawItem: s,
+        avatarInitial: '#',
+        isOnline: false,
+        unreadCount,
+        categoryTag: 'Archivé',
+        categoryClass: 'salon',
+        lastInfo
+      });
+    }
+  });
+
+  // Support SOS
+  if (state.user && state.user.role === 'admin') {
+    (state.supportConversations || []).forEach(conv => {
+      if (state.archived && state.archived.has(String(conv.sender_id))) {
+        const lastInfo = getLastMessageInfo('support', conv.sender_id, conv);
+        const unreadCount = conv.unread_count || 0;
+        const title = (conv.sender_name && conv.sender_name.trim()) ? conv.sender_name : (conv.sender_id || 'Étudiant');
+        const isOnline = isUserOnline(conv.sender_id);
+        archivedItems.push({
+          type: 'support',
+          id: conv.sender_id,
+          title,
+          rawItem: conv,
+          avatarInitial: title.charAt(0).toUpperCase(),
+          isOnline,
+          unreadCount,
+          categoryTag: 'Archivé',
+          categoryClass: 'support',
+          lastInfo
+        });
+      }
+    });
+  }
+
+  if (archivedItems.length === 0) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.style.cssText = 'padding: 2.5rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;';
+    emptyDiv.innerHTML = `
+      <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">🗄️</div>
+      <strong>Aucune discussion archivée</strong><br>
+      Utilisez le menu <strong>⋮</strong> sur une discussion pour l'archiver et désencombrer votre boîte de réception.
+    `;
+    container.appendChild(emptyDiv);
+    return;
+  }
+
+  // Filter with Search query
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  let filteredItems = archivedItems;
+  if (query) {
+    filteredItems = archivedItems.filter(item => {
+      return item.title.toLowerCase().includes(query) ||
+             (item.lastInfo && item.lastInfo.snippet.toLowerCase().includes(query));
+    });
+  }
+
+  // Sort by latest timestamp descending
   filteredItems.sort((a, b) => (b.lastInfo.timestamp || 0) - (a.lastInfo.timestamp || 0));
 
   filteredItems.forEach(item => {
@@ -4384,7 +4712,10 @@ function renderContactsList() {
     container.appendChild(reqBanner);
   }
 
-  if (state.contacts.length === 0) {
+  // Exclude archived contacts
+  const nonArchivedContacts = (state.contacts || []).filter(c => !state.archived || !state.archived.has(String(c.id)));
+
+  if (nonArchivedContacts.length === 0) {
     const emptyDiv = document.createElement('div');
     emptyDiv.style.cssText = 'padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;';
     emptyDiv.innerHTML = `
@@ -4396,7 +4727,7 @@ function renderContactsList() {
   }
 
   const query = (state.searchQuery || '').trim().toLowerCase();
-  let contactsToRender = [...state.contacts];
+  let contactsToRender = [...nonArchivedContacts];
 
   if (query) {
     contactsToRender = contactsToRender.filter(c => {
@@ -4407,14 +4738,15 @@ function renderContactsList() {
     });
   }
 
-  // Sort by latest message timestamp descending
-  contactsToRender.sort((a, b) => {
-    const infoA = getLastMessageInfo('contact', a.id, a);
-    const infoB = getLastMessageInfo('contact', b.id, b);
-    return (infoB.timestamp || 0) - (infoA.timestamp || 0);
+  // Pre-calculate lastInfo and sort with Pin
+  const contactObjects = contactsToRender.map(c => {
+    const lastInfo = getLastMessageInfo('contact', c.id, c);
+    return { id: c.id, rawItem: c, lastInfo };
   });
 
-  if (contactsToRender.length === 0) {
+  sortConversationsWithPin(contactObjects);
+
+  if (contactObjects.length === 0) {
     container.innerHTML = `
       <div style="padding: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
         Aucune discussion trouvée pour "${escapeHtml(state.searchQuery)}"
@@ -4423,11 +4755,12 @@ function renderContactsList() {
     return;
   }
 
-  contactsToRender.forEach(c => {
+  contactObjects.forEach(obj => {
+    const c = obj.rawItem;
     const isOnline = state.onlineUserIds.includes(c.id);
     const isActive = state.activeContact && String(state.activeContact.id) === String(c.id);
     const unreadCount = state.unreadCounts[c.id] || 0;
-    const lastInfo = getLastMessageInfo('contact', c.id, c);
+    const lastInfo = obj.lastInfo;
     const initial = (c.display_name || c.username || '?').charAt(0).toUpperCase();
 
     const item = document.createElement('div');
@@ -6143,15 +6476,15 @@ async function flushOutbox() {
 }
 
 async function switchTab(tab) {
-  if (tab !== 'salons' && tab !== 'all' && state.activeSalon && state.socket) {
+  if (tab !== 'salons' && tab !== 'all' && tab !== 'unread' && tab !== 'archived' && state.activeSalon && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: state.activeSalon.id });
     state.activeSalon = null;
   }
-  if (tab !== 'contacts' && tab !== 'all' && state.activeContact && state.socket) {
+  if (tab !== 'contacts' && tab !== 'all' && tab !== 'unread' && tab !== 'archived' && state.activeContact && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
     state.activeContact = null;
   }
-  if (tab !== 'support' && tab !== 'all' && state.activeSupportSession && state.socket) {
+  if (tab !== 'support' && tab !== 'all' && tab !== 'unread' && tab !== 'archived' && state.activeSupportSession && state.socket) {
     state.socket.emit('leave_active_chat', { partnerId: 'admin_' + state.activeSupportSession });
     state.activeSupportSession = null;
   }
@@ -6163,13 +6496,17 @@ async function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
   const allFeed = document.getElementById('all-list-container');
+  const unreadFeed = document.getElementById('unread-list-container');
   const contactsFeed = document.getElementById('contacts-list-container');
   const salonsFeed = document.getElementById('salons-list-container');
+  const archivedFeed = document.getElementById('archived-list-container');
   const supportFeed = document.getElementById('support-list-container');
 
   if (allFeed) allFeed.style.display = (tab === 'all') ? 'block' : 'none';
+  if (unreadFeed) unreadFeed.style.display = (tab === 'unread') ? 'block' : 'none';
   if (contactsFeed) contactsFeed.style.display = (tab === 'contacts') ? 'block' : 'none';
   if (salonsFeed) salonsFeed.style.display = (tab === 'salons') ? 'block' : 'none';
+  if (archivedFeed) archivedFeed.style.display = (tab === 'archived') ? 'block' : 'none';
   if (supportFeed) supportFeed.style.display = (tab === 'support') ? 'block' : 'none';
 
   const tabBtn = document.getElementById(`tab-btn-${tab}`);
@@ -6182,10 +6519,14 @@ async function switchTab(tab) {
 function renderCurrentActiveTabFeed() {
   if (state.activeTab === 'all') {
     renderAllConversationsList();
+  } else if (state.activeTab === 'unread') {
+    renderUnreadConversationsList();
   } else if (state.activeTab === 'contacts') {
     renderContactsList();
   } else if (state.activeTab === 'salons') {
     renderSalonsList();
+  } else if (state.activeTab === 'archived') {
+    renderArchivedConversationsList();
   } else if (state.activeTab === 'support') {
     renderSupportConversations();
   }
@@ -6198,13 +6539,19 @@ function updateAllTabsBadges() {
   const totalUnread = contactsUnread + salonsUnread + (state.user && state.user.role === 'admin' ? supportUnread : 0);
 
   const allBadge = document.getElementById('all-badge');
+  const unreadFilterBadge = document.getElementById('unread-filter-badge');
   const contactsBadge = document.getElementById('contacts-badge');
   const salonsBadge = document.getElementById('salons-badge');
+  const archivedBadge = document.getElementById('archived-badge');
   const supportBadge = document.getElementById('support-badge');
 
   if (allBadge) {
     allBadge.textContent = totalUnread > 99 ? '99+' : totalUnread;
     allBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
+  }
+  if (unreadFilterBadge) {
+    unreadFilterBadge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+    unreadFilterBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
   }
   if (contactsBadge) {
     contactsBadge.textContent = contactsUnread > 99 ? '99+' : contactsUnread;
@@ -6213,6 +6560,11 @@ function updateAllTabsBadges() {
   if (salonsBadge) {
     salonsBadge.textContent = salonsUnread > 99 ? '99+' : salonsUnread;
     salonsBadge.style.display = salonsUnread > 0 ? 'inline-block' : 'none';
+  }
+  if (archivedBadge) {
+    const archivedCount = state.archived ? state.archived.size : 0;
+    archivedBadge.textContent = archivedCount > 99 ? '99+' : archivedCount;
+    archivedBadge.style.display = archivedCount > 0 ? 'inline-block' : 'none';
   }
   if (supportBadge) {
     supportBadge.textContent = supportUnread > 99 ? '99+' : supportUnread;
@@ -6829,7 +7181,9 @@ function renderSalonsList() {
   if (!container) return;
 
   container.innerHTML = '';
-  if (state.salons.length === 0) {
+  const nonArchivedSalons = (state.salons || []).filter(s => !state.archived || !state.archived.has(String(s.id)));
+
+  if (nonArchivedSalons.length === 0) {
     container.innerHTML = `
       <div style="padding: 2rem 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.5;">
         Aucun Salon pour le moment.<br>
@@ -6840,7 +7194,7 @@ function renderSalonsList() {
   }
 
   const query = (state.searchQuery || '').trim().toLowerCase();
-  let salonsToRender = [...state.salons];
+  let salonsToRender = [...nonArchivedSalons];
   if (query) {
     salonsToRender = salonsToRender.filter(s => {
       const name = (s.name || '').toLowerCase();
@@ -6849,18 +7203,29 @@ function renderSalonsList() {
     });
   }
 
-  salonsToRender.sort((a, b) => {
-    const infoA = getLastMessageInfo('salon', a.id, a);
-    const infoB = getLastMessageInfo('salon', b.id, b);
-    return (infoB.timestamp || 0) - (infoA.timestamp || 0);
+  const salonObjects = salonsToRender.map(s => {
+    const lastInfo = getLastMessageInfo('salon', s.id, s);
+    return { id: s.id, rawItem: s, lastInfo };
   });
 
-  salonsToRender.forEach(s => {
+  sortConversationsWithPin(salonObjects);
+
+  if (salonObjects.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
+        Aucun Salon trouvé pour "${escapeHtml(state.searchQuery)}"
+      </div>
+    `;
+    return;
+  }
+
+  salonObjects.forEach(obj => {
+    const s = obj.rawItem;
     const isActive = state.activeSalon && String(state.activeSalon.id) === String(s.id);
     const unreadCount = state.unreadSalonCounts[s.id] || 0;
     const isCreator = s.my_role === 'creator' || s.created_by === (state.user ? state.user.id : '');
     const displayName = formatSalonName(s.name);
-    const lastInfo = getLastMessageInfo('salon', s.id, s);
+    const lastInfo = obj.lastInfo;
 
     const card = document.createElement('div');
     card.className = `salon-card ${isActive ? 'active' : ''}`;
@@ -10026,6 +10391,143 @@ window.deleteDirectFile = deleteDirectFile;
 window.openForwardFileModal = openForwardFileModal;
 window.filterForwardDestinations = filterForwardDestinations;
 window.confirmForwardToFile = confirmForwardToFile;
+
+// ---------------- CONVERSATION CONTEXT MENU (Pin, Archive, Clear) ----------------
+let currentContextConv = null;
+
+window.openConversationMenu = function(type, id, title, event) {
+  currentContextConv = { type, id, title };
+  const menu = document.getElementById('conversation-context-menu');
+  if (!menu) return;
+
+  const isPinned = Boolean(state.pinned && state.pinned.has(String(id)));
+  const isArchived = Boolean(state.archived && state.archived.has(String(id)));
+
+  const pinLabel = document.getElementById('ctx-label-pin');
+  if (pinLabel) pinLabel.textContent = isPinned ? 'Désépingler' : 'Épingler en haut';
+
+  const archiveLabel = document.getElementById('ctx-label-archive');
+  if (archiveLabel) archiveLabel.textContent = isArchived ? 'Désarchiver' : 'Archiver la discussion';
+
+  const clickX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : window.innerWidth / 2);
+  const clickY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : window.innerHeight / 2);
+
+  // Position menu without overflowing viewport
+  const menuWidth = 205;
+  const menuHeight = 135;
+  let posX = clickX;
+  let posY = clickY;
+
+  if (posX + menuWidth > window.innerWidth - 10) {
+    posX = window.innerWidth - menuWidth - 10;
+  }
+  if (posY + menuHeight > window.innerHeight - 10) {
+    posY = window.innerHeight - menuHeight - 10;
+  }
+
+  menu.style.left = `${Math.max(10, posX)}px`;
+  menu.style.top = `${Math.max(10, posY)}px`;
+  menu.style.display = 'flex';
+};
+
+window.closeConversationMenu = function() {
+  const menu = document.getElementById('conversation-context-menu');
+  if (menu) menu.style.display = 'none';
+  currentContextConv = null;
+};
+
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('conversation-context-menu');
+  if (menu && menu.style.display !== 'none' && !menu.contains(e.target) && !e.target.closest('.btn-card-more')) {
+    window.closeConversationMenu();
+  }
+});
+
+window.togglePinCurrentConversation = function(e) {
+  if (e) e.stopPropagation();
+  if (!currentContextConv) return;
+  const { id } = currentContextConv;
+  const isPinned = state.pinned.has(String(id));
+  if (isPinned) {
+    state.pinned.delete(String(id));
+    showToast('Discussion désépinglée.', 'info');
+  } else {
+    if (state.pinned.size >= 5) {
+      showToast('Limite de 5 discussions épinglées atteinte.', 'warning');
+      window.closeConversationMenu();
+      return;
+    }
+    state.pinned.add(String(id));
+    showToast('Discussion épinglée en haut 📌', 'success');
+  }
+  savePinnedConversations();
+  window.closeConversationMenu();
+  renderCurrentActiveTabFeed();
+};
+
+window.toggleArchiveCurrentConversation = function(e) {
+  if (e) e.stopPropagation();
+  if (!currentContextConv) return;
+  const { id } = currentContextConv;
+  const isArchived = state.archived.has(String(id));
+  if (isArchived) {
+    state.archived.delete(String(id));
+    showToast('Discussion désarchivée.', 'info');
+  } else {
+    state.archived.add(String(id));
+    state.pinned.delete(String(id));
+    savePinnedConversations();
+    showToast('Discussion archivée 🗄️', 'success');
+  }
+  saveArchivedConversations();
+  window.closeConversationMenu();
+  renderCurrentActiveTabFeed();
+  updateAllTabsBadges();
+};
+
+window.confirmClearCurrentConversation = async function(e) {
+  if (e) e.stopPropagation();
+  if (!currentContextConv) return;
+  const { type, id, title } = currentContextConv;
+  window.closeConversationMenu();
+
+  const confirmMsg = `Voulez-vous vraiment effacer l'historique de la discussion avec "${title}" ?`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const payload = (type === 'salon') ? { salonId: id } : { contactId: id };
+    const res = await authFetch('/api/messages/clear-conversation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      if (type === 'contact') {
+        state.directMessages[id] = [];
+        if (state.activeContact && String(state.activeContact.id) === String(id)) {
+          const feed = document.getElementById('messages-feed');
+          if (feed) feed.innerHTML = '';
+          showEmptyFeed(true, 'Discussion effacée. Écrivez un message pour relancer l\'échange.');
+        }
+      } else if (type === 'salon') {
+        state.salonMessages[id] = [];
+        if (state.activeSalon && String(state.activeSalon.id) === String(id)) {
+          const feed = document.getElementById('messages-feed');
+          if (feed) feed.innerHTML = '';
+          showEmptyFeed(true, 'Historique du salon effacé.');
+        }
+      }
+      showToast('Discussion effacée avec succès 🗑️', 'success');
+      renderCurrentActiveTabFeed();
+      updateAllTabsBadges();
+    } else {
+      showToast(data.error || 'Erreur lors de la suppression.', 'error');
+    }
+  } catch (err) {
+    showToast('Erreur réseau lors de la suppression.', 'error');
+  }
+};
 
 
 

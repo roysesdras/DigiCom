@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1216" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1216">
+    <link rel="preload" href="/css/style.min.css?v=1217" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1217">
   </head>
 
   <body>
@@ -127,6 +127,10 @@
               <span>Toutes</span>
               <span class="tab-badge" id="all-badge" style="display: none;">0</span>
             </button>
+            <button type="button" class="tab-btn" id="tab-btn-unread" data-tab="unread">
+              <span>Non lus</span>
+              <span class="tab-badge" id="unread-filter-badge" style="display: none;">0</span>
+            </button>
             <button type="button" class="tab-btn" id="tab-btn-contacts" data-tab="contacts">
               <span>Discussions</span>
               <span class="tab-badge" id="contacts-badge" style="display: none;">0</span>
@@ -134,6 +138,10 @@
             <button type="button" class="tab-btn" id="tab-btn-salons" data-tab="salons">
               <span>Salons</span>
               <span class="tab-badge" id="salons-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-archived" data-tab="archived">
+              <span>Archivées</span>
+              <span class="tab-badge" id="archived-badge" style="display: none;">0</span>
             </button>
             <button type="button" class="tab-btn" id="tab-btn-support" data-tab="support" style="display: none;">
               <span>Supp SOS</span>
@@ -145,6 +153,10 @@
         <!-- Feeds Containers -->
         <div class="contacts-feed" id="all-list-container">
           <!-- All conversations combined dynamically -->
+        </div>
+
+        <div class="contacts-feed" id="unread-list-container" style="display: none;">
+          <!-- Unread conversations only -->
         </div>
 
         <div class="contacts-feed" id="contacts-list-container" style="display: none;">
@@ -165,6 +177,10 @@
             </button>
           </div>
           <div id="salons-cards-list"></div>
+        </div>
+
+        <div class="contacts-feed" id="archived-list-container" style="display: none;">
+          <!-- Archived conversations rendered dynamically -->
         </div>
 
         <div class="contacts-feed" id="support-list-container" style="display: none;">
@@ -1773,6 +1789,23 @@
       </div>
     </div>
 
+    <!-- Floating Context Menu: Conversation Options (Pin, Archive, Clear) -->
+    <div id="conversation-context-menu" class="context-dropdown-menu" style="display: none;">
+      <button type="button" class="context-menu-item" id="ctx-btn-pin" onclick="window.togglePinCurrentConversation(event)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V7h1a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1v3.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path></svg>
+        <span id="ctx-label-pin">Épingler en haut</span>
+      </button>
+      <button type="button" class="context-menu-item" id="ctx-btn-archive" onclick="window.toggleArchiveCurrentConversation(event)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+        <span id="ctx-label-archive">Archiver la discussion</span>
+      </button>
+      <div class="context-menu-divider"></div>
+      <button type="button" class="context-menu-item danger" id="ctx-btn-clear" onclick="window.confirmClearCurrentConversation(event)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        <span>Effacer la discussion</span>
+      </button>
+    </div>
+
     <!-- Floating PWA Install Mini-Banner (Google Chrome Style) -->
     <div id="pwa-floating-banner" class="pwa-floating-banner" role="dialog" aria-label="Installer DigiCom">
       <div class="pwa-banner-left">
@@ -1783,11 +1816,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1216" defer></script>
-    <script src="/js/idb-store.min.js?v=1216" defer></script>
-    <script src="/js/push-client.min.js?v=1216" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1216" defer></script>
-    <script src="/js/app.min.js?v=1216" defer></script>
+    <script src="/socket.io/socket.io.js?v=1217" defer></script>
+    <script src="/js/idb-store.min.js?v=1217" defer></script>
+    <script src="/js/push-client.min.js?v=1217" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1217" defer></script>
+    <script src="/js/app.min.js?v=1217" defer></script>
   </body>
 
 </html>

@@ -2695,6 +2695,32 @@ app.delete('/api/messages/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
+// 10b-bis. Clear entire direct conversation for both parties (Option A)
+app.post('/api/messages/clear-conversation', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, salonId } = req.body || {};
+    if (contactId) {
+      await db.clearDirectMessages(req.user.id, contactId);
+      io.to(`user_${req.user.id}`).emit('conversation_cleared', { contactId });
+      io.to(`user_${contactId}`).emit('conversation_cleared', { contactId: req.user.id });
+      return res.json({ success: true, message: 'Discussion effacée avec succès.' });
+    } else if (salonId) {
+      if (req.user.role === 'admin') {
+        await db.run(
+          `UPDATE messages SET deleted_scope = 'all', deleted_by = ?, deleted_at = CURRENT_TIMESTAMP WHERE channel_type = 'salon' AND receiver_id = ?`,
+          [req.user.id, salonId]
+        );
+        io.to(`salon_${salonId}`).emit('conversation_cleared', { salonId });
+        return res.json({ success: true, message: 'Salon effacé avec succès.' });
+      }
+      return res.status(403).json({ error: 'Seul un administrateur peut effacer un salon.' });
+    }
+    return res.status(400).json({ error: 'Paramètre contactId ou salonId manquant.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 10c. Edit Message REST Endpoint
 app.patch('/api/messages/:messageId', authenticateToken, async (req, res) => {
   try {

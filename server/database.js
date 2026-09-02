@@ -1457,6 +1457,16 @@ async function getDirectFiles(user1Id, user2Id) {
   return files;
 }
 
+async function clearDirectMessages(userId, contactId) {
+  return await run(
+    `UPDATE messages 
+     SET deleted_scope = 'all', deleted_by = ?, deleted_at = CURRENT_TIMESTAMP 
+     WHERE channel_type IN ('direct', 'private') 
+     AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))`,
+    [userId, userId, contactId, contactId, userId]
+  );
+}
+
 module.exports = {
   db,
   get,
@@ -1482,6 +1492,7 @@ module.exports = {
   saveMessage,
   getMessages,
   getDirectMessages,
+  clearDirectMessages,
   getMessageById,
   softDeleteMessage,
   hardDeleteMessage,
