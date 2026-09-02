@@ -139,8 +139,8 @@
       background: #0f172a;
       color: #f8fafc;
       border-radius: 16px;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+      border: none;
       display: none;
       flex-direction: column;
       overflow: hidden;
@@ -162,13 +162,14 @@
         left: 12px !important;
         max-width: none;
         border-radius: 14px;
+        border: none;
       }
     }
 
     .rebonly-header {
       background: linear-gradient(135deg, #1e293b, #0f172a);
-      padding: 10px 14px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 11px 14px;
+      border: none;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -186,7 +187,7 @@
       color: #10b981;
       padding: 2px 7px;
       border-radius: 8px;
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      border: none;
     }
     .rebonly-close-btn {
       background: none;
@@ -200,7 +201,7 @@
 
     .rebonly-meta-bar {
       background: rgba(244, 63, 94, 0.08);
-      border-bottom: 1px solid rgba(244, 63, 94, 0.15);
+      border: none;
       padding: 6px 12px;
       font-size: 11px;
       color: #fda4af;
@@ -217,12 +218,14 @@
       flex-direction: column;
       gap: 8px;
       background: #090d16;
+      border: none;
     }
 
     .rebonly-bubble-row {
       display: flex;
       flex-direction: column;
       max-width: 86%;
+      border: none;
     }
     .rebonly-bubble-row.other { align-self: flex-start; }
     .rebonly-bubble-row.me { align-self: flex-end; }
@@ -233,6 +236,7 @@
       font-size: 12.5px;
       line-height: 1.4;
       word-break: break-word;
+      border: none;
     }
     .rebonly-bubble-row.other .rebonly-bubble {
       background: #1e293b;
@@ -244,6 +248,7 @@
       background: #005c4b;
       color: #fff;
       border-bottom-right-radius: 2px;
+      border: none;
     }
 
     .rebonly-msg-meta {
@@ -255,6 +260,7 @@
       color: rgba(255, 255, 255, 0.5);
       margin-top: 2px;
       padding: 0 4px;
+      border: none;
     }
     .rebonly-read-receipt {
       font-size: 10px;
@@ -267,7 +273,7 @@
     .rebonly-input-bar {
       padding: 8px 10px;
       background: #1e293b;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border: none;
       display: flex;
       align-items: flex-end;
       gap: 5px;
@@ -276,26 +282,29 @@
     .rebonly-textarea {
       flex: 1;
       background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: none;
       border-radius: 14px;
       color: #fff;
-      padding: 6px 10px;
+      padding: 8px 10px;
       font-size: 12.5px;
       outline: none;
       resize: none;
       height: 34px;
       max-height: 110px;
       line-height: 1.35;
+      box-shadow: none;
     }
     .rebonly-textarea:focus {
-      border-color: ${config.sosColor};
+      border: none;
+      outline: none;
+      box-shadow: none;
     }
     .rebonly-action-btn {
       width: 32px;
       height: 32px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: none;
       color: #94a3b8;
       display: flex;
       align-items: center;
@@ -307,6 +316,7 @@
     .rebonly-action-btn:hover {
       background: rgba(255, 255, 255, 0.15);
       color: #fff;
+      border: none;
     }
     .rebonly-send-btn {
       width: 32px;
@@ -329,7 +339,7 @@
       align-items: center;
       justify-content: space-between;
       background: #331018;
-      border: 1px solid rgba(244, 63, 94, 0.4);
+      border: none;
       border-radius: 14px;
       padding: 5px 10px;
       color: #f43f5e;
@@ -344,6 +354,7 @@
       display: inline-block;
       animation: rebonlyBlink 1s infinite;
       margin-right: 5px;
+      border: none;
     }
     @keyframes rebonlyBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
@@ -352,6 +363,7 @@
       border-radius: 8px;
       margin-top: 4px;
       cursor: pointer;
+      border: none;
     }
     .rebonly-file-card {
       display: flex;
@@ -364,12 +376,14 @@
       color: #fff;
       text-decoration: none;
       font-size: 11.5px;
+      border: none;
     }
     .rebonly-audio-player {
       width: 100%;
       max-width: 200px;
       height: 32px;
       margin-top: 4px;
+      border: none;
     }
   `;
 
@@ -420,7 +434,7 @@
           </div>
         </div>
 
-        <div class="rebonly-typing-bar" id="rebonly-typing-bar" style="display: none; padding: 4px 12px; font-size: 10.5px; color: #10b981; font-style: italic; background: rgba(16, 185, 129, 0.08); border-top: 1px solid rgba(16, 185, 129, 0.15);">Support DigiCom est en train d'écrire...</div>
+        <div class="rebonly-typing-bar" id="rebonly-typing-bar" style="display: none; padding: 4px 12px; font-size: 10.5px; color: #10b981; font-style: italic; background: rgba(16, 185, 129, 0.08); border: none;">Support DigiCom est en train d'écrire...</div>
 
         <form class="rebonly-input-bar" id="rebonly-form">
           <input type="file" id="rebonly-file-input" accept="image/*,application/pdf" style="display: none;">
