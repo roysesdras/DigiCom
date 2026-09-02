@@ -9639,13 +9639,11 @@ function renderDirectFiles() {
         <span class="direct-file-date">${dateStr}${sizeStr}</span>
 
         <div class="direct-file-actions" onclick="event.stopPropagation()">
-          <button type="button" class="btn-file-action forward" onclick="window.openForwardFileModal('${f.id}', event)" title="Transférer à un contact ou salon">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
-            <span>Transférer</span>
+          <button type="button" class="btn-file-icon-btn forward" onclick="window.openForwardFileModal('${f.id}', event)" title="Transférer à un contact ou salon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
           </button>
-          <button type="button" class="btn-file-action delete" onclick="window.deleteDirectFile('${f.id}', event)" title="Supprimer ce document">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            <span>Supprimer</span>
+          <button type="button" class="btn-file-icon-btn delete" onclick="window.deleteDirectFile('${f.id}', event)" title="Supprimer ce document">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
           </button>
         </div>
       </div>
@@ -9721,7 +9719,9 @@ function renderForwardDestinations(query = '') {
             <span class="forward-dest-name">${escapeHtml(name)}</span>
             <span class="forward-dest-sub">Discussion privée</span>
           </div>
-          <button type="button" class="btn-forward-send">Envoyer</button>
+          <button type="button" class="btn-forward-send" title="Envoyer le document">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
         </div>
       `;
     });
@@ -9737,7 +9737,9 @@ function renderForwardDestinations(query = '') {
             <span class="forward-dest-name">${escapeHtml(s.name)}</span>
             <span class="forward-dest-sub">${s.membersCount || 1} membre(s)</span>
           </div>
-          <button type="button" class="btn-forward-send">Envoyer</button>
+          <button type="button" class="btn-forward-send" title="Envoyer le document">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
         </div>
       `;
     });

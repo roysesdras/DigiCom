@@ -7515,47 +7515,47 @@ body.privacy-blur-active .msg-sender {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   width: 100%;
   margin-top: 0.2rem;
   padding-top: 0.4rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.btn-file-action {
-  flex: 1;
+.btn-file-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: 8px;
-  font-size: 0.68rem;
-  font-weight: 600;
   border: none !important;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.07);
   color: #cbd5e1;
   transition: all 0.15s ease;
   -webkit-appearance: none;
+  appearance: none;
 }
 
-.btn-file-action.forward {
+.btn-file-icon-btn.forward {
   color: #38bdf8;
   background: rgba(56, 189, 248, 0.12);
 }
 
-.btn-file-action.forward:hover {
-  background: rgba(56, 189, 248, 0.25);
+.btn-file-icon-btn.forward:hover {
+  background: rgba(56, 189, 248, 0.28);
+  transform: scale(1.08);
 }
 
-.btn-file-action.delete {
+.btn-file-icon-btn.delete {
   color: #f43f5e;
   background: rgba(244, 63, 94, 0.12);
 }
 
-.btn-file-action.delete:hover {
-  background: rgba(244, 63, 94, 0.25);
+.btn-file-icon-btn.delete:hover {
+  background: rgba(244, 63, 94, 0.28);
+  transform: scale(1.08);
 }
 
 /* Forward Modal Styles */
@@ -7651,17 +7651,22 @@ body.privacy-blur-active .msg-sender {
 }
 
 .btn-forward-send {
-  padding: 4px 10px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   background: #10b981;
   color: #fff;
-  font-size: 0.75rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none !important;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .btn-forward-send:hover {
   opacity: 0.9;
+  transform: scale(1.08);
 }
