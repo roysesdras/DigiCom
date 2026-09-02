@@ -9375,6 +9375,10 @@ function renderDirectPins(pins) {
       </div>
       <div class="direct-pin-content">${escapeHtml(p.content)}</div>
       <div class="direct-pin-actions">
+        <button type="button" class="btn-pin-action" onclick="window.insertPinToComposer('${escapeHtml(p.content).replace(/'/g, "\\'")}')" title="Insérer dans la zone de saisie">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          <span>Insérer</span>
+        </button>
         <button type="button" class="btn-pin-action" onclick="navigator.clipboard.writeText('${escapeHtml(p.content).replace(/'/g, "\\'")}'); if(typeof showToast === 'function') showToast('Copié dans le presse-papiers');">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
           <span>Copier</span>
@@ -9387,6 +9391,16 @@ function renderDirectPins(pins) {
     </div>
   `).join('');
 }
+
+window.insertPinToComposer = function(content) {
+  const input = document.getElementById('message-input');
+  if (input) {
+    input.value = (input.value ? input.value + '\n' : '') + content;
+    input.focus();
+    if (window.closeModal) window.closeModal('modal-direct-privacy');
+    if (typeof showToast === 'function') showToast('Mémo inséré dans le message');
+  }
+};
 
 async function deleteDirectPin(id) {
   try {
