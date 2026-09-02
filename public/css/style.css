@@ -1777,6 +1777,7 @@ body {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 4px 12px var(--emerald-glow);
+}
 .btn-recording-send:hover {
   transform: scale(1.05);
 }
@@ -6816,242 +6817,328 @@ input[type="date"].form-input-date {
 .badge-completed { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
 .badge-cancelled { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
 
-/* ==================== IN-CHAT MICRO-CONTRAT PREMIUM CARD ==================== */
+/* =======================================================
+   POLL-STYLE ULTRA-PREMIUM IN-CHAT MICRO-CONTRAT CARD
+   ======================================================= */
+
 .chat-contract-card-premium {
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 14px;
-  padding: 0.95rem 1.05rem;
-  margin-top: 0.4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.1);
+  background: #0b1f1a !important;
+  border-radius: 16px !important;
+  padding: 14px 16px !important;
+  margin-top: 4px !important;
+  margin-bottom: 2px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 9px !important;
+  min-width: 270px !important;
+  max-width: 350px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
   border: none !important;
-  width: 100%;
-  max-width: 360px;
-  box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
 }
 
-.chat-contract-card-premium::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
-  border-radius: 4px 0 0 4px;
+.chat-contract-card-premium.status-accepted {
+  background: linear-gradient(165deg, #09261f 0%, #061c16 100%) !important;
 }
 
-.chat-contract-card-premium.status-accepted::before {
-  background: linear-gradient(180deg, #10b981 0%, #34d399 100%);
+.chat-contract-card-premium.status-completed {
+  background: linear-gradient(165deg, #131c2c 0%, #0d131f 100%) !important;
 }
 
-.chat-contract-card-premium.status-adjustment_requested::before {
-  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+.chat-contract-card-premium.status-cancelled {
+  background: linear-gradient(165deg, #241217 0%, #170a0e 100%) !important;
 }
 
-.chat-contract-card-premium.status-completed::before {
-  background: linear-gradient(180deg, #6366f1 0%, #a855f7 100%);
+.contract-card-header-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  margin-bottom: 2px !important;
 }
 
-.chat-contract-card-premium.status-cancelled::before {
-  background: linear-gradient(180deg, #f43f5e 0%, #e11d48 100%);
+.contract-card-badge-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  color: #34d399 !important;
+  text-transform: uppercase !important;
 }
 
-.chat-contract-badge-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.chat-contract-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: #10b981;
-  text-transform: uppercase;
-}
-
-.chat-contract-amount {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  font-weight: 800;
-  font-size: 0.84rem;
-  padding: 0.2rem 0.65rem;
-  border-radius: 20px;
+.contract-card-status-pill {
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 3px 10px !important;
+  border-radius: 20px !important;
   border: none !important;
-  white-space: nowrap;
+  white-space: nowrap !important;
 }
 
-.chat-contract-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1.3;
+.contract-status-pending {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #fbbf24 !important;
 }
 
-.chat-contract-desc {
-  font-size: 0.8rem;
-  color: #cbd5e1;
-  line-height: 1.4;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 0.45rem 0.6rem;
-  border-radius: 8px;
+.contract-status-accepted {
+  background: rgba(16, 185, 129, 0.25) !important;
+  color: #34d399 !important;
+}
+
+.contract-status-adjustment {
+  background: rgba(56, 189, 248, 0.2) !important;
+  color: #38bdf8 !important;
+}
+
+.contract-status-completed {
+  background: rgba(99, 102, 241, 0.25) !important;
+  color: #a5b4fc !important;
+}
+
+.contract-status-cancelled {
+  background: rgba(244, 63, 94, 0.2) !important;
+  color: #f43f5e !important;
+}
+
+/* Inner Box 1: Title & Description */
+.contract-box-title {
+  background: #142e27 !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  border: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.contract-title-text {
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  line-height: 1.35 !important;
+}
+
+.contract-desc-text {
+  font-size: 0.82rem !important;
+  color: #cbd5e1 !important;
+  line-height: 1.4 !important;
+}
+
+.contract-note-text {
+  font-size: 0.78rem !important;
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  margin-top: 4px !important;
   border: none !important;
 }
 
-.chat-contract-action-note {
-  font-size: 0.76rem;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.1);
-  padding: 0.4rem 0.6rem;
-  border-radius: 8px;
+/* Inner Box 2: Montant */
+.contract-box-amount {
+  background: #0f3d30 !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
   border: none !important;
-  line-height: 1.35;
 }
 
-.chat-contract-meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.74rem;
-  color: #94a3b8;
-  margin-top: 0.1rem;
+.contract-amount-label {
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  color: #a7f3d0 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
 }
 
-.chat-contract-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.contract-amount-value {
+  font-size: 1.15rem !important;
+  font-weight: 900 !important;
+  color: #34d399 !important;
+  letter-spacing: 0.02em !important;
 }
 
-.chat-contract-meta-item strong {
-  color: #f1f5f9;
-}
-
-.chat-contract-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.35rem;
-}
-
-.chat-contract-actions .btn-contract-action {
-  flex: 1;
-  min-width: 90px;
-  padding: 0.55rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
+/* Inner Box 3: Date de Livraison */
+.contract-box-deadline {
+  background: #142e27 !important;
+  border-radius: 12px !important;
+  padding: 9px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 0.82rem !important;
+  color: #cbd5e1 !important;
   border: none !important;
-  outline: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-  user-select: none;
 }
 
-.chat-contract-actions .btn-contract-action:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.1);
+.contract-box-deadline strong {
+  color: #ffffff !important;
+  font-weight: 700 !important;
 }
 
-.chat-contract-actions .btn-contract-action:active {
-  transform: scale(0.97);
+/* Actions Container */
+.contract-actions-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 7px !important;
+  margin-top: 3px !important;
 }
 
-/* Premium Aesthetic Contract Actions Buttons */
+.contract-actions-subrow {
+  display: flex !important;
+  gap: 7px !important;
+}
+
+/* Buttons */
+.btn-contract-btn {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  outline: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  font-family: inherit !important;
+}
+
+.btn-contract-btn:active {
+  transform: scale(0.97) !important;
+}
+
+/* 🟢 Accepter & Sceller */
+.btn-contract-accept-lg {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-size: 0.88rem !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45) !important;
+  width: 100% !important;
+}
+
+.btn-contract-accept-lg:hover {
+  filter: brightness(1.1) !important;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6) !important;
+}
+
+/* 🔵 Ajuster */
+.btn-contract-adjust-sm {
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: #38bdf8 !important;
+  border-radius: 10px !important;
+  padding: 9px 12px !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  flex: 1 !important;
+}
+
+.btn-contract-adjust-sm:hover {
+  background: rgba(56, 189, 248, 0.25) !important;
+}
+
+/* 🔴 Rejeter */
+.btn-contract-reject-sm {
+  background: rgba(244, 63, 94, 0.16) !important;
+  color: #f43f5e !important;
+  border-radius: 10px !important;
+  padding: 9px 12px !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  flex: 1 !important;
+}
+
+.btn-contract-reject-sm:hover {
+  background: rgba(244, 63, 94, 0.25) !important;
+}
+
+/* 🔴 Annuler la proposition (Auteur) */
+.btn-contract-cancel-lg {
+  background: rgba(244, 63, 94, 0.16) !important;
+  color: #f43f5e !important;
+  border-radius: 12px !important;
+  padding: 11px 16px !important;
+  font-size: 0.84rem !important;
+  font-weight: 800 !important;
+  width: 100% !important;
+}
+
+.btn-contract-cancel-lg:hover {
+  background: rgba(244, 63, 94, 0.25) !important;
+}
+
+/* 🟣 Marquer comme Terminé */
+.btn-contract-complete-lg {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-size: 0.88rem !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.45) !important;
+  width: 100% !important;
+}
+
+.btn-contract-complete-lg:hover {
+  filter: brightness(1.1) !important;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6) !important;
+}
+
+/* Modal List Action Buttons */
 .direct-contract-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 0.6rem;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.55rem !important;
+  margin-top: 0.6rem !important;
 }
 
 .btn-contract-action {
-  flex: 1;
-  min-width: 110px;
-  padding: 0.6rem 0.9rem;
-  border-radius: 10px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
+  flex: 1 !important;
+  min-width: 100px !important;
+  padding: 0.6rem 0.9rem !important;
+  border-radius: 10px !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
   border: none !important;
-  outline: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  user-select: none;
+  outline: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  transition: all 0.2s ease !important;
 }
 
-.btn-contract-action:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.08);
-}
-
-.btn-contract-action:active {
-  transform: scale(0.97);
-}
-
-/* 1. Accepter & Sceller (Emerald Glow) */
 .btn-contract-accept {
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
 }
 
-.btn-contract-accept:hover {
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.55);
-}
-
-/* 2. Proposer un ajustement (Cyan / Sky Frost) */
 .btn-contract-adjust {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(56, 189, 248, 0.15) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.15);
 }
 
-.btn-contract-adjust:hover {
-  background: rgba(56, 189, 248, 0.25);
-  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
-}
-
-/* 3. Rejeter l'engagement (Rose / Crimson Frost) */
 .btn-contract-reject {
-  background: rgba(244, 63, 94, 0.15);
+  background: rgba(244, 63, 94, 0.15) !important;
   color: #f43f5e !important;
-  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.15);
 }
 
-.btn-contract-reject:hover {
-  background: rgba(244, 63, 94, 0.25);
-  box-shadow: 0 4px 14px rgba(244, 63, 94, 0.3);
-}
-
-/* 4. Marquer comme Terminé (Indigo / Violet Glow) */
 .btn-contract-complete {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
-}
-
-.btn-contract-complete:hover {
-  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.55);
 }
 
 /* --- 2. Échéances & Agenda List --- */

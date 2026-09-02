@@ -5297,77 +5297,85 @@ function createMessageRowElement(msg, isSos = false) {
     const myId = state.user ? state.user.id : '';
     const isCreator = (parsedContent.createdBy === myId);
 
-    let badgeClass = 'badge-pending';
-    let statusLabel = 'En attente de validation';
-    if (ctrStatus === 'accepted') { badgeClass = 'badge-accepted'; statusLabel = 'Accepté & Scellé'; }
-    else if (ctrStatus === 'adjustment_requested') { badgeClass = 'badge-adjustment'; statusLabel = 'Ajustement proposé'; }
-    else if (ctrStatus === 'completed') { badgeClass = 'badge-completed'; statusLabel = 'Mission terminée'; }
-    else if (ctrStatus === 'cancelled') { badgeClass = 'badge-cancelled'; statusLabel = 'Annulé / Rejeté'; }
+    let statusPillClass = 'contract-status-pending';
+    let statusLabel = 'En attente';
+    if (ctrStatus === 'accepted') { statusPillClass = 'contract-status-accepted'; statusLabel = 'Scellé & En cours'; }
+    else if (ctrStatus === 'adjustment_requested') { statusPillClass = 'contract-status-adjustment'; statusLabel = 'Ajustement proposé'; }
+    else if (ctrStatus === 'completed') { statusPillClass = 'contract-status-completed'; statusLabel = 'Mission terminée'; }
+    else if (ctrStatus === 'cancelled') { statusPillClass = 'contract-status-cancelled'; statusLabel = 'Annulé / Rejeté'; }
 
     let actionsHtml = '';
     if (['pending', 'adjustment_requested'].includes(ctrStatus)) {
       if (!isCreator) {
         actionsHtml = `
-          <div class="chat-contract-actions">
-            <button type="button" class="btn-contract-action btn-contract-accept" onclick="window.handleContractAction('${ctrId}', 'accept')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span>Accepter &amp; Sceller</span>
+          <div class="contract-actions-group">
+            <button type="button" class="btn-contract-btn btn-contract-accept-lg" onclick="window.handleContractAction('${ctrId}', 'accept')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Accepter &amp; Sceller l'engagement</span>
             </button>
-            <button type="button" class="btn-contract-action btn-contract-adjust" onclick="window.handleContractAction('${ctrId}', 'adjust')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              <span>Ajuster</span>
-            </button>
-            <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'reject')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              <span>Rejeter</span>
-            </button>
+            <div class="contract-actions-subrow">
+              <button type="button" class="btn-contract-btn btn-contract-adjust-sm" onclick="window.handleContractAction('${ctrId}', 'adjust')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                <span>Ajuster</span>
+              </button>
+              <button type="button" class="btn-contract-btn btn-contract-reject-sm" onclick="window.handleContractAction('${ctrId}', 'reject')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>Rejeter</span>
+              </button>
+            </div>
           </div>
         `;
       } else {
         actionsHtml = `
-          <div class="chat-contract-actions">
-            <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'cancel')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              <span>Annuler la proposition</span>
+          <div class="contract-actions-group">
+            <button type="button" class="btn-contract-btn btn-contract-cancel-lg" onclick="window.handleContractAction('${ctrId}', 'cancel')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Annuler la proposition de contrat</span>
             </button>
           </div>
         `;
       }
     } else if (ctrStatus === 'accepted') {
       actionsHtml = `
-        <div class="chat-contract-actions">
-          <button type="button" class="btn-contract-action btn-contract-complete" onclick="window.handleContractAction('${ctrId}', 'complete')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-            <span>Marquer comme Terminé</span>
+        <div class="contract-actions-group">
+          <button type="button" class="btn-contract-btn btn-contract-complete-lg" onclick="window.handleContractAction('${ctrId}', 'complete')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            <span>Marquer la mission comme Terminée</span>
           </button>
-          <button type="button" class="btn-contract-action btn-contract-reject" onclick="window.handleContractAction('${ctrId}', 'cancel')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            <span>Annuler l'engagement</span>
-          </button>
+          <div class="contract-actions-subrow">
+            <button type="button" class="btn-contract-btn btn-contract-reject-sm" style="width: 100%;" onclick="window.handleContractAction('${ctrId}', 'cancel')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span>Annuler l'engagement</span>
+            </button>
+          </div>
         </div>
       `;
     }
 
     bodyHtml = `
       <div class="chat-contract-card-premium status-${ctrStatus}">
-        <div class="chat-contract-badge-row">
-          <div class="chat-contract-tag">
+        <div class="contract-card-header-bar">
+          <div class="contract-card-badge-pill">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             <span>MICRO-CONTRAT D'ENGAGEMENT</span>
           </div>
-          <span class="chat-contract-amount">${ctrAmount}</span>
+          <span class="contract-card-status-pill ${statusPillClass}">${statusLabel}</span>
         </div>
 
-        <div class="chat-contract-title">${ctrTitle}</div>
-        ${ctrDesc ? `<div class="chat-contract-desc">${ctrDesc}</div>` : ''}
-        ${parsedContent.actionNote ? `<div class="chat-contract-action-note"><strong>Note d'ajustement :</strong> "${escapeHtml(parsedContent.actionNote)}"</div>` : ''}
+        <div class="contract-box-title">
+          <div class="contract-title-text">${ctrTitle}</div>
+          ${ctrDesc ? `<div class="contract-desc-text">${ctrDesc}</div>` : ''}
+          ${parsedContent.actionNote ? `<div class="contract-note-text"><strong>Ajustement demandé :</strong> "${escapeHtml(parsedContent.actionNote)}"</div>` : ''}
+        </div>
 
-        <div class="chat-contract-meta-row">
-          <div class="chat-contract-meta-item">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            <span>Livraison : <strong>${ctrDeadline}</strong></span>
-          </div>
-          <span class="direct-contract-badge ${badgeClass}">${statusLabel}</span>
+        <div class="contract-box-amount">
+          <span class="contract-amount-label">Montant convenu</span>
+          <span class="contract-amount-value">${ctrAmount}</span>
+        </div>
+
+        <div class="contract-box-deadline">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #34d399;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>Livraison prévue : <strong>${ctrDeadline}</strong></span>
         </div>
 
         ${actionsHtml}
