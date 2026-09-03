@@ -748,7 +748,7 @@ async function getSupportConversations() {
         COUNT(*) AS message_count,
         SUM(CASE WHEN (sender_id NOT LIKE 'admin%' AND sender_id != 'admin') AND (is_read = 0 OR is_read IS NULL) THEN 1 ELSE 0 END) AS unread_count
       FROM messages
-      WHERE channel_type = 'support'
+      WHERE channel_type = 'support' AND (deleted_scope IS NULL OR deleted_scope != 'all')
       GROUP BY 
         CASE 
           WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id 
@@ -767,14 +767,27 @@ async function getSupportConversations() {
       m.sender_id AS last_sender_id,
       m.is_read AS last_is_read
     FROM latest_support ls
-    LEFT JOIN messages m ON m.id = (
+    JOIN messages m ON m.id = (
       SELECT id FROM messages 
-      WHERE channel_type = 'support' AND (sender_id = ls.thread_id OR receiver_id = ls.thread_id)
+      WHERE channel_type = 'support' 
+        AND (deleted_scope IS NULL OR deleted_scope != 'all')
+        AND (sender_id = ls.thread_id OR receiver_id = ls.thread_id)
       ORDER BY timestamp DESC 
       LIMIT 1
     )
+    WHERE ls.thread_id IS NOT NULL AND ls.thread_id != ''
     ORDER BY ls.last_activity DESC
   `);
+}
+
+async function clearSupportMessages(threadId, deletedBy) {
+  return await run(
+    `UPDATE messages 
+     SET deleted_scope = 'all', deleted_by = ?, deleted_at = CURRENT_TIMESTAMP 
+     WHERE channel_type = 'support' 
+     AND (sender_id = ? OR receiver_id = ?)`,
+    [deletedBy, threadId, threadId]
+  );
 }
 
 async function createSalon({ id, name, description, icon, created_by, memberIds = [] }) {
@@ -1499,6 +1512,7 @@ module.exports = {
   editMessage,
   getSupportConversations,
   markSupportMessagesAsRead,
+  clearSupportMessages,
   // Salons exports
   createSalon,
   getSalonsForUser,

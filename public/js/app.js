@@ -1214,6 +1214,21 @@ function initSocket() {
     updateAllTabsBadges();
   });
 
+  state.socket.on('support_conversation_cleared', (data) => {
+    if (!data || !data.supportId) return;
+    const sId = data.supportId;
+    state.supportMessages[sId] = [];
+    state.supportConversations = (state.supportConversations || []).filter(c => String(c.sender_id) !== String(sId));
+    if (state.activeSupportSession && String(state.activeSupportSession) === String(sId)) {
+      state.activeSupportSession = null;
+      const feed = document.getElementById('messages-feed');
+      if (feed) feed.innerHTML = '';
+      showEmptyFeed(true, 'Ticket SOS effacé.');
+    }
+    renderCurrentActiveTabFeed();
+    updateAllTabsBadges();
+  });
+
   // Helper for applying message edit across Memory, DOM, and IndexedDB
   window.applyMessageEditLocally = function(messageId, newContent, isEdited = 1, editedAt = null) {
     if (!messageId || newContent === undefined || newContent === null) return;
@@ -10526,7 +10541,11 @@ window.confirmClearCurrentConversation = async function(e) {
   if (!confirm(confirmMsg)) return;
 
   try {
-    const payload = (type === 'salon') ? { salonId: id } : { contactId: id };
+    let payload = {};
+    if (type === 'salon') payload = { salonId: id };
+    else if (type === 'support') payload = { supportId: id };
+    else payload = { contactId: id };
+
     const res = await authFetch('/api/messages/clear-conversation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -10547,6 +10566,15 @@ window.confirmClearCurrentConversation = async function(e) {
           const feed = document.getElementById('messages-feed');
           if (feed) feed.innerHTML = '';
           showEmptyFeed(true, 'Historique du salon effacé.');
+        }
+      } else if (type === 'support') {
+        state.supportMessages[id] = [];
+        state.supportConversations = (state.supportConversations || []).filter(c => String(c.sender_id) !== String(id));
+        if (state.activeSupportSession && String(state.activeSupportSession) === String(id)) {
+          state.activeSupportSession = null;
+          const feed = document.getElementById('messages-feed');
+          if (feed) feed.innerHTML = '';
+          showEmptyFeed(true, 'Ticket SOS effacé.');
         }
       }
       showToast('Discussion effacée avec succès 🗑️', 'success');

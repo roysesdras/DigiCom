@@ -2695,11 +2695,19 @@ app.delete('/api/messages/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
-// 10b-bis. Clear entire direct conversation for both parties (Option A)
+// 10b-bis. Clear entire direct / salon / support conversation (Option A)
 app.post('/api/messages/clear-conversation', authenticateToken, async (req, res) => {
   try {
-    const { contactId, salonId } = req.body || {};
-    if (contactId) {
+    const { contactId, salonId, supportId } = req.body || {};
+    if (supportId) {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+      }
+      await db.clearSupportMessages(supportId, req.user.id);
+      io.to(`support_${supportId}`).emit('conversation_cleared', { supportId });
+      io.emit('support_conversation_cleared', { supportId });
+      return res.json({ success: true, message: 'Ticket SOS et messages effacés avec succès.' });
+    } else if (contactId) {
       await db.clearDirectMessages(req.user.id, contactId);
       io.to(`user_${req.user.id}`).emit('conversation_cleared', { contactId });
       io.to(`user_${contactId}`).emit('conversation_cleared', { contactId: req.user.id });
@@ -2716,7 +2724,7 @@ app.post('/api/messages/clear-conversation', authenticateToken, async (req, res)
       }
       return res.status(403).json({ error: 'Seul un administrateur ou créateur du salon peut effacer les messages.' });
     }
-    return res.status(400).json({ error: 'Paramètre contactId ou salonId manquant.' });
+    return res.status(400).json({ error: 'Paramètre contactId, salonId ou supportId manquant.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
