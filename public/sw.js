@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1223';
+const CACHE_NAME = 'digicom-pwa-v1224';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -240,9 +240,12 @@ self.addEventListener('push', (event) => {
   const payloadData = data.data || {};
   let notifTag = 'digicom-general';
   const isCall = payloadData.type === 'call_incoming' || payloadData.callerId;
+  const isAnnouncement = payloadData.type === 'admin_announcement';
 
   if (isCall) {
     notifTag = 'digicom-call-incoming';
+  } else if (isAnnouncement) {
+    notifTag = 'digicom-announcement-' + (payloadData.announcementId || Date.now());
   } else if (payloadData.salonId || data.salonId) {
     notifTag = 'salon-' + (payloadData.salonId || data.salonId);
   } else if (payloadData.contactId || payloadData.senderId || data.contactId) {
@@ -253,7 +256,7 @@ self.addEventListener('push', (event) => {
     body: data.body,
     icon: data.icon || '/img/icon-192.webp',
     badge: data.badge || '/img/badge-72.webp',
-    vibrate: isCall ? [800, 400, 800, 400, 800, 400, 800, 400, 1000] : [200, 100, 200],
+    vibrate: isCall ? [800, 400, 800, 400, 800, 400, 800, 400, 1000] : (isAnnouncement ? [400, 200, 400, 200, 500] : [250, 100, 250]),
     data: {
       url: payloadData.url || data.url || '/',
       salonId: payloadData.salonId || data.salonId || null,

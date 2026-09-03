@@ -98,19 +98,14 @@ async function sendNotificationToSubscription(subscription, payload) {
 
     const payloadString = JSON.stringify(payloadObj);
 
-    // Topic for notification grouping and collapse
-    let topic = 'digicom-msg';
-    if (payloadObj.data) {
-      if (payloadObj.data.salonId) topic = 'salon-' + String(payloadObj.data.salonId).substring(0, 30);
-      else if (payloadObj.data.contactId) topic = 'contact-' + String(payloadObj.data.contactId).substring(0, 30);
-      else if (payloadObj.data.senderId) topic = 'user-' + String(payloadObj.data.senderId).substring(0, 30);
-    }
+    // Maximum Web Push TTL (28 days / 2,419,200 seconds) so notifications are queued and preserved
+    // in FCM / Apple APNs / Mozilla Push servers while phone is offline, sleeping, or in airplane mode
+    const pushOptions = {
+      TTL: 2419200,
+      urgency: 'high'
+    };
 
-    await webpush.sendNotification(pushSubscription, payloadString, {
-      TTL: 900,
-      urgency: 'high',
-      topic: topic
-    });
+    await webpush.sendNotification(pushSubscription, payloadString, pushOptions);
     return true;
   } catch (err) {
     console.error(`[-] Push error for endpoint ${subscription.endpoint ? subscription.endpoint.substring(0, 30) : 'unknown'}...:`, err.statusCode || err.message);
