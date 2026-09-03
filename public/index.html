@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1221" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1221">
+    <link rel="preload" href="/css/style.min.css?v=1222" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1222">
   </head>
 
   <body>
@@ -1820,7 +1820,7 @@
         </div>
         <div id="announcement-modal-content" class="announcement-content-box">
         </div>
-        <button type="button" class="btn-announcement-confirm" onclick="window.closeModal('modal-admin-announcement')">
+        <button type="button" class="btn-announcement-confirm" onclick="window.confirmAdminAnnouncement ? window.confirmAdminAnnouncement() : window.closeModal('modal-admin-announcement')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
@@ -1839,11 +1839,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1221" defer></script>
-    <script src="/js/idb-store.min.js?v=1221" defer></script>
-    <script src="/js/push-client.min.js?v=1221" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1221" defer></script>
-    <script src="/js/app.min.js?v=1221" defer></script>
+    <script src="/socket.io/socket.io.js?v=1222" defer></script>
+    <script src="/js/idb-store.min.js?v=1222" defer></script>
+    <script src="/js/push-client.min.js?v=1222" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1222" defer></script>
+    <script src="/js/app.min.js?v=1222" defer></script>
   </body>
 
 </html>

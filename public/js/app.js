@@ -564,6 +564,9 @@ async function navigateToTarget(targetData) {
     } catch (e) {}
   }
 
+  // Check for any unseen official announcements on login / app launch
+  checkLatestSystemAnnouncement();
+
   // Clean URL parameters cleanly without reloading page
   if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender') || window.location.search.includes('openDeadlines') || window.location.search.includes('announcement'))) {
     try {
@@ -1474,11 +1477,14 @@ window.showToast = function(msg, type = 'info') {
   }, 3000);
 };
 
+let currentActiveAnnouncementId = null;
+
 window.showAdminAnnouncementModal = function(data) {
   if (!data || (!data.content && !data.message)) return;
   const content = data.content || data.message || '';
   const title = data.title || '📢 Annonce de l\'Administration';
   const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' }) : 'Diffusé récemment';
+  currentActiveAnnouncementId = data.id || data.announcementId || null;
 
   const modal = document.getElementById('modal-admin-announcement');
   const titleEl = document.getElementById('announcement-modal-title');
@@ -1495,13 +1501,39 @@ window.showAdminAnnouncementModal = function(data) {
 
   // Also save to localStorage
   try {
-    localStorage.setItem('digicom_last_announcement', JSON.stringify({ title, content, timestamp: data.timestamp || new Date().toISOString() }));
+    localStorage.setItem('digicom_last_announcement', JSON.stringify({ id: currentActiveAnnouncementId, title, content, timestamp: data.timestamp || new Date().toISOString() }));
   } catch (e) {}
 
   if (window.showToast) {
     window.showToast('📢 Nouvelle annonce officielle reçue', 'info');
   }
 };
+
+window.confirmAdminAnnouncement = function() {
+  if (currentActiveAnnouncementId) {
+    try {
+      localStorage.setItem('digicom_seen_announcement_id', String(currentActiveAnnouncementId));
+    } catch (e) {}
+  }
+  closeModal('modal-admin-announcement');
+};
+
+async function checkLatestSystemAnnouncement() {
+  try {
+    const res = await authFetch('/api/announcements/latest');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.success && data.announcement && data.announcement.content) {
+      const ann = data.announcement;
+      const seenId = localStorage.getItem('digicom_seen_announcement_id');
+      if (!seenId || Number(seenId) < Number(ann.id)) {
+        window.showAdminAnnouncementModal(ann);
+      }
+    }
+  } catch (e) {
+    console.warn('[-] Error checking latest system announcement:', e);
+  }
+}
 
 function showInAppToast({ title, body, type = 'private', senderId = null, onClick = null }) {
   let container = document.getElementById('toast-notifications-container');

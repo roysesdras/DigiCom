@@ -2561,12 +2561,24 @@ app.post('/api/admin/broadcast', authenticateToken, async (req, res) => {
     const cleanMsg = message.trim();
     const cleanTitle = (title && title.trim()) ? title.trim() : '📢 Annonce de l\'Administration';
 
-    // 1. Diffuser en temps réel via WebSockets à tous les utilisateurs connectés
-    io.emit('admin_announcement', {
+    // 0. Enregistrer l'annonce en base de données pour consultation ultérieure
+    const createdAnnouncement = await db.createSystemAnnouncement({
       title: cleanTitle,
       content: cleanMsg,
-      timestamp: new Date().toISOString()
+      authorId: req.user.id,
+      authorName: req.user.displayName || req.user.username || 'Direction'
     });
+
+    const announcementPayload = {
+      id: createdAnnouncement.id,
+      title: cleanTitle,
+      content: cleanMsg,
+      timestamp: createdAnnouncement.created_at || new Date().toISOString(),
+      author_name: createdAnnouncement.author_name
+    };
+
+    // 1. Diffuser en temps réel via WebSockets à tous les utilisateurs connectés
+    io.emit('admin_announcement', announcementPayload);
 
     // 2. Diffuser par Web Push Notification à TOUS les appareils enregistrés
     pushService.sendNotificationToAll({
@@ -2576,13 +2588,24 @@ app.post('/api/admin/broadcast', authenticateToken, async (req, res) => {
       badge: '/img/badge-72.webp',
       data: {
         type: 'admin_announcement',
+        announcementId: createdAnnouncement.id,
         title: cleanTitle,
         content: cleanMsg,
-        url: '/?announcement=1'
+        url: `/?announcement=${createdAnnouncement.id}`
       }
     }).catch(err => console.error('[-] Error sending broadcast push notification:', err));
 
-    res.json({ success: true, message: 'Annonce diffusée en direct et par notification Push à tous les membres.' });
+    res.json({ success: true, message: 'Annonce diffusée en direct et par notification Push à tous les membres.', announcement: announcementPayload });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint pour récupérer la dernière annonce officielle active au démarrage de l'app
+app.get('/api/announcements/latest', authenticateToken, async (req, res) => {
+  try {
+    const announcement = await db.getLatestSystemAnnouncement();
+    res.json({ success: true, announcement: announcement || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

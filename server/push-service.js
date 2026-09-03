@@ -153,9 +153,9 @@ async function sendNotificationToAdmin(payload) {
 }
 
 async function sendNotificationToAll(payload) {
-  const allSubscriptions = await db.all(`SELECT * FROM subscriptions`);
+  const allSubscriptions = await db.getAllPushSubscriptions();
   if (!allSubscriptions || allSubscriptions.length === 0) {
-    logger.info('PUSH', 'No subscriptions found for broadcast push');
+    logger.info('PUSH', 'No push subscriptions found in database for broadcast push');
     return { success: false, sentCount: 0, reason: 'No subscriptions found' };
   }
 

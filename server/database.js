@@ -82,6 +82,18 @@ async function initTables() {
   `);
 
   await run(`
+    CREATE TABLE IF NOT EXISTS system_announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      author_id TEXT,
+      author_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_active INTEGER DEFAULT 1
+    )
+  `);
+
+  await run(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       channel_type TEXT NOT NULL,
@@ -446,8 +458,32 @@ async function getAdminSubscriptions() {
   `);
 }
 
+async function getAllPushSubscriptions() {
+  return await all(`SELECT DISTINCT endpoint, p256dh, auth, user_id FROM push_subscriptions`);
+}
+
 async function deleteSubscriptionByEndpoint(endpoint) {
   return await run(`DELETE FROM push_subscriptions WHERE endpoint = ?`, [endpoint]);
+}
+
+// System Announcements Helpers
+async function createSystemAnnouncement({ title, content, authorId, authorName }) {
+  const res = await run(
+    `INSERT INTO system_announcements (title, content, author_id, author_name) VALUES (?, ?, ?, ?)`,
+    [title || '📢 Annonce de l\'Administration', content, authorId || 'admin', authorName || 'Administration']
+  );
+  return {
+    id: res.lastID,
+    title: title || '📢 Annonce de l\'Administration',
+    content,
+    author_id: authorId,
+    author_name: authorName,
+    created_at: new Date().toISOString()
+  };
+}
+
+async function getLatestSystemAnnouncement() {
+  return await get(`SELECT * FROM system_announcements WHERE is_active = 1 ORDER BY id DESC LIMIT 1`);
 }
 
 // Messages Helpers
@@ -1501,7 +1537,10 @@ module.exports = {
   saveSubscription,
   getSubscriptionsByUserId,
   getAdminSubscriptions,
+  getAllPushSubscriptions,
   deleteSubscriptionByEndpoint,
+  createSystemAnnouncement,
+  getLatestSystemAnnouncement,
   saveMessage,
   getMessages,
   getDirectMessages,
