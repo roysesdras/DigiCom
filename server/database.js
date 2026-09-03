@@ -486,6 +486,10 @@ async function getLatestSystemAnnouncement() {
   return await get(`SELECT * FROM system_announcements WHERE is_active = 1 ORDER BY id DESC LIMIT 1`);
 }
 
+async function deactivateAllSystemAnnouncements() {
+  return await run(`UPDATE system_announcements SET is_active = 0 WHERE is_active = 1`);
+}
+
 // Messages Helpers
 async function saveMessage({ id, channelType, senderId, senderName, receiverId, content, contextData, timestamp }) {
   const contextStr = contextData ? (typeof contextData === 'string' ? contextData : JSON.stringify(contextData)) : null;
@@ -1541,6 +1545,7 @@ module.exports = {
   deleteSubscriptionByEndpoint,
   createSystemAnnouncement,
   getLatestSystemAnnouncement,
+  deactivateAllSystemAnnouncements,
   saveMessage,
   getMessages,
   getDirectMessages,

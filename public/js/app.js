@@ -552,18 +552,6 @@ async function navigateToTarget(targetData) {
     }, 400);
   }
 
-  if (window.location.search && window.location.search.includes('announcement')) {
-    try {
-      const saved = localStorage.getItem('digicom_last_announcement');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (window.showAdminAnnouncementModal) {
-          window.showAdminAnnouncementModal(parsed);
-        }
-      }
-    } catch (e) {}
-  }
-
   // Check for any unseen official announcements on login / app launch
   checkLatestSystemAnnouncement();
 
@@ -1499,8 +1487,11 @@ window.showAdminAnnouncementModal = function(data) {
     showModal('modal-admin-announcement');
   }
 
-  // Also save to localStorage
+  // Mark as seen immediately so it won't repeat on refresh
   try {
+    if (currentActiveAnnouncementId) {
+      localStorage.setItem('digicom_seen_announcement_id', String(currentActiveAnnouncementId));
+    }
     localStorage.setItem('digicom_last_announcement', JSON.stringify({ id: currentActiveAnnouncementId, title, content, timestamp: data.timestamp || new Date().toISOString() }));
   } catch (e) {}
 

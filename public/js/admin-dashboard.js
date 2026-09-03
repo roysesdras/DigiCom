@@ -416,9 +416,29 @@
       const data = await res.json();
       if (data.success) {
         alert('Annonce diffusée en direct et par notification Push à tous les membres.');
-        document.getElementById('broadcast-text').value = '';
+        const txt = document.getElementById('broadcast-text');
+        if (txt) txt.value = '';
+        renderAdminContent();
       } else {
         alert(data.error || 'Erreur lors de l\'envoi');
+      }
+    } catch (e) {
+      alert('Erreur réseau');
+    }
+  }
+
+  async function clearBroadcast() {
+    if (!confirm('Voulez-vous vraiment désactiver et archiver l\'annonce active pour tous les nouveaux arrivants ?')) return;
+    try {
+      const res = await adminFetch('/api/admin/announcements/clear', {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('L\'annonce a été désactivée avec succès.');
+        renderAdminContent();
+      } else {
+        alert(data.error || 'Erreur lors de la désactivation');
       }
     } catch (e) {
       alert('Erreur réseau');
@@ -577,12 +597,17 @@
     } else if (state.activeTab === 'broadcast') {
       container.innerHTML = `
         <div class="broadcast-form">
-          <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #f8fafc;">Diffusion d'une annonce générale en direct</h3>
-          <p style="font-size: 0.85rem; color: #94a3b8; margin: 0 0 1rem 0;">Ce message s'affichera immédiatement en alerte sur les écrans de tous les utilisateurs actuellement connectés.</p>
+          <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: #f8fafc;">Diffusion d'une annonce générale</h3>
+          <p style="font-size: 0.85rem; color: #94a3b8; margin: 0 0 1rem 0;">Ce message s'affichera immédiatement en alerte sur les écrans des membres connectés et sera envoyé en notification Push aux téléphones.</p>
           <textarea id="broadcast-text" placeholder="Saisissez votre annonce ici..."></textarea>
-          <button type="button" class="btn-send-broadcast" id="btn-submit-broadcast">
-            ${icons.bell} Diffuser l'annonce
-          </button>
+          <div style="display: flex; gap: 10px; margin-top: 0.75rem;">
+            <button type="button" class="btn-send-broadcast" id="btn-submit-broadcast" style="flex: 1;">
+              ${icons.bell} Diffuser l'annonce
+            </button>
+            <button type="button" class="btn-send-broadcast" id="btn-clear-broadcast" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5;">
+              🗑️ Désactiver l'annonce active
+            </button>
+          </div>
         </div>
       `;
 
@@ -595,6 +620,13 @@
             return;
           }
           sendBroadcast(text);
+        });
+      }
+
+      const clearBtn = document.getElementById('btn-clear-broadcast');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          clearBroadcast();
         });
       }
     }

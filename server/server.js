@@ -2611,6 +2611,19 @@ app.get('/api/announcements/latest', authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint pour désactiver/purger l'annonce active par l'administrateur
+app.post('/api/admin/announcements/clear', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    await db.deactivateAllSystemAnnouncements();
+    res.json({ success: true, message: 'L\'annonce active a été archivée/désactivée avec succès.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. VAPID Public Key
 app.get(['/vapid-public-key', '/api/vapid-public-key'], (req, res) => {
   res.json({ publicKey: pushService.getPublicKey() });
