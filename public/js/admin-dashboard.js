@@ -45,11 +45,6 @@
     const style = document.createElement('style');
     style.id = 'admin-dashboard-styles';
     style.textContent = `
-      @media (max-width: 768px) {
-        .admin-modal-overlay, .btn-admin-dashboard {
-          display: none !important;
-        }
-      }
       .admin-modal-overlay {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -59,7 +54,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 1.5rem;
+        padding: 1rem;
         animation: adminFadeIn 0.2s ease;
       }
       @keyframes adminFadeIn {
