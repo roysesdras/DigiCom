@@ -319,9 +319,22 @@
     document.head.appendChild(style);
   }
 
+  async function adminFetch(url, options = {}) {
+    const token = localStorage.getItem('digicom_token');
+    const headers = { ...(options.headers || {}) };
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include'
+    });
+  }
+
   async function fetchMetrics() {
     try {
-      const res = await fetch('/api/admin/metrics', { headers: { 'Accept': 'application/json' } });
+      const res = await adminFetch('/api/admin/metrics', { headers: { 'Accept': 'application/json' } });
       const data = await res.json();
       if (data.success) {
         state.metrics = data.metrics;
@@ -334,7 +347,7 @@
 
   async function fetchUsers() {
     try {
-      const res = await fetch('/api/admin/users', { headers: { 'Accept': 'application/json' } });
+      const res = await adminFetch('/api/admin/users', { headers: { 'Accept': 'application/json' } });
       const data = await res.json();
       if (data.success) {
         state.users = data.users || [];
@@ -349,7 +362,7 @@
     if (!confirm(`Voulez-vous vraiment ${actionName} cet utilisateur ?`)) return;
 
     try {
-      const res = await fetch('/api/admin/users/ban', {
+      const res = await adminFetch('/api/admin/users/ban', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, banState: !currentBanState })
@@ -378,7 +391,7 @@
     }
 
     try {
-      const res = await fetch(`/api/admin/users/nuke/${userId}`, { method: 'DELETE' });
+      const res = await adminFetch(`/api/admin/users/nuke/${userId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         alert('Utilisateur et l\'intégralité de son historique purgés avec succès.');
@@ -395,14 +408,14 @@
 
   async function sendBroadcast(message) {
     try {
-      const res = await fetch('/api/admin/broadcast', {
+      const res = await adminFetch('/api/admin/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message })
       });
       const data = await res.json();
       if (data.success) {
-        alert('Annonce diffusée en direct à tous les utilisateurs connectés.');
+        alert('Annonce diffusée en direct et par notification Push à tous les membres.');
         document.getElementById('broadcast-text').value = '';
       } else {
         alert(data.error || 'Erreur lors de l\'envoi');

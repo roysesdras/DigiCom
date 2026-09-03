@@ -2555,15 +2555,34 @@ app.post('/api/admin/broadcast', authenticateToken, async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
     }
-    const { message } = req.body;
+    const { message, title } = req.body || {};
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message d\'annonce requis.' });
 
+    const cleanMsg = message.trim();
+    const cleanTitle = (title && title.trim()) ? title.trim() : '📢 Annonce de l\'Administration';
+
+    // 1. Diffuser en temps réel via WebSockets à tous les utilisateurs connectés
     io.emit('admin_announcement', {
-      content: message.trim(),
+      title: cleanTitle,
+      content: cleanMsg,
       timestamp: new Date().toISOString()
     });
 
-    res.json({ success: true, message: 'Annonce diffusée à tous les utilisateurs connectés.' });
+    // 2. Diffuser par Web Push Notification à TOUS les appareils enregistrés
+    pushService.sendNotificationToAll({
+      title: cleanTitle,
+      body: cleanMsg.length > 120 ? cleanMsg.substring(0, 117) + '...' : cleanMsg,
+      icon: '/img/icon-192.webp',
+      badge: '/img/badge-72.webp',
+      data: {
+        type: 'admin_announcement',
+        title: cleanTitle,
+        content: cleanMsg,
+        url: '/?announcement=1'
+      }
+    }).catch(err => console.error('[-] Error sending broadcast push notification:', err));
+
+    res.json({ success: true, message: 'Annonce diffusée en direct et par notification Push à tous les membres.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

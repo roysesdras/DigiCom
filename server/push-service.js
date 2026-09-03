@@ -152,6 +152,21 @@ async function sendNotificationToAdmin(payload) {
   return { success: true, sentCount, total: adminSubscriptions.length };
 }
 
+async function sendNotificationToAll(payload) {
+  const allSubscriptions = await db.all(`SELECT * FROM subscriptions`);
+  if (!allSubscriptions || allSubscriptions.length === 0) {
+    logger.info('PUSH', 'No subscriptions found for broadcast push');
+    return { success: false, sentCount: 0, reason: 'No subscriptions found' };
+  }
+
+  const results = await Promise.all(
+    allSubscriptions.map(sub => sendNotificationToSubscription(sub, payload))
+  );
+  const sentCount = results.filter(Boolean).length;
+  logger.info('PUSH', `Sent broadcast push notification (${sentCount}/${allSubscriptions.length} succeeded)`, { title: payload.title, body: payload.body });
+  return { success: true, sentCount, total: allSubscriptions.length };
+}
+
 initVapid();
 
 module.exports = {
@@ -159,5 +174,6 @@ module.exports = {
   generateAndSaveVapidKeys,
   sendNotificationToSubscription,
   sendNotificationToUser,
-  sendNotificationToAdmin
+  sendNotificationToAdmin,
+  sendNotificationToAll
 };

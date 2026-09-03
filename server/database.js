@@ -1108,14 +1108,14 @@ async function getAdminMetrics() {
   const salonCount = await get(`SELECT COUNT(*) as total FROM salons WHERE id NOT LIKE 'test_salon_%'`);
   const totalSalonsRaw = await get(`SELECT COUNT(*) as total FROM salons`);
   
-  const msgCount = await get(`SELECT COUNT(*) as total FROM messages`);
-  const todayMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE datetime(timestamp) >= datetime('now', 'start of day')`);
+  const msgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE (deleted_scope IS NULL OR deleted_scope != 'all')`);
+  const todayMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE (deleted_scope IS NULL OR deleted_scope != 'all') AND datetime(timestamp) >= datetime('now', 'start of day')`);
   
-  const directMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'direct'`);
-  const salonMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'salon'`);
-  const supportMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'support'`);
+  const directMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type IN ('direct', 'private') AND (deleted_scope IS NULL OR deleted_scope != 'all')`);
+  const salonMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'salon' AND (deleted_scope IS NULL OR deleted_scope != 'all')`);
+  const supportMsgCount = await get(`SELECT COUNT(*) as total FROM messages WHERE channel_type = 'support' AND (deleted_scope IS NULL OR deleted_scope != 'all')`);
   
-  const sosTicketsCount = await get(`SELECT COUNT(DISTINCT sender_id) as total FROM messages WHERE channel_type = 'support'`);
+  const sosTicketsCount = await get(`SELECT COUNT(DISTINCT CASE WHEN sender_id = 'admin' OR sender_id LIKE 'admin_%' THEN receiver_id ELSE sender_id END) as total FROM messages WHERE channel_type = 'support' AND (deleted_scope IS NULL OR deleted_scope != 'all')`);
 
   return {
     total_users: userCount ? userCount.total : 0,

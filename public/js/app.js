@@ -475,6 +475,13 @@ async function navigateToTarget(targetData) {
     }).catch(() => {});
   } catch (e) {}
 
+  if (targetData.type === 'admin_announcement' || (rawUrl && rawUrl.includes('announcement'))) {
+    if (window.showAdminAnnouncementModal) {
+      window.showAdminAnnouncementModal(targetData);
+    }
+    return;
+  }
+
   if (targetData.openRequests || (targetData.url && targetData.url.includes('openRequests=true'))) {
     await switchTab('contacts');
     showModal('add-contact-modal');
@@ -545,8 +552,20 @@ async function navigateToTarget(targetData) {
     }, 400);
   }
 
+  if (window.location.search && window.location.search.includes('announcement')) {
+    try {
+      const saved = localStorage.getItem('digicom_last_announcement');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (window.showAdminAnnouncementModal) {
+          window.showAdminAnnouncementModal(parsed);
+        }
+      }
+    } catch (e) {}
+  }
+
   // Clean URL parameters cleanly without reloading page
-  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender') || window.location.search.includes('openDeadlines'))) {
+  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender') || window.location.search.includes('openDeadlines') || window.location.search.includes('announcement'))) {
     try {
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch (e) {}
@@ -676,8 +695,8 @@ function initSocket() {
   });
 
   state.socket.on('admin_announcement', (data) => {
-    if (data && data.content) {
-      alert(`[ANNONCE DE L'ADMINISTRATION]\n\n${data.content}`);
+    if (window.showAdminAnnouncementModal) {
+      window.showAdminAnnouncementModal(data);
     }
   });
 
@@ -1455,6 +1474,35 @@ window.showToast = function(msg, type = 'info') {
   }, 3000);
 };
 
+window.showAdminAnnouncementModal = function(data) {
+  if (!data || (!data.content && !data.message)) return;
+  const content = data.content || data.message || '';
+  const title = data.title || '📢 Annonce de l\'Administration';
+  const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' }) : 'Diffusé récemment';
+
+  const modal = document.getElementById('modal-admin-announcement');
+  const titleEl = document.getElementById('announcement-modal-title');
+  const timeEl = document.getElementById('announcement-modal-time');
+  const contentEl = document.getElementById('announcement-modal-content');
+
+  if (titleEl) titleEl.textContent = title.replace(/^[📢📣ℹ️]\s*/, '');
+  if (timeEl) timeEl.textContent = `Diffusé le ${timestamp} par l'Administration`;
+  if (contentEl) contentEl.textContent = content;
+
+  if (modal) {
+    showModal('modal-admin-announcement');
+  }
+
+  // Also save to localStorage
+  try {
+    localStorage.setItem('digicom_last_announcement', JSON.stringify({ title, content, timestamp: data.timestamp || new Date().toISOString() }));
+  } catch (e) {}
+
+  if (window.showToast) {
+    window.showToast('📢 Nouvelle annonce officielle reçue', 'info');
+  }
+};
+
 function showInAppToast({ title, body, type = 'private', senderId = null, onClick = null }) {
   let container = document.getElementById('toast-notifications-container');
   if (!container) {
@@ -2022,6 +2070,13 @@ function setupEventListeners() {
             autoAnswer: act === 'answer',
             autoReject: act === 'reject'
           });
+        }
+        return;
+      }
+
+      if (notifData.type === 'admin_announcement' || (targetUrl && targetUrl.includes('announcement'))) {
+        if (window.showAdminAnnouncementModal) {
+          window.showAdminAnnouncementModal(notifData);
         }
         return;
       }
