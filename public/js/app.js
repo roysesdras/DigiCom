@@ -3398,7 +3398,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1234';
+        script.src = '/js/admin-dashboard.min.js?v=1235';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3486,7 +3486,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1234';
+        s.src = '/js/admin-dashboard.min.js?v=1235';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -5664,17 +5664,11 @@ window.cancelReply = function() {
 
 window.scrollToMessage = function(targetMsgId) {
   if (!targetMsgId) return;
-  const el = document.getElementById(targetMsgId);
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const bubble = el.querySelector('.msg-bubble');
-    if (bubble) {
-      bubble.style.transition = 'box-shadow 0.3s ease';
-      bubble.style.boxShadow = '0 0 0 3px var(--emerald)';
-      setTimeout(() => {
-        bubble.style.boxShadow = '';
-      }, 1500);
-    }
+  if (typeof window.jumpToPinnedMessage === 'function') {
+    window.jumpToPinnedMessage(targetMsgId);
+  } else {
+    const el = document.getElementById(targetMsgId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 };
 
@@ -9317,20 +9311,33 @@ window.loadPinnedMessageForActiveChat = async function() {
 
 window.jumpToPinnedMessage = async function(messageId) {
   if (!messageId) return;
-  const targetId = String(messageId);
+  const targetId = String(messageId).trim();
+
+  // 1. Close overlay modals immediately so they don't block viewport or trigger resize interrupts
+  if (typeof window.closeModal === 'function') {
+    window.closeModal('modal-pinned-messages-list');
+    window.closeModal('modal-salon-search');
+  }
+
+  // Small delay to allow modal exit and layout calculation to settle
+  await new Promise(r => setTimeout(r, 60));
 
   const findElement = () => {
-    return document.getElementById(targetId) || 
-           document.querySelector(`[data-msg-id="${targetId}"]`) ||
-           document.querySelector(`.message-row[data-msg-id="${targetId}"]`);
+    try {
+      return document.getElementById(targetId) || 
+             document.querySelector(`[data-msg-id="${CSS.escape(targetId)}"]`) ||
+             document.querySelector(`.message-row[data-msg-id="${CSS.escape(targetId)}"]`);
+    } catch (e) {
+      return document.getElementById(targetId);
+    }
   };
 
   let msgEl = findElement();
 
-  // If not in DOM, load older history progressively until found (up to 12 batches)
+  // 2. If not in DOM, load older history progressively until found (up to 15 batches)
   if (!msgEl) {
     let attempts = 0;
-    while (!findElement() && attempts < 12) {
+    while (!findElement() && attempts < 15) {
       attempts++;
       let loadedMore = false;
       if (state.activeTab === 'salons' && state.activeSalon) {
@@ -9358,20 +9365,39 @@ window.jumpToPinnedMessage = async function(messageId) {
 
   msgEl = findElement();
   if (msgEl) {
-    // WhatsApp style smooth scroll directly to message
-    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const feed = document.getElementById('messages-feed');
+    if (feed) {
+      // Precise offset centering inside #messages-feed
+      const feedRect = feed.getBoundingClientRect();
+      const elRect = msgEl.getBoundingClientRect();
+      const targetScrollTop = feed.scrollTop + (elRect.top - feedRect.top) - (feed.clientHeight / 2) + (elRect.height / 2);
+      feed.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
 
-    // WhatsApp signature flash animation
+      // Fallback correction after smooth scroll animation completes to lock dead-center
+      setTimeout(() => {
+        const uFeedRect = feed.getBoundingClientRect();
+        const uElRect = msgEl.getBoundingClientRect();
+        if (uElRect.top < uFeedRect.top || uElRect.bottom > uFeedRect.bottom) {
+          const correctedTop = feed.scrollTop + (uElRect.top - uFeedRect.top) - (feed.clientHeight / 2) + (uElRect.height / 2);
+          feed.scrollTop = Math.max(0, correctedTop);
+        }
+      }, 350);
+    } else {
+      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // 3. Trigger WhatsApp signature flash highlight on bubble & row
+    const bubble = msgEl.querySelector('.msg-bubble') || msgEl;
+    bubble.classList.remove('whatsapp-flash-highlight');
     msgEl.classList.remove('whatsapp-flash-highlight');
-    void msgEl.offsetWidth; // Trigger reflow
+    void bubble.offsetWidth; // Force reflow
+    bubble.classList.add('whatsapp-flash-highlight');
     msgEl.classList.add('whatsapp-flash-highlight');
-    setTimeout(() => {
-      msgEl.classList.remove('whatsapp-flash-highlight');
-    }, 2200);
-  }
 
-  if (typeof window.closeModal === 'function') {
-    window.closeModal('modal-pinned-messages-list');
+    setTimeout(() => {
+      bubble.classList.remove('whatsapp-flash-highlight');
+      msgEl.classList.remove('whatsapp-flash-highlight');
+    }, 2400);
   }
 };
 
@@ -9496,7 +9522,7 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
     bannerText.innerHTML = `<span>${escapeHtml(rawText)}</span>`;
   }
 
-  // Clicking anywhere on the banner jumps to the message (and cycles if multiple)
+  // Clicking anywhere on the banner jumps to the currently displayed pinned message
   banner.onclick = (e) => {
     if (e.target.closest('.pinned-banner-badge') || 
         e.target.closest('.pinned-banner-btn-icon') || 
@@ -9504,10 +9530,6 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
       return;
     }
     window.jumpToPinnedMessage(activeMsgId);
-    if (msgs.length > 1) {
-      state.pinnedCurrentIndex = (state.pinnedCurrentIndex + 1) % msgs.length;
-      window.updatePinnedMessageBanner(channelType, targetId, msgs);
-    }
   };
 
   // Counter badge (e.g. 1/5)

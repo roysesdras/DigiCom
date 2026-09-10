@@ -842,8 +842,6 @@ body {
   animation: fadeIn 0.2s ease;
   position: relative;
   touch-action: pan-y;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 48px;
 }
 
 /* Swipe to Reply Gesture Indicator */
@@ -5415,24 +5413,39 @@ body {
   color: #38bdf8;
 }
 
-/* WhatsApp-style Flash Highlight on Pinned Jump */
-@keyframes whatsappFlashHighlight {
+/* WhatsApp-style Flash Highlight on Pinned Jump & Quoted Replies */
+@keyframes whatsappBubbleFlash {
   0% {
-    background-color: rgba(0, 168, 132, 0.5) !important;
-    box-shadow: 0 0 16px rgba(0, 168, 132, 0.45);
+    box-shadow: 0 0 0 4px #10b981, 0 0 26px rgba(16, 185, 129, 0.85) !important;
+    filter: brightness(1.45) contrast(1.08);
+    transform: scale(1.025);
   }
-  60% {
-    background-color: rgba(0, 168, 132, 0.25) !important;
+  25% {
+    box-shadow: 0 0 0 3px #34d399, 0 0 20px rgba(52, 211, 153, 0.7) !important;
+    filter: brightness(1.35);
+    transform: scale(1.018);
+  }
+  55% {
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.55), 0 0 12px rgba(16, 185, 129, 0.4) !important;
+    filter: brightness(1.18);
+    transform: scale(1.008);
   }
   100% {
-    background-color: transparent !important;
-    box-shadow: none;
+    box-shadow: 0 1.5px 3px rgba(0, 0, 0, 0.4);
+    filter: none;
+    transform: none;
   }
 }
 
 .whatsapp-flash-highlight {
-  animation: whatsappFlashHighlight 2.2s ease forwards !important;
-  border-radius: 8px;
+  position: relative;
+  z-index: 10;
+}
+
+.whatsapp-flash-highlight .msg-bubble,
+.msg-bubble.whatsapp-flash-highlight {
+  animation: whatsappBubbleFlash 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+  transition: transform 0.2s ease;
 }
 
 .pinned-banner-badge {
