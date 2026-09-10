@@ -886,19 +886,32 @@ function initSocket() {
     }
   });
 
-  // Real-time Salon Read Receipts (Eye Icon Updates to Orange in Salons)
+  // Real-time Salon Read Receipts (Eye Icon Updates to Orange in Salons with Reader Details)
   state.socket.on('salon_messages_read', (data) => {
     if (state.activeSalon && String(state.activeSalon.id) === String(data.salonId)) {
+      const salonId = String(data.salonId);
       const unreadEyes = document.querySelectorAll('.msg-status-eye.unread');
       unreadEyes.forEach(eye => {
-        eye.className = 'msg-status-eye read';
-        eye.title = 'Message lu';
-        eye.innerHTML = `
+        const row = eye.closest('.message-row');
+        const msgId = row ? (row.dataset.msgId || row.id) : '';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'msg-status-eye read salon-read-btn';
+        btn.dataset.msgId = msgId;
+        btn.dataset.salonId = salonId;
+        btn.title = 'Lu par 1 membre(s) - Cliquer pour voir les détails';
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          window.showSalonMessageReaders(salonId, msgId);
+        };
+        btn.innerHTML = `
           <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
             <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
           </svg>
+          <span class="salon-read-count">1</span>
         `;
+        eye.replaceWith(btn);
       });
 
       if (state.salonMessages[data.salonId]) {
@@ -907,6 +920,7 @@ function initSocket() {
           if (m.senderId === myId || m.sender_id === myId) {
             m.is_read = 1;
             m.isRead = true;
+            m.read_count = (m.read_count || 0) + 1;
           }
         });
       }
@@ -3046,6 +3060,22 @@ function setupEventListeners() {
     });
   }
 
+  const btnCloseMessageReaders = document.getElementById('btn-close-message-readers-modal');
+  if (btnCloseMessageReaders) {
+    btnCloseMessageReaders.addEventListener('click', () => {
+      hideModal('modal-message-readers');
+    });
+  }
+
+  const modalMessageReaders = document.getElementById('modal-message-readers');
+  if (modalMessageReaders) {
+    modalMessageReaders.addEventListener('click', (e) => {
+      if (e.target === modalMessageReaders) {
+        hideModal('modal-message-readers');
+      }
+    });
+  }
+
   const formSetPin = document.getElementById('set-pin-form');
   if (formSetPin) {
     formSetPin.addEventListener('submit', async (e) => {
@@ -3368,7 +3398,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1233';
+        script.src = '/js/admin-dashboard.min.js?v=1234';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3456,7 +3486,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1233';
+        s.src = '/js/admin-dashboard.min.js?v=1234';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -6466,14 +6496,35 @@ function createMessageRowElement(msg, isSos = false) {
     </span>
   `;
 
-  const openEyeHtml = `
-    <span class="msg-status-eye read" title="Message lu">
-      <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
-        <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
-      </svg>
-    </span>
-  `;
+  const isSalon = Boolean(msg.channel_type === 'salon' || msg.channelType === 'salon' || (state.activeSalon && state.activeTab === 'salons'));
+  const currentSalonId = (msg.channel_type === 'salon' || msg.channelType === 'salon')
+    ? (msg.receiver_id || msg.receiverId || (state.activeSalon ? state.activeSalon.id : ''))
+    : (state.activeSalon ? state.activeSalon.id : '');
+  const rawReadCount = Number(msg.read_count || msg.readCount || 0);
+  const readCount = isRead ? Math.max(rawReadCount, 1) : 0;
+
+  let openEyeHtml = '';
+  if (isSalon && currentSalonId) {
+    const countBadge = readCount > 0 ? `<span class="salon-read-count">${readCount}</span>` : '';
+    openEyeHtml = `
+      <button type="button" class="msg-status-eye read salon-read-btn" data-msg-id="${msgId}" data-salon-id="${currentSalonId}" title="Lu par ${readCount} membre(s) - Cliquer pour voir les détails" onclick="event.stopPropagation(); window.showSalonMessageReaders('${currentSalonId}', '${msgId}')">
+        <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+          <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+        </svg>
+        ${countBadge}
+      </button>
+    `;
+  } else {
+    openEyeHtml = `
+      <span class="msg-status-eye read" title="Message lu">
+        <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+          <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+        </svg>
+      </span>
+    `;
+  }
 
   const closedEyeHtml = `
     <span class="msg-status-eye unread" title="Message distribué (non lu)">
@@ -8142,6 +8193,105 @@ async function loadSalonHistory(salonId, loadMore = false) {
     console.error('[-] Error loading Salon history:', err);
   }
 }
+
+// Format timestamp for reader list (e.g. "Aujourd'hui à 14:20")
+function formatReaderTimestamp(dateStr) {
+  if (!dateStr) return '';
+  const date = safeParseDate(dateStr);
+  const now = new Date();
+  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) {
+    return `Aujourd'hui à ${time}`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Hier à ${time}`;
+  }
+  return `${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${time}`;
+}
+
+// Salon Message Readers Modal Handler
+window.showSalonMessageReaders = async function(salonId, messageId) {
+  const targetSalonId = salonId || (state.activeSalon ? state.activeSalon.id : null);
+  if (!targetSalonId || !messageId) return;
+
+  showModal('modal-message-readers');
+  const loadingEl = document.getElementById('readers-modal-loading');
+  const emptyEl = document.getElementById('readers-modal-empty');
+  const listEl = document.getElementById('readers-modal-list');
+  const countLabel = document.getElementById('readers-modal-count-label');
+
+  if (loadingEl) loadingEl.style.display = 'flex';
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (listEl) listEl.innerHTML = '';
+  if (countLabel) countLabel.textContent = 'Chargement des lectures...';
+
+  try {
+    const res = await authFetch(`/api/salons/${encodeURIComponent(targetSalonId)}/messages/${encodeURIComponent(messageId)}/readers`);
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    if (!res.ok) {
+      if (countLabel) countLabel.textContent = 'Erreur lors de la récupération';
+      if (emptyEl) {
+        emptyEl.textContent = 'Impossible de charger les détails de lecture.';
+        emptyEl.style.display = 'block';
+      }
+      return;
+    }
+
+    const data = await res.json();
+    const readers = (data && data.readers) ? data.readers : [];
+
+    if (countLabel) {
+      countLabel.textContent = readers.length === 1
+        ? '1 membre a lu ce message'
+        : `${readers.length} membre(s) ont lu ce message`;
+    }
+
+    if (readers.length === 0) {
+      if (emptyEl) {
+        emptyEl.textContent = "Aucun membre n'a encore lu ce message.";
+        emptyEl.style.display = 'block';
+      }
+      return;
+    }
+
+    listEl.innerHTML = readers.map(r => {
+      const name = escapeHtml(r.display_name || r.username || 'Membre');
+      const timeFormatted = formatReaderTimestamp(r.read_at);
+      const initial = (name.charAt(0) || 'M').toUpperCase();
+      const roleText = r.role === 'admin' ? 'Administrateur' : `@${escapeHtml(r.username || '')}`;
+
+      return `
+        <div class="reader-item">
+          <div class="reader-avatar">
+            <span>${initial}</span>
+          </div>
+          <div class="reader-info">
+            <div class="reader-name">${name}</div>
+            <div class="reader-sub">${roleText}</div>
+          </div>
+          <div class="reader-time">
+            <svg width="13" height="9" viewBox="0 0 16 12" fill="none">
+              <path d="M8 1.5C4.5 1.5 1.5 6 1.5 6C1.5 6 4.5 10.5 8 10.5C11.5 10.5 14.5 6 14.5 6C14.5 6 11.5 1.5 8 1.5Z" stroke="#f97316" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="8" cy="6" r="2.2" fill="#f97316"/>
+            </svg>
+            <span>${timeFormatted}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('[-] Error fetching salon message readers:', err);
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (countLabel) countLabel.textContent = 'Erreur lors de la récupération';
+    if (emptyEl) {
+      emptyEl.textContent = 'Erreur de connexion.';
+      emptyEl.style.display = 'block';
+    }
+  }
+};
 
 // Salon Info / Members Modal with Creator Controls (Rename, Remove Member, Block/Unblock, Add Members)
 async function openSalonInfoModal(salonId) {

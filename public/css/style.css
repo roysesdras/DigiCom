@@ -1111,6 +1111,112 @@ body {
   filter: none;
 }
 
+.msg-status-eye.salon-read-btn {
+  background: transparent;
+  border: none;
+  padding: 1px 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  font-family: inherit;
+  outline: none;
+  border-radius: 4px;
+  vertical-align: middle;
+  touch-action: manipulation;
+}
+
+.msg-status-eye.salon-read-btn:hover {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 6px rgba(249, 115, 22, 0.8));
+}
+
+.salon-read-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #f97316;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Modal Lecteurs de Message */
+.readers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.reader-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.reader-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+.reader-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(249, 115, 22, 0.05));
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  color: #f97316;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.reader-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.reader-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-sub {
+  font-size: 0.75rem;
+  color: var(--text-dim, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.reader-time svg {
+  flex-shrink: 0;
+}
+
 .msg-context-card {
   margin-top: 0.35rem;
   padding: 0.45rem 0.65rem;

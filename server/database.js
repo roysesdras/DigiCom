@@ -1068,6 +1068,17 @@ async function getSalonMessages(salonId, limit = 50, before = null) {
   );
 }
 
+async function getSalonMessageReaders(salonId, messageId) {
+  return await all(
+    `SELECT smr.user_id, smr.read_at, u.username, u.display_name, u.role
+     FROM salon_message_reads smr
+     LEFT JOIN users u ON u.id = smr.user_id
+     WHERE smr.salon_id = ? AND smr.message_id = ?
+     ORDER BY smr.read_at ASC`,
+    [salonId, messageId]
+  );
+}
+
 // Collaborative Salon Helpers: Polls, Pinned Messages & Salon Files
 async function createPoll({ id, salonId, creatorId, question, options }) {
   const optionsJson = JSON.stringify(options);
@@ -1668,6 +1679,7 @@ module.exports = {
   addSalonTransaction,
   deleteSalonTransaction,
   setSalonBroadcastOnly,
+  getSalonMessageReaders,
   // Direct 1-on-1 Modules Exports
   getDirectContracts,
   getDirectContractById,

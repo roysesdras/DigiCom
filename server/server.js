@@ -1199,6 +1199,16 @@ app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/salons/:id/messages/:messageId/readers', authenticateToken, requireSalonMember, async (req, res) => {
+  try {
+    const { id, messageId } = req.params;
+    const readers = await db.getSalonMessageReaders(id, messageId);
+    res.json({ readers: readers || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/salons/:id/members', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id } = req.params;
