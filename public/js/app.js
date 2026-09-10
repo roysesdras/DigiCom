@@ -186,6 +186,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
+    navigator.serviceWorker.ready.then((reg) => {
+      try { reg.update(); } catch (e) {}
+    }).catch(() => {});
+
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'FLUSH_OUTBOX') {
         flushOutbox();
@@ -3364,7 +3368,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1232';
+        script.src = '/js/admin-dashboard.min.js?v=1233';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3452,7 +3456,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1232';
+        s.src = '/js/admin-dashboard.min.js?v=1233';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }

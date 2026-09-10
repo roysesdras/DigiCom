@@ -31,9 +31,9 @@ class DigiPushClient {
     }
 
     try {
-      this.swRegistration = await navigator.serviceWorker.register('/sw.js');
+      this.swRegistration = await navigator.serviceWorker.register('/sw.js?v=1233');
       console.log('[+] Service Worker registered with scope:', this.swRegistration.scope);
-      try { this.swRegistration.update(); } catch (e) {}
+      try { await this.swRegistration.update(); } catch (e) {}
 
       const existingSubscription = await this.swRegistration.pushManager.getSubscription();
       this.isSubscribed = !(existingSubscription === null);
