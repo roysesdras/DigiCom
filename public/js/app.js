@@ -2991,7 +2991,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1227';
+        script.src = '/js/admin-dashboard.min.js?v=1228';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3079,7 +3079,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1227';
+        s.src = '/js/admin-dashboard.min.js?v=1228';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -8621,18 +8621,61 @@ window.loadPinnedMessageForActiveChat = async function() {
   }
 };
 
-window.jumpToPinnedMessage = function(messageId) {
+window.jumpToPinnedMessage = async function(messageId) {
   if (!messageId) return;
-  const msgEl = document.getElementById(messageId);
-  if (msgEl) {
-    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    msgEl.style.transition = 'background 0.3s ease';
-    const origBg = msgEl.style.background;
-    msgEl.style.background = 'rgba(0, 168, 132, 0.35)';
-    setTimeout(() => { msgEl.style.background = origBg; }, 1800);
-  } else {
-    if (typeof showToast === 'function') showToast('Message épinglé disponible dans l\'historique');
+  const targetId = String(messageId);
+
+  const findElement = () => {
+    return document.getElementById(targetId) || 
+           document.querySelector(`[data-msg-id="${targetId}"]`) ||
+           document.querySelector(`.message-row[data-msg-id="${targetId}"]`);
+  };
+
+  let msgEl = findElement();
+
+  // If not in DOM, load older history progressively until found (up to 12 batches)
+  if (!msgEl) {
+    let attempts = 0;
+    while (!findElement() && attempts < 12) {
+      attempts++;
+      let loadedMore = false;
+      if (state.activeTab === 'salons' && state.activeSalon) {
+        if (typeof loadSalonHistory === 'function') {
+          const pag = state.salonPagination && state.salonPagination[state.activeSalon.id];
+          if (pag && !pag.hasMore) break;
+          await loadSalonHistory(state.activeSalon.id, true);
+          loadedMore = true;
+        }
+      } else if (state.activeContact) {
+        if (typeof loadDirectHistory === 'function') {
+          const pag = state.feedPagination && state.feedPagination[state.activeContact.id];
+          if (pag && !pag.hasMore) break;
+          await loadDirectHistory(state.activeContact.id, true);
+          loadedMore = true;
+        }
+      } else {
+        break;
+      }
+      if (!loadedMore) break;
+      msgEl = findElement();
+      if (msgEl) break;
+    }
   }
+
+  msgEl = findElement();
+  if (msgEl) {
+    // WhatsApp style smooth scroll directly to message
+    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // WhatsApp signature flash animation
+    msgEl.classList.remove('whatsapp-flash-highlight');
+    void msgEl.offsetWidth; // Trigger reflow
+    msgEl.classList.add('whatsapp-flash-highlight');
+    setTimeout(() => {
+      msgEl.classList.remove('whatsapp-flash-highlight');
+    }, 2200);
+  }
+
   if (typeof window.closeModal === 'function') {
     window.closeModal('modal-pinned-messages-list');
   }
@@ -8673,7 +8716,6 @@ window.openPinnedMessagesListModal = function() {
         else if (parsed.type === 'video') preview = '🎥 [Vidéo]';
       } catch (e) {}
 
-      const sender = escapeHtml(msg.sender_name || msg.senderName || 'Membre');
       let dateStr = '';
       if (msg.timestamp) {
         try {
@@ -8683,26 +8725,26 @@ window.openPinnedMessagesListModal = function() {
       }
 
       const isActive = idx === state.pinnedCurrentIndex;
+      const targetId = msg.message_id || msg.id;
 
       return `
         <div class="pinned-msg-item-card ${isActive ? 'active-pinned-card' : ''}">
           <div class="pinned-msg-item-header">
             <div class="pinned-msg-item-author">
               <span class="pinned-msg-num-tag">#${idx + 1}</span>
-              <strong class="pinned-msg-author-name">${sender}</strong>
               <span class="pinned-msg-time">${dateStr}</span>
             </div>
             <div class="pinned-msg-item-actions">
-              <button type="button" class="pinned-btn-jump" onclick="window.jumpToPinnedMessage('${msg.id}')" title="Voir dans le chat">
+              <button type="button" class="pinned-btn-jump" onclick="window.jumpToPinnedMessage('${targetId}')" title="Voir dans le chat">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
                 <span>Voir</span>
               </button>
-              <button type="button" class="pinned-btn-unpin" onclick="window.unpinSpecificMessage('${msg.id}')" title="Dépingler ce message">
+              <button type="button" class="pinned-btn-unpin" onclick="window.unpinSpecificMessage('${targetId}')" title="Dépingler ce message">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
           </div>
-          <div class="pinned-msg-item-preview" onclick="window.jumpToPinnedMessage('${msg.id}')">${escapeHtml(preview)}</div>
+          <div class="pinned-msg-item-preview" onclick="window.jumpToPinnedMessage('${targetId}')">${escapeHtml(preview)}</div>
         </div>
       `;
     }).join('');
@@ -8738,29 +8780,41 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
   }
 
   const currentMsg = msgs[state.pinnedCurrentIndex];
+  const activeMsgId = currentMsg.message_id || currentMsg.id;
   
-  // Clean text preview
+  // Clean text preview (NO SENDER NAME, WhatsApp style)
   let rawText = currentMsg.content || '';
   try {
     const parsed = JSON.parse(rawText);
     if (parsed.text) rawText = parsed.text;
-    else if (parsed.fileName) rawText = `📎 [Fichier] ${parsed.fileName}`;
-    else if (parsed.type === 'voice') rawText = '🎤 [Note vocale]';
-    else if (parsed.type === 'image') rawText = '🖼️ [Photo]';
-    else if (parsed.type === 'video') rawText = '🎥 [Vidéo]';
+    else if (parsed.fileName) rawText = `📎 ${parsed.fileName}`;
+    else if (parsed.type === 'voice') rawText = '🎤 Note vocale';
+    else if (parsed.type === 'image') rawText = '🖼️ Photo';
+    else if (parsed.type === 'video') rawText = '🎥 Vidéo';
   } catch (e) {}
 
-  if (rawText.length > 50) {
-    rawText = rawText.substring(0, 50) + '...';
+  if (rawText.length > 55) {
+    rawText = rawText.substring(0, 55) + '...';
   }
 
-  const senderName = currentMsg.sender_name || currentMsg.senderName || 'Message';
+  // Pure WhatsApp layout: only message content text, no author name
   if (bannerText) {
-    bannerText.innerHTML = `<strong>${escapeHtml(senderName)}</strong> : <span>${escapeHtml(rawText)}</span>`;
-    bannerText.onclick = () => {
-      window.jumpToPinnedMessage(currentMsg.id);
-    };
+    bannerText.innerHTML = `<span>${escapeHtml(rawText)}</span>`;
   }
+
+  // Clicking anywhere on the banner jumps to the message (and cycles if multiple)
+  banner.onclick = (e) => {
+    if (e.target.closest('.pinned-banner-badge') || 
+        e.target.closest('.pinned-banner-btn-icon') || 
+        e.target.closest('.pinned-banner-close')) {
+      return;
+    }
+    window.jumpToPinnedMessage(activeMsgId);
+    if (msgs.length > 1) {
+      state.pinnedCurrentIndex = (state.pinnedCurrentIndex + 1) % msgs.length;
+      window.updatePinnedMessageBanner(channelType, targetId, msgs);
+    }
+  };
 
   // Counter badge (e.g. 1/5)
   if (badgeEl) {
@@ -8780,6 +8834,10 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
         e.stopPropagation();
         state.pinnedCurrentIndex = (state.pinnedCurrentIndex + 1) % msgs.length;
         window.updatePinnedMessageBanner(channelType, targetId, msgs);
+        const nextMsg = msgs[state.pinnedCurrentIndex];
+        if (nextMsg) {
+          window.jumpToPinnedMessage(nextMsg.message_id || nextMsg.id);
+        }
       };
     } else {
       btnNext.style.display = 'none';
@@ -8799,7 +8857,7 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
     btnUnpin.style.display = 'inline-flex';
     btnUnpin.onclick = (e) => {
       e.stopPropagation();
-      window.pinCurrentChatMessage(currentMsg.id, 'unpin');
+      window.pinCurrentChatMessage(activeMsgId, 'unpin');
     };
   }
 };

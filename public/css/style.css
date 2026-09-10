@@ -5114,7 +5114,13 @@ body {
   padding: 6px 12px;
   font-size: 0.82rem;
   z-index: 15;
+  cursor: pointer;
+  user-select: none;
   transition: all 0.2s ease;
+}
+
+.salon-pinned-banner:hover {
+  background: rgba(24, 32, 40, 0.98);
 }
 
 .pinned-banner-icon {
@@ -5135,16 +5141,31 @@ body {
   cursor: pointer;
   padding: 3px 6px;
   border-radius: 4px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .pinned-banner-content:hover {
-  background: rgba(255, 255, 255, 0.05);
   color: #38bdf8;
 }
 
-.pinned-banner-content strong {
-  color: #10b981;
+/* WhatsApp-style Flash Highlight on Pinned Jump */
+@keyframes whatsappFlashHighlight {
+  0% {
+    background-color: rgba(0, 168, 132, 0.5) !important;
+    box-shadow: 0 0 16px rgba(0, 168, 132, 0.45);
+  }
+  60% {
+    background-color: rgba(0, 168, 132, 0.25) !important;
+  }
+  100% {
+    background-color: transparent !important;
+    box-shadow: none;
+  }
+}
+
+.whatsapp-flash-highlight {
+  animation: whatsappFlashHighlight 2.2s ease forwards !important;
+  border-radius: 8px;
 }
 
 .pinned-banner-badge {
