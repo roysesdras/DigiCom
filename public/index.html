@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1226" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1226">
+    <link rel="preload" href="/css/style.min.css?v=1227" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1227">
   </head>
 
   <body>
@@ -364,7 +364,7 @@
 
         <!-- Pinned Message Banner -->
         <div class="salon-pinned-banner" id="salon-pinned-banner" style="display: none;">
-          <div class="pinned-banner-icon">
+          <div class="pinned-banner-icon" title="Messages épinglés">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="17" x2="12" y2="22"></line>
@@ -372,8 +372,23 @@
               <path d="M9 11V4a3 3 0 0 1 6 0v7"></path>
             </svg>
           </div>
-          <div class="pinned-banner-content" id="pinned-banner-text">Message épinglé...</div>
-          <button type="button" class="pinned-banner-action" id="btn-jump-pinned" title="Voir le message">Voir</button>
+          <div class="pinned-banner-content" id="pinned-banner-text" title="Cliquer pour voir le message dans la discussion">Message épinglé...</div>
+          <span class="pinned-banner-badge" id="pinned-banner-badge" title="Voir tous les messages épinglés" style="display: none;">1/5</span>
+          <button type="button" class="pinned-banner-btn-icon" id="btn-next-pinned" title="Message suivant" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+          <button type="button" class="pinned-banner-btn-icon" id="btn-list-pinned" title="Tous les messages épinglés">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+          </button>
           <button type="button" class="pinned-banner-close" id="btn-unpin-message" title="Dépingler"
             style="display: none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -1544,6 +1559,30 @@
       </div>
     </div>
 
+    <!-- MODAL: Liste des Messages Épinglés (Jusqu'à 5) -->
+    <div class="modal-backdrop" id="modal-pinned-messages-list" style="display: none;">
+      <div class="modal-card modal-medium-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);">
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path d="M5 17h14l-1.5-6H6.5L5 17z"></path>
+              <path d="M9 11V4a3 3 0 0 1 6 0v7"></path>
+            </svg>
+            <h3 id="modal-pinned-title">Messages Épinglés (0/5)</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeModal('modal-pinned-messages-list')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="pinned-messages-list-container" class="pinned-messages-list-container">
+            <!-- Rendered list of pinned messages -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== DIRECT 1-ON-1 MODALS (ZERO EMOJI, SVG ONLY, ZERO BORDER) ==================== -->
 
     <!-- MODAL 1: Micro-Contrat (Fiche d'Engagement Bilatéral) -->
@@ -1839,11 +1878,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1226" defer></script>
-    <script src="/js/idb-store.min.js?v=1226" defer></script>
-    <script src="/js/push-client.min.js?v=1226" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1226" defer></script>
-    <script src="/js/app.min.js?v=1226" defer></script>
+    <script src="/socket.io/socket.io.js?v=1227" defer></script>
+    <script src="/js/idb-store.min.js?v=1227" defer></script>
+    <script src="/js/push-client.min.js?v=1227" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1227" defer></script>
+    <script src="/js/app.min.js?v=1227" defer></script>
   </body>
 
 </html>

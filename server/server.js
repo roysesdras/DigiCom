@@ -2047,6 +2047,13 @@ app.post('/api/salons/:id/pin-message', authenticateToken, async (req, res) => {
     });
     res.json({ success: true, pinnedMessage });
   } catch (err) {
+    if (err.message === 'LIMIT_REACHED' || err.code === 'LIMIT_REACHED') {
+      return res.status(400).json({
+        success: false,
+        error: 'Limite atteinte : Vous pouvez épingler jusqu\'à 5 messages maximum. Veuillez dépingler un message avant d\'en ajouter un nouveau.',
+        code: 'LIMIT_REACHED'
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -2083,6 +2090,13 @@ app.post('/api/chat/pin-message', authenticateToken, async (req, res) => {
 
     res.json({ success: true, pinnedMessages });
   } catch (err) {
+    if (err.message === 'LIMIT_REACHED' || err.code === 'LIMIT_REACHED') {
+      return res.status(400).json({
+        success: false,
+        error: 'Limite atteinte : Vous pouvez épingler jusqu\'à 5 messages maximum. Veuillez dépingler un message avant d\'en ajouter un nouveau.',
+        code: 'LIMIT_REACHED'
+      });
+    }
     console.error('[-] Error pinning message:', err);
     res.status(500).json({ error: err.message });
   }

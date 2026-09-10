@@ -1053,10 +1053,11 @@ async function setUniversalPinnedMessage(channelType, targetId, messageId, actio
 
     const isAlreadyPinned = existing.some(row => row.message_id === messageId);
     if (!isAlreadyPinned) {
-      // Limit to 3 pinned messages max: if 3 exist, remove oldest (FIFO)
-      if (existing.length >= 3) {
-        const oldestId = existing[0].id;
-        await run(`DELETE FROM pinned_messages_v2 WHERE id = ?`, [oldestId]);
+      // Limit to 5 pinned messages max with anti-disappearance protection (no silent auto-delete)
+      if (existing.length >= 5) {
+        const limitErr = new Error('LIMIT_REACHED');
+        limitErr.code = 'LIMIT_REACHED';
+        throw limitErr;
       }
       await run(
         `INSERT INTO pinned_messages_v2 (channel_type, target_id, message_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
@@ -1080,7 +1081,7 @@ async function getUniversalPinnedMessages(channelType, targetId) {
      JOIN messages m ON pm.message_id = m.id
      WHERE pm.channel_type = ? AND pm.target_id = ?
      ORDER BY pm.updated_at DESC
-     LIMIT 3`,
+     LIMIT 5`,
     [channelType, targetId]
   );
   return rows || [];
