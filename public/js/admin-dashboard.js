@@ -529,6 +529,9 @@
             </td>
             <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('fr-FR') : '-'}</td>
             <td style="text-align: right;">
+              <button class="admin-btn-action btn-temp-code" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); margin-right: 4px;" title="Générer un code d'assistance temporaire de 15 min">
+                Code de secours
+              </button>
               <button class="admin-btn-action ${isBanned ? 'btn-unban' : 'btn-ban'}" data-user-id="${u.id}" data-banned="${isBanned ? '1' : '0'}">
                 ${icons.slash} ${isBanned ? 'Débannir' : 'Bannir'}
               </button>
@@ -587,6 +590,24 @@
           const uid = btn.dataset.nukeId;
           const uname = btn.dataset.username;
           nukeUser(uid, uname);
+        });
+      });
+
+      container.querySelectorAll('.btn-temp-code').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const uid = btn.dataset.userId;
+          const uname = btn.dataset.username;
+          try {
+            const res = await adminFetch(`/api/admin/users/${uid}/generate-reset-code`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+              prompt(`Code d'assistance temporaire généré pour @${uname} (valable 15 minutes) :\nTransmettez ce code à l'utilisateur afin qu'il puisse débloquer son compte en privé :`, data.tempCode);
+            } else {
+              alert(data.error || 'Erreur lors de la génération du code');
+            }
+          } catch (e) {
+            alert('Erreur réseau');
+          }
         });
       });
     } else if (state.activeTab === 'broadcast') {

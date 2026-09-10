@@ -2594,6 +2594,106 @@ body {
   text-decoration: underline;
 }
 
+/* PIN Security Alert Banner & Recovery */
+.pin-security-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.25));
+  border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  z-index: 10;
+  animation: slideDownBanner 0.3s ease;
+}
+
+@keyframes slideDownBanner {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pin-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+}
+
+.pin-banner-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.pin-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-xs-accent {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-xs-accent:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+.btn-xs-ghost {
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.btn-xs-ghost:hover {
+  color: #fff;
+}
+
+.btn-card-temp-code {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.btn-card-temp-code:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #fbbf24;
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
 .btn-submit {
   width: 100%;
   padding: 0.85rem;

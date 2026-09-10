@@ -589,7 +589,8 @@ app.post('/api/login', async (req, res) => {
         id: user.id,
         username: user.username,
         displayName: user.display_name,
-        role: user.role
+        role: user.role,
+        hasRecoveryPin: !!user.recovery_pin_hash
       },
       token
     });
@@ -606,7 +607,7 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(429).json({ error: 'Trop d\'inscriptions créées depuis cette adresse. Veuillez patienter.' });
     }
 
-    const { username, displayName, password, inviteUsername } = req.body;
+    const { username, displayName, password, inviteUsername, recoveryPin } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Veuillez renseigner un identifiant et un mot de passe.' });
     }
@@ -629,6 +630,11 @@ app.post('/api/auth/register', async (req, res) => {
       passwordHash,
       role: 'family'
     });
+
+    if (recoveryPin && /^[0-9]{4,8}$/.test(String(recoveryPin).trim())) {
+      const pinHash = await bcrypt.hash(String(recoveryPin).trim(), 10);
+      await db.setUserRecoveryPin(userId, pinHash);
+    }
 
     const newUser = await db.getUserById(userId);
 
@@ -659,10 +665,184 @@ app.post('/api/auth/register', async (req, res) => {
         id: newUser.id,
         username: newUser.username,
         displayName: newUser.display_name,
-        role: newUser.role
+        role: newUser.role,
+        hasRecoveryPin: !!(recoveryPin && /^[0-9]{4,8}$/.test(String(recoveryPin).trim()))
       },
       token
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 3c. Password Recovery & PIN Endpoints
+// ==========================================
+
+// Check username status (does user exist, do they have a recovery PIN)
+app.post('/api/auth/forgot-check', async (req, res) => {
+  try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(`forgot_chk_${clientIp}`, 15, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop de requêtes. Veuillez patienter un moment.' });
+    }
+    const { username } = req.body || {};
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: 'Identifiant requis.' });
+    }
+    const cleanUsername = username.toLowerCase().trim().replace(/^@/, '');
+    const user = await db.getUserByUsername(cleanUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Aucun compte trouvé avec cet identifiant.' });
+    }
+    res.json({
+      success: true,
+      username: user.username,
+      displayName: user.display_name,
+      hasRecoveryPin: !!user.recovery_pin_hash
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Self-service reset using user's Recovery PIN
+app.post('/api/auth/reset-with-pin', async (req, res) => {
+  try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const { username, pin, newPassword } = req.body || {};
+    if (!username || !pin || !newPassword) {
+      return res.status(400).json({ error: 'Tous les champs sont obligatoires.' });
+    }
+    const cleanUsername = username.toLowerCase().trim().replace(/^@/, '');
+    if (isRateLimited(`reset_pin_ip_${clientIp}`, 8, 15 * 60 * 1000) ||
+        isRateLimited(`reset_pin_usr_${cleanUsername}`, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop de tentatives de code PIN. Veuillez patienter 15 minutes.' });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 4 caractères.' });
+    }
+    const user = await db.getUserByUsername(cleanUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Compte introuvable.' });
+    }
+    if (!user.recovery_pin_hash) {
+      return res.status(400).json({ error: 'Ce compte n\'a pas encore de code PIN de secours configuré.' });
+    }
+    const match = await bcrypt.compare(String(pin).trim(), user.recovery_pin_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Code PIN de secours incorrect.' });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await db.updateUserPassword(user.id, newPasswordHash);
+    console.log(`[+] Mot de passe réinitialisé via PIN pour: @${user.username}`);
+    res.json({ success: true, message: 'Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Request an emergency assistance code from the Admin (for accounts without a PIN yet)
+app.post('/api/auth/request-temp-code', async (req, res) => {
+  try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(`req_temp_${clientIp}`, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop de demandes. Veuillez patienter 15 minutes.' });
+    }
+    const { username } = req.body || {};
+    if (!username) return res.status(400).json({ error: 'Identifiant requis.' });
+    const cleanUsername = username.toLowerCase().trim().replace(/^@/, '');
+    const user = await db.getUserByUsername(cleanUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Compte introuvable.' });
+    }
+    await db.createPasswordResetRequest(user.id, user.username);
+    io.emit('admin_reset_request', { username: user.username });
+    res.json({
+      success: true,
+      message: 'Demande transmise avec succès à l\'administrateur. Contactez-le pour obtenir votre code temporaire à 6 chiffres.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset password with Admin's temporary 6-digit code
+app.post('/api/auth/reset-with-temp-code', async (req, res) => {
+  try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const { username, tempCode, newPassword, newPin } = req.body || {};
+    if (!username || !tempCode || !newPassword || !newPin) {
+      return res.status(400).json({ error: 'Veuillez remplir tous les champs (code temporaire, nouveau mot de passe et code PIN de secours).' });
+    }
+    const cleanUsername = username.toLowerCase().trim().replace(/^@/, '');
+    if (isRateLimited(`reset_tmp_ip_${clientIp}`, 8, 15 * 60 * 1000) ||
+        isRateLimited(`reset_tmp_usr_${cleanUsername}`, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop de tentatives avec un code temporaire. Veuillez patienter.' });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 4 caractères.' });
+    }
+    const cleanPin = String(newPin).trim();
+    if (!/^[0-9]{4,8}$/.test(cleanPin)) {
+      return res.status(400).json({ error: 'Le code PIN de secours doit comporter entre 4 et 8 chiffres.' });
+    }
+
+    const user = await db.getUserByUsername(cleanUsername);
+    if (!user) return res.status(404).json({ error: 'Compte introuvable.' });
+
+    const activeReq = await db.getApprovedResetRequestByUsername(cleanUsername);
+    if (!activeReq) {
+      return res.status(400).json({ error: 'Aucun code temporaire actif trouvé pour ce compte ou le code a expiré. Demandez à l\'administrateur d\'en générer un nouveau.' });
+    }
+
+    const match = await bcrypt.compare(String(tempCode).trim(), activeReq.temp_code_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Code temporaire incorrect.' });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    const newPinHash = await bcrypt.hash(cleanPin, 10);
+
+    await db.updateUserPassword(user.id, newPasswordHash);
+    await db.setUserRecoveryPin(user.id, newPinHash);
+    await db.markResetRequestUsed(activeReq.id);
+
+    console.log(`[+] Mot de passe et PIN initialisés via code temporaire admin pour: @${user.username}`);
+    res.json({
+      success: true,
+      message: 'Compte réinitialisé avec succès ! Votre nouveau mot de passe et votre code PIN de secours sont maintenant actifs.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Set or update recovery PIN for authenticated logged-in user
+app.post('/api/auth/set-pin', authenticateToken, async (req, res) => {
+  try {
+    const { pin, currentPassword } = req.body || {};
+    if (!pin) return res.status(400).json({ error: 'Code PIN requis.' });
+    const cleanPin = String(pin).trim();
+    if (!/^[0-9]{4,8}$/.test(cleanPin)) {
+      return res.status(400).json({ error: 'Le code PIN doit comporter entre 4 et 8 chiffres.' });
+    }
+
+    const user = await db.getUserByUsername(req.user.username);
+    if (!user) return res.status(404).json({ error: 'Compte introuvable.' });
+
+    // If user already had a PIN, require current password confirmation
+    if (user.recovery_pin_hash && currentPassword) {
+      const passMatch = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!passMatch) {
+        return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
+      }
+    }
+
+    const pinHash = await bcrypt.hash(cleanPin, 10);
+    await db.setUserRecoveryPin(user.id, pinHash);
+    res.json({ success: true, message: 'Code PIN de secours enregistré avec succès !' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2658,6 +2838,64 @@ app.delete('/api/admin/users/nuke/:userId', authenticateToken, async (req, res) 
     }
 
     res.json({ success: true, message: 'Utilisateur et l\'ensemble de ses données purgés avec succès.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Get pending password reset requests
+app.get('/api/admin/reset-requests', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const requests = await db.getPendingResetRequests();
+    res.json({ success: true, requests });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Approve a request and generate a 6-digit temporary code
+app.post('/api/admin/reset-requests/:id/generate', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const requestId = parseInt(req.params.id, 10);
+    if (!requestId) return res.status(400).json({ error: 'ID de demande invalide.' });
+
+    const tempCode = String(crypto.randomInt(100000, 999999));
+    const tempCodeHash = await bcrypt.hash(tempCode, 10);
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+
+    const result = await db.approveResetRequest(requestId, tempCodeHash, tempCode, expiresAt);
+    if (result.changes === 0) {
+      return res.status(400).json({ error: 'Demande introuvable ou déjà traitée.' });
+    }
+
+    res.json({ success: true, tempCode, expiresAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Direct generation of a temporary 6-digit reset code for any user
+app.post('/api/admin/users/:userId/generate-reset-code', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé au SuperAdmin.' });
+    }
+    const targetUser = await db.getUserById(req.params.userId);
+    if (!targetUser) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+
+    const reqRes = await db.createPasswordResetRequest(targetUser.id, targetUser.username);
+    const tempCode = String(crypto.randomInt(100000, 999999));
+    const tempCodeHash = await bcrypt.hash(tempCode, 10);
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+
+    await db.approveResetRequest(reqRes.lastID, tempCodeHash, tempCode, expiresAt);
+    res.json({ success: true, tempCode, expiresAt, username: targetUser.username });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

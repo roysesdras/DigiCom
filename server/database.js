@@ -132,6 +132,22 @@ async function initTables() {
   try {
     await run(`ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0`);
   } catch (e) {}
+  try {
+    await run(`ALTER TABLE users ADD COLUMN recovery_pin_hash TEXT DEFAULT NULL`);
+  } catch (e) {}
+  await run(`
+    CREATE TABLE IF NOT EXISTS password_reset_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      temp_code_hash TEXT,
+      temp_code_display TEXT,
+      expires_at INTEGER,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_reset_req_user ON password_reset_requests(username, status)`);
   await run(`
     CREATE TABLE IF NOT EXISTS user_contacts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -402,11 +418,11 @@ async function getUserByUsername(username) {
 }
 
 async function getUserById(id) {
-  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at FROM users WHERE id = ?`, [id]);
+  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, created_at FROM users WHERE id = ?`, [id]);
 }
 
 async function getAllUsers() {
-  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at FROM users ORDER BY created_at ASC`);
+  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, created_at FROM users ORDER BY created_at ASC`);
 }
 
 async function updateUser(id, { username, displayName, passwordHash, role }) {
@@ -428,6 +444,57 @@ async function deleteUser(id) {
   await run(`DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?`, [id, id]);
   await run(`DELETE FROM push_subscriptions WHERE user_id = ?`, [id]);
   return await run(`DELETE FROM users WHERE id = ?`, [id]);
+}
+
+// Password Recovery & PIN Helpers
+async function setUserRecoveryPin(userId, pinHash) {
+  return await run(`UPDATE users SET recovery_pin_hash = ? WHERE id = ?`, [pinHash, userId]);
+}
+
+async function updateUserPassword(userId, passwordHash) {
+  return await run(`UPDATE users SET password_hash = ? WHERE id = ?`, [passwordHash, userId]);
+}
+
+async function createPasswordResetRequest(userId, username) {
+  // Cancel previous pending requests for this user
+  await run(`UPDATE password_reset_requests SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'`, [userId]);
+  return await run(
+    `INSERT INTO password_reset_requests (user_id, username, status) VALUES (?, ?, 'pending')`,
+    [userId, username.toLowerCase().trim()]
+  );
+}
+
+async function getPendingResetRequests() {
+  return await all(
+    `SELECT id, user_id, username, temp_code_display, expires_at, status, created_at
+     FROM password_reset_requests
+     WHERE status IN ('pending', 'approved')
+     ORDER BY created_at DESC
+     LIMIT 50`
+  );
+}
+
+async function approveResetRequest(requestId, tempCodeHash, tempCodeDisplay, expiresAt) {
+  return await run(
+    `UPDATE password_reset_requests
+     SET temp_code_hash = ?, temp_code_display = ?, expires_at = ?, status = 'approved'
+     WHERE id = ? AND status = 'pending'`,
+    [tempCodeHash, tempCodeDisplay, expiresAt, requestId]
+  );
+}
+
+async function getApprovedResetRequestByUsername(username) {
+  const now = Date.now();
+  return await get(
+    `SELECT * FROM password_reset_requests
+     WHERE username = ? AND status = 'approved' AND expires_at > ?
+     ORDER BY id DESC LIMIT 1`,
+    [username.toLowerCase().trim(), now]
+  );
+}
+
+async function markResetRequestUsed(requestId) {
+  return await run(`UPDATE password_reset_requests SET status = 'used' WHERE id = ?`, [requestId]);
 }
 
 // Push Subscriptions Helpers
@@ -1633,5 +1700,13 @@ module.exports = {
   getAllUsersForAdmin,
   getAdminMetrics,
   nukeUser,
+  // Password Recovery exports
+  setUserRecoveryPin,
+  updateUserPassword,
+  createPasswordResetRequest,
+  getPendingResetRequests,
+  approveResetRequest,
+  getApprovedResetRequestByUsername,
+  markResetRequestUsed,
   initTables
 };

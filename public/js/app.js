@@ -325,6 +325,14 @@ function updateCurrentUserUI() {
   if (menuSuperAdmin) {
     menuSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
+
+  // Check if current user has a recovery PIN configured
+  const pinBanner = document.getElementById('pin-security-banner');
+  if (pinBanner) {
+    const hasPin = state.user && (state.user.hasRecoveryPin || state.user.has_recovery_pin);
+    const dismissed = sessionStorage.getItem('pin_banner_dismissed') === '1';
+    pinBanner.style.display = (!hasPin && !dismissed) ? 'flex' : 'none';
+  }
 }
 
 async function initAppInterface() {
@@ -696,6 +704,15 @@ function initSocket() {
   state.socket.on('admin_announcement', (data) => {
     if (window.showAdminAnnouncementModal) {
       window.showAdminAnnouncementModal(data);
+    }
+  });
+
+  state.socket.on('admin_reset_request', (data) => {
+    if (state.user && state.user.role === 'admin') {
+      if (typeof window.loadAdminResetRequests === 'function') {
+        window.loadAdminResetRequests();
+      }
+      console.log(`[!] Demande de code temporaire reçue pour: @${data.username}`);
     }
   });
 
@@ -2759,28 +2776,323 @@ function setupEventListeners() {
     });
   }
 
-  // Forgot Password Modal Switchers
+  // ==========================================
+  // Password Recovery (Forgot Password Flow)
+  // ==========================================
   const linkForgot = document.getElementById('link-forgot-password');
   const btnForgotBack = document.getElementById('btn-forgot-back-login');
   const btnCloseForgot = document.getElementById('btn-close-forgot-modal');
+  let forgotTargetUsername = '';
+
+  function resetForgotModal() {
+    forgotTargetUsername = '';
+    const step1 = document.getElementById('forgot-step-1');
+    const step2a = document.getElementById('forgot-step-2a');
+    const step2b = document.getElementById('forgot-step-2b');
+    const errBox = document.getElementById('forgot-error');
+    const successBox = document.getElementById('forgot-success');
+    if (step1) step1.style.display = 'block';
+    if (step2a) step2a.style.display = 'none';
+    if (step2b) step2b.style.display = 'none';
+    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+    if (successBox) { successBox.style.display = 'none'; successBox.textContent = ''; }
+    const uIn = document.getElementById('forgot-username');
+    if (uIn) uIn.value = '';
+    const pIn = document.getElementById('forgot-pin');
+    if (pIn) pIn.value = '';
+    const passIn = document.getElementById('forgot-new-password');
+    if (passIn) passIn.value = '';
+    const tCode = document.getElementById('forgot-temp-code');
+    if (tCode) tCode.value = '';
+    const tPass = document.getElementById('forgot-temp-new-password');
+    if (tPass) tPass.value = '';
+    const tPin = document.getElementById('forgot-temp-new-pin');
+    if (tPin) tPin.value = '';
+  }
 
   if (linkForgot) {
     linkForgot.addEventListener('click', (e) => {
       e.preventDefault();
+      resetForgotModal();
       hideModals();
       showModal('forgot-password-modal');
     });
   }
   if (btnForgotBack) {
     btnForgotBack.addEventListener('click', () => {
+      resetForgotModal();
       hideModals();
       showModal('login-modal');
     });
   }
   if (btnCloseForgot) {
     btnCloseForgot.addEventListener('click', () => {
+      resetForgotModal();
       hideModals();
       showModal('login-modal');
+    });
+  }
+
+  // Step 1: Check Username
+  const formForgotStep1 = document.getElementById('form-forgot-step-1');
+  if (formForgotStep1) {
+    formForgotStep1.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const usernameInput = document.getElementById('forgot-username');
+      const errBox = document.getElementById('forgot-error');
+      const username = usernameInput ? usernameInput.value.trim() : '';
+      if (!username) return;
+
+      errBox.style.display = 'none';
+      errBox.textContent = '';
+
+      try {
+        const res = await fetch('/api/auth/forgot-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de la vérification');
+
+        forgotTargetUsername = data.username;
+        document.getElementById('forgot-step-1').style.display = 'none';
+
+        if (data.hasRecoveryPin) {
+          document.getElementById('forgot-step-2a').style.display = 'block';
+          document.getElementById('forgot-step-2b').style.display = 'none';
+        } else {
+          document.getElementById('forgot-step-2a').style.display = 'none';
+          document.getElementById('forgot-step-2b').style.display = 'block';
+        }
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
+    });
+  }
+
+  // Step 2A: Reset with PIN
+  const formForgotPin = document.getElementById('form-forgot-pin');
+  if (formForgotPin) {
+    formForgotPin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = document.getElementById('forgot-pin').value.trim();
+      const newPassword = document.getElementById('forgot-new-password').value;
+      const errBox = document.getElementById('forgot-error');
+      const successBox = document.getElementById('forgot-success');
+      errBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/reset-with-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: forgotTargetUsername, pin, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Code PIN ou mot de passe invalide');
+
+        successBox.textContent = data.message;
+        successBox.style.display = 'block';
+        formForgotPin.style.display = 'none';
+
+        setTimeout(() => {
+          resetForgotModal();
+          hideModals();
+          const loginUser = document.getElementById('login-username');
+          if (loginUser) loginUser.value = forgotTargetUsername;
+          showModal('login-modal');
+        }, 1800);
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
+    });
+  }
+
+  // Switch from 2A to 2B
+  const btnSwitchTemp = document.getElementById('btn-forgot-switch-temp');
+  if (btnSwitchTemp) {
+    btnSwitchTemp.addEventListener('click', () => {
+      document.getElementById('forgot-step-2a').style.display = 'none';
+      document.getElementById('forgot-step-2b').style.display = 'block';
+    });
+  }
+
+  // Step 2B: Request Temp Code from Admin
+  const btnSendRequest = document.getElementById('btn-forgot-send-request');
+  if (btnSendRequest) {
+    btnSendRequest.addEventListener('click', async () => {
+      const errBox = document.getElementById('forgot-error');
+      const successBox = document.getElementById('forgot-success');
+      errBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/request-temp-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: forgotTargetUsername })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'envoi de la demande');
+
+        successBox.textContent = data.message;
+        successBox.style.display = 'block';
+        btnSendRequest.textContent = 'Demande transmise ✓';
+        btnSendRequest.disabled = true;
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
+    });
+  }
+
+  // Step 2B: Reset with Temp Code
+  const formForgotTempCode = document.getElementById('form-forgot-temp-code');
+  if (formForgotTempCode) {
+    formForgotTempCode.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const tempCode = document.getElementById('forgot-temp-code').value.trim();
+      const newPassword = document.getElementById('forgot-temp-new-password').value;
+      const newPin = document.getElementById('forgot-temp-new-pin').value.trim();
+      const errBox = document.getElementById('forgot-error');
+      const successBox = document.getElementById('forgot-success');
+      errBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/reset-with-temp-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: forgotTargetUsername, tempCode, newPassword, newPin })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Code invalide ou expiré');
+
+        successBox.textContent = data.message;
+        successBox.style.display = 'block';
+        formForgotTempCode.style.display = 'none';
+
+        setTimeout(() => {
+          resetForgotModal();
+          hideModals();
+          const loginUser = document.getElementById('login-username');
+          if (loginUser) loginUser.value = forgotTargetUsername;
+          showModal('login-modal');
+        }, 1800);
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
+    });
+  }
+
+  // ==========================================
+  // PIN Setup Modal for Logged-In Users
+  // ==========================================
+  function openSetPinModal() {
+    const errBox = document.getElementById('set-pin-error');
+    const successBox = document.getElementById('set-pin-success');
+    const passGroup = document.getElementById('set-pin-current-pass-group');
+    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+    if (successBox) { successBox.style.display = 'none'; successBox.textContent = ''; }
+
+    const hasPin = state.user && (state.user.hasRecoveryPin || state.user.has_recovery_pin);
+    if (passGroup) {
+      passGroup.style.display = hasPin ? 'block' : 'none';
+    }
+    const currentPass = document.getElementById('set-pin-current-pass');
+    if (currentPass) currentPass.value = '';
+    const newPin = document.getElementById('set-pin-new');
+    if (newPin) newPin.value = '';
+    const confirmPin = document.getElementById('set-pin-confirm');
+    if (confirmPin) confirmPin.value = '';
+
+    showModal('set-pin-modal');
+  }
+
+  const btnBannerSetPin = document.getElementById('btn-banner-set-pin');
+  if (btnBannerSetPin) {
+    btnBannerSetPin.addEventListener('click', openSetPinModal);
+  }
+
+  const btnBannerClosePin = document.getElementById('btn-banner-close-pin');
+  if (btnBannerClosePin) {
+    btnBannerClosePin.addEventListener('click', () => {
+      sessionStorage.setItem('pin_banner_dismissed', '1');
+      const banner = document.getElementById('pin-security-banner');
+      if (banner) banner.style.display = 'none';
+    });
+  }
+
+  const menuItemSetPin = document.getElementById('menu-item-set-pin');
+  if (menuItemSetPin) {
+    menuItemSetPin.addEventListener('click', () => {
+      if (typeof window.closeChatMoreMenu === 'function') window.closeChatMoreMenu();
+      openSetPinModal();
+    });
+  }
+
+  const btnCloseSetPin = document.getElementById('btn-close-set-pin-modal');
+  if (btnCloseSetPin) {
+    btnCloseSetPin.addEventListener('click', () => {
+      hideModal('set-pin-modal');
+    });
+  }
+
+  const formSetPin = document.getElementById('set-pin-form');
+  if (formSetPin) {
+    formSetPin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const currentPassword = document.getElementById('set-pin-current-pass')?.value || '';
+      const pin = document.getElementById('set-pin-new')?.value.trim();
+      const confirm = document.getElementById('set-pin-confirm')?.value.trim();
+      const errBox = document.getElementById('set-pin-error');
+      const successBox = document.getElementById('set-pin-success');
+      errBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      if (pin !== confirm) {
+        errBox.textContent = 'Les deux codes PIN ne correspondent pas.';
+        errBox.style.display = 'block';
+        return;
+      }
+      if (!/^[0-9]{4,8}$/.test(pin)) {
+        errBox.textContent = 'Le code PIN doit comporter entre 4 et 8 chiffres.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      try {
+        const res = await authFetch('/api/auth/set-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, currentPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'enregistrement du PIN');
+
+        if (state.user) {
+          state.user.hasRecoveryPin = true;
+          state.user.has_recovery_pin = 1;
+          localStorage.setItem('digicom_user', JSON.stringify(state.user));
+        }
+
+        const banner = document.getElementById('pin-security-banner');
+        if (banner) banner.style.display = 'none';
+
+        successBox.textContent = data.message;
+        successBox.style.display = 'block';
+
+        setTimeout(() => {
+          hideModal('set-pin-modal');
+        }, 1500);
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+      }
     });
   }
 
@@ -2815,6 +3127,7 @@ function setupEventListeners() {
       const displayName = document.getElementById('register-displayname').value.trim();
       const username = document.getElementById('register-username').value.trim();
       const password = document.getElementById('register-password').value;
+      const recoveryPin = document.getElementById('register-pin')?.value.trim() || undefined;
       const errBox = document.getElementById('register-error');
       const pendingInvite = localStorage.getItem('digicom_pending_invite') || new URLSearchParams(window.location.search).get('invite');
 
@@ -2822,7 +3135,7 @@ function setupEventListeners() {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, displayName, password, inviteUsername: pendingInvite })
+          body: JSON.stringify({ username, displayName, password, inviteUsername: pendingInvite, recoveryPin })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'inscription');
@@ -3051,7 +3364,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1231';
+        script.src = '/js/admin-dashboard.min.js?v=1232';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3139,7 +3452,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1231';
+        s.src = '/js/admin-dashboard.min.js?v=1232';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -7047,6 +7360,13 @@ async function loadAdminUsers() {
                 Modifier
               </button>
               ${!isSelf ? `
+                <button type="button" class="btn-card-temp-code" onclick="generateTempResetCode('${u.id}', '${escapeHtml(u.username)}')" title="Générer un code à usage unique de 15 min pour débloquer cet utilisateur">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  Code de secours
+                </button>
                 <button type="button" class="btn-card-delete" onclick="deleteUser('${u.id}', '${escapeHtml(u.display_name || u.username)}')">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;">
                     <polyline points="3 6 5 6 21 6"></polyline>
@@ -7059,8 +7379,88 @@ async function loadAdminUsers() {
           </div>
         `;
       }).join('');
+      loadAdminResetRequests();
     }
   } catch (e) {}
+}
+
+async function loadAdminResetRequests() {
+  const list = document.getElementById('admin-reset-requests-list');
+  if (!list) return;
+
+  try {
+    const res = await authFetch('/api/admin/reset-requests');
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.requests || data.requests.length === 0) {
+        list.innerHTML = '<div style="padding: 0.85rem; color: var(--text-dim); font-size: 0.82rem; text-align: center;">Aucune demande de code temporaire en attente.</div>';
+        return;
+      }
+      list.innerHTML = data.requests.map(r => {
+        const isApproved = r.status === 'approved';
+        const isExpired = r.expires_at && r.expires_at < Date.now();
+        const codeDisplay = r.temp_code_display || '------';
+        return `
+          <div class="admin-user-card" style="margin-bottom: 0.5rem;">
+            <div class="user-info-text">
+              <strong>@${escapeHtml(r.username)}</strong>
+              <span class="role-badge-pill ${isApproved ? (isExpired ? 'family' : 'admin') : 'family'}">
+                ${isApproved ? (isExpired ? 'Expiré' : 'Actif (15 min)') : 'En attente'}
+              </span>
+              ${isApproved && !isExpired ? `<span style="font-family: monospace; font-weight: bold; color: #fbbf24; background: rgba(245,158,11,0.15); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Code: ${codeDisplay}</span>` : ''}
+            </div>
+            <div class="user-card-actions">
+              ${!isApproved || isExpired ? `
+                <button type="button" class="btn-card-temp-code" onclick="approveResetRequest(${r.id}, '${escapeHtml(r.username)}')">
+                  Générer code à 6 chiffres
+                </button>
+              ` : `
+                <button type="button" class="btn-card-edit" onclick="navigator.clipboard && navigator.clipboard.writeText('${codeDisplay}').then(() => alert('Code ${codeDisplay} copié !'));">
+                  Copier le code
+                </button>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (e) {}
+}
+window.loadAdminResetRequests = loadAdminResetRequests;
+
+window.approveResetRequest = async function(requestId, username) {
+  try {
+    const res = await authFetch(`/api/admin/reset-requests/${requestId}/generate`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération du code');
+
+    prompt(`Code d'assistance temporaire généré pour @${username} (valable 15 minutes) :\nTransmettez ce code à l'utilisateur afin qu'il puisse débloquer son compte en privé :`, data.tempCode);
+    loadAdminResetRequests();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.generateTempResetCode = async function(userId, username) {
+  try {
+    const res = await authFetch(`/api/admin/users/${userId}/generate-reset-code`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération du code');
+
+    prompt(`Code d'assistance temporaire généré pour @${username} (valable 15 minutes) :\nTransmettez ce code à l'utilisateur afin qu'il puisse débloquer son compte en privé :`, data.tempCode);
+    loadAdminResetRequests();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+const btnRefreshResetRequests = document.getElementById('btn-refresh-reset-requests');
+if (btnRefreshResetRequests) {
+  btnRefreshResetRequests.addEventListener('click', loadAdminResetRequests);
 }
 
 window.openEditUser = function(user) {
