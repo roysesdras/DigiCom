@@ -2537,6 +2537,63 @@ body {
   box-shadow: 0 0 0 3px var(--emerald-glow);
 }
 
+.password-input-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  padding-right: 2.75rem !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none !important;
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  padding: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: color 0.2s ease, background 0.2s ease;
+  z-index: 2;
+  box-shadow: none !important;
+}
+
+.password-toggle-btn:hover {
+  color: var(--emerald, #10b981);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid var(--emerald, #10b981);
+}
+
+.modal-forgot-link {
+  text-align: right;
+  margin-top: -0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-forgot-link a {
+  color: var(--text-dim, #94a3b8);
+  font-size: 0.78rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.modal-forgot-link a:hover {
+  color: var(--emerald, #34d399);
+  text-decoration: underline;
+}
+
 .btn-submit {
   width: 100%;
   padding: 0.85rem;

@@ -2759,6 +2759,54 @@ function setupEventListeners() {
     });
   }
 
+  // Forgot Password Modal Switchers
+  const linkForgot = document.getElementById('link-forgot-password');
+  const btnForgotBack = document.getElementById('btn-forgot-back-login');
+  const btnCloseForgot = document.getElementById('btn-close-forgot-modal');
+
+  if (linkForgot) {
+    linkForgot.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideModals();
+      showModal('forgot-password-modal');
+    });
+  }
+  if (btnForgotBack) {
+    btnForgotBack.addEventListener('click', () => {
+      hideModals();
+      showModal('login-modal');
+    });
+  }
+  if (btnCloseForgot) {
+    btnCloseForgot.addEventListener('click', () => {
+      hideModals();
+      showModal('login-modal');
+    });
+  }
+
+  // Universal Password Visibility Toggle (Eye Icon)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.password-toggle-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const targetId = btn.dataset.target;
+    if (!targetId) return;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.setAttribute('aria-label', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+    btn.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+
+    const eyeShow = btn.querySelector('.eye-icon-show');
+    const eyeHide = btn.querySelector('.eye-icon-hide');
+    if (eyeShow && eyeHide) {
+      eyeShow.style.display = isPassword ? 'none' : 'inline-block';
+      eyeHide.style.display = isPassword ? 'inline-block' : 'none';
+    }
+  });
+
   // Register form
   const registerForm = document.getElementById('register-form');
   if (registerForm) {
@@ -3003,7 +3051,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1230';
+        script.src = '/js/admin-dashboard.min.js?v=1231';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3091,7 +3139,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1230';
+        s.src = '/js/admin-dashboard.min.js?v=1231';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
