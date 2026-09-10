@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 const dbPath = path.join(__dirname, 'data', 'digicom.db');
 const backupDir = path.join(__dirname, 'data', 'backups');
@@ -17,7 +17,13 @@ const remoteHost = process.env.STORAGE_HOST || '162.35.166.27';
 const remoteUser = process.env.STORAGE_USER || 'root';
 const remoteBackupDir = process.env.STORAGE_BACKUP_PATH || '/root/storage_digicom/backups';
 const sshKeyPath = process.env.STORAGE_SSH_KEY || '/root/.ssh/id_ed25519_digicom';
-const secretKeyStr = process.env.JWT_SECRET || 'digicom_ultra_secure_jwt_key_prod_2026';
+const secretKeyStr = process.env.BACKUP_ENCRYPTION_KEY || process.env.JWT_SECRET || (() => {
+  const localKeyFile = path.join(__dirname, 'data', 'backup.key');
+  if (fs.existsSync(localKeyFile)) return fs.readFileSync(localKeyFile, 'utf8').trim();
+  const generated = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(localKeyFile, generated, { mode: 0o600 });
+  return generated;
+})();
 
 // Derive 32-byte key for AES-256 from secret
 const encryptionKey = crypto.createHash('sha256').update(secretKeyStr).digest();
@@ -26,9 +32,9 @@ if (!fs.existsSync(backupDir)) {
   fs.mkdirSync(backupDir, { recursive: true });
 }
 
-function runCommand(cmd) {
+function runRsync(args) {
   return new Promise((resolve, reject) => {
-    exec(cmd, (err, stdout, stderr) => {
+    execFile('rsync', args, (err, stdout, stderr) => {
       if (err) return reject(new Error(stderr || err.message));
       resolve(stdout.trim());
     });
@@ -110,13 +116,14 @@ async function performBackup() {
     fs.writeFileSync(encryptedBackup, finalBuffer);
     console.log('[+] Backup encrypted with AES-256-GCM:', encryptedBackup);
 
-    // 3. Transfer encrypted backup file to remote storage VPS with low CPU & I/O priority
-    const sshOption = `-i ${sshKeyPath} -o StrictHostKeyChecking=no`;
-    const lowPriorityPrefix = 'nice -n 19 ionice -c 3 2>/dev/null || nice -n 19';
-    const rsyncCmd = `${lowPriorityPrefix} rsync -avz -e "ssh ${sshOption}" "${encryptedBackup}" ${remoteUser}@${remoteHost}:${remoteBackupDir}/`;
-    
-    console.log('[+] Transferring backup to remote storage VPS (Low I/O priority)...');
-    await runCommand(rsyncCmd);
+    // 3. Transfer encrypted backup file to remote storage VPS
+    console.log('[+] Transferring backup to remote storage VPS...');
+    await runRsync([
+      '-avz',
+      '-e', `ssh -i ${sshKeyPath} -o StrictHostKeyChecking=no`,
+      encryptedBackup,
+      `${remoteUser}@${remoteHost}:${remoteBackupDir}/`
+    ]);
     console.log('[+] Backup successfully transferred to remote storage VPS:', `${remoteHost}:${remoteBackupDir}/`);
 
     // 4. Cleanup local temporary backup files

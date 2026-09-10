@@ -13,10 +13,11 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    env_file:
+      - ./server/.env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - JWT_SECRET=digicom_ultra_secure_jwt_key_prod_2026
     volumes:
       - ./server/data:/app/server/data
       - ./public:/app/public

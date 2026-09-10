@@ -618,7 +618,10 @@ function initSocket() {
   }
   if (state.socket && state.socket.connected) {
     if (state.user) {
-      state.socket.emit('authenticate', state.user);
+      state.socket.emit('authenticate', {
+        ...state.user,
+        token: state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('digicom_token') : null)
+      });
     }
     return;
   }
@@ -641,7 +644,12 @@ function initSocket() {
 
   state.socket.on('connect', () => {
     console.log('[+] Socket connected:', state.socket.id);
-    state.socket.emit('authenticate', state.user);
+    if (state.user) {
+      state.socket.emit('authenticate', {
+        ...state.user,
+        token: state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('digicom_token') : null)
+      });
+    }
     if (state.activeContact && state.activeTab === 'contacts' && !document.hidden && document.visibilityState === 'visible') {
       state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
       state.socket.emit('mark_read', { senderId: state.activeContact.id });
@@ -694,6 +702,10 @@ function initSocket() {
   state.socket.on('force_disconnect', (data) => {
     alert(data && data.reason ? data.reason : 'Votre connexion a été interrompue par l\'administration.');
     window.location.reload();
+  });
+
+  state.socket.on('auth_error', (err) => {
+    console.warn('[!] Socket auth error:', err ? err.error : 'Session expired');
   });
 
   // Direct 1-to-1 Message Received
@@ -2991,7 +3003,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1229';
+        script.src = '/js/admin-dashboard.min.js?v=1230';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3079,7 +3091,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1229';
+        s.src = '/js/admin-dashboard.min.js?v=1230';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -7106,10 +7118,13 @@ document.addEventListener('click', (e) => {
 });
 
 function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatSalonName(name) {

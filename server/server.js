@@ -12,14 +12,28 @@ const multer = require('multer');
 const { randomUUID } = require('crypto');
 const uuidv4 = () => randomUUID();
 
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
+const crypto = require('crypto');
 const cron = require('node-cron');
 const db = require('./database');
 const pushService = require('./push-service');
 const logger = require('./logger');
 const { performBackup } = require('./backup-db');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'digicom_ultra_secure_jwt_key_prod_2026';
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  const secretKeyFile = path.join(__dirname, 'data', 'jwt.key');
+  if (fs.existsSync(secretKeyFile)) {
+    return fs.readFileSync(secretKeyFile, 'utf8').trim();
+  }
+  const generated = crypto.randomBytes(48).toString('hex');
+  try {
+    fs.writeFileSync(secretKeyFile, generated, { mode: 0o600 });
+    console.warn('[!] WARNING: No JWT_SECRET in env. Generated persistent key in data/jwt.key');
+  } catch (e) {
+    console.warn('[!] WARNING: Could not persist generated JWT_SECRET to file:', e.message);
+  }
+  return generated;
+})();
 const PORT = process.env.PORT || 3000;
 
 const app = express();
@@ -38,10 +52,9 @@ const STORAGE_REMOTE_PATH = process.env.STORAGE_REMOTE_PATH || '/root/storage_di
 const STORAGE_SSH_KEY = process.env.STORAGE_SSH_KEY || '/root/.ssh/id_ed25519_digicom';
 
 function syncFileToRemoteStorage(filePath) {
-  const sshOption = `-i ${STORAGE_SSH_KEY} -o StrictHostKeyChecking=no`;
+  const sshOption = `ssh -i ${STORAGE_SSH_KEY} -o StrictHostKeyChecking=no`;
   const remoteTarget = `${STORAGE_USER}@${STORAGE_HOST}:${STORAGE_REMOTE_PATH}/`;
-  const cmd = `ionice -c3 nice -n 19 rsync -az -e "ssh ${sshOption}" "${filePath}" "${remoteTarget}"`;
-  exec(cmd, (err, stdout, stderr) => {
+  execFile('rsync', ['-az', '-e', sshOption, filePath, remoteTarget], (err) => {
     if (err) {
       logger.warn('STORAGE', `Remote storage sync warning for ${path.basename(filePath)}: ${err.message}`);
     } else {
@@ -52,9 +65,12 @@ function syncFileToRemoteStorage(filePath) {
 
 function fetchFileFromRemoteStorage(fileName, localTarget) {
   return new Promise((resolve, reject) => {
-    const sshOption = `-i ${STORAGE_SSH_KEY} -o StrictHostKeyChecking=no`;
-    const cmd = `rsync -avz -e "ssh ${sshOption}" ${STORAGE_USER}@${STORAGE_HOST}:${STORAGE_REMOTE_PATH}/"${fileName}" "${localTarget}"`;
-    exec(cmd, (err) => {
+    if (!fileName || !/^[a-zA-Z0-9_\.-]+$/.test(fileName) || fileName.includes('..')) {
+      return reject(new Error('Invalid filename for remote storage fetch'));
+    }
+    const sshOption = `ssh -i ${STORAGE_SSH_KEY} -o StrictHostKeyChecking=no`;
+    const remoteSource = `${STORAGE_USER}@${STORAGE_HOST}:${STORAGE_REMOTE_PATH}/${fileName}`;
+    execFile('rsync', ['-avz', '-e', sshOption, remoteSource, localTarget], (err) => {
       if (err) return reject(err);
       resolve(localTarget);
     });
@@ -195,7 +211,22 @@ app.use('/widget', express.static(path.join(__dirname, '..', 'widget'), {
   }
 }));
 app.get('/uploads/:filename', async (req, res) => {
-  const fileName = path.basename(req.params.filename);
+  const rawParam = req.params.filename || '';
+  const fileName = path.basename(rawParam);
+
+  // Strict filename validation: alphanumeric, underscore, dash, dot only. No traversal.
+  if (!/^[a-zA-Z0-9_\.-]+$/.test(fileName) || fileName.includes('..') || rawParam !== fileName) {
+    return res.status(400).send('Nom de fichier invalide');
+  }
+
+  const ext = path.extname(fileName).toLowerCase();
+  const safeInlineExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mp3', '.ogg', '.wav', '.m4a'];
+  const dangerousExts = ['.html', '.htm', '.svg', '.xml', '.php', '.phtml', '.sh', '.bash', '.exe', '.bat', '.cmd', '.js', '.mjs', '.vbs'];
+  
+  if (dangerousExts.includes(ext)) {
+    return res.status(403).send('Type de fichier interdit');
+  }
+
   const localFile = path.join(uploadsDir, fileName);
 
   if (!fs.existsSync(localFile)) {
@@ -204,15 +235,19 @@ app.get('/uploads/:filename', async (req, res) => {
       await fetchFileFromRemoteStorage(fileName, localFile);
     } catch (err) {
       console.error('[-] Failed to fetch remote file:', err.message);
-      return res.status(404).send('File not found');
+      return res.status(404).send('Fichier introuvable');
     }
   }
 
   if (fs.existsSync(localFile)) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (!safeInlineExts.includes(ext)) {
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/["\r\n]/g, '')}"`);
+    }
     return res.sendFile(localFile);
   } else {
-    return res.status(404).send('File not found');
+    return res.status(404).send('Fichier introuvable');
   }
 });
 
@@ -235,6 +270,37 @@ function authenticateToken(req, res, next) {
     req.user = user;
     next();
   });
+}
+
+async function requireSalonMember(req, res, next) {
+  try {
+    const salonId = req.params.id;
+    if (!salonId) return res.status(400).json({ error: 'Identifiant du salon manquant' });
+    if (req.user && req.user.role === 'admin') return next();
+    const members = await db.getSalonMembers(salonId);
+    if (!members || !members.some(m => m.id === req.user.id)) {
+      return res.status(403).json({ error: 'Accès interdit : vous n\'êtes pas membre de ce Salon' });
+    }
+    next();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// In-Memory Rate Limiting Guard
+const rateLimitMap = new Map();
+function isRateLimited(key, maxRequests = 10, windowMs = 15 * 60 * 1000) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  if (entry.count >= maxRequests) {
+    return true;
+  }
+  entry.count++;
+  return false;
 }
 
 function generateToken(user) {
@@ -261,8 +327,11 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// System Log Viewer & Exporter Endpoint
-app.get('/api/logs', (req, res) => {
+// System Log Viewer & Exporter Endpoint (Admin Only & Authenticated)
+app.get('/api/logs', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+  }
   const download = req.query.download === '1' || req.query.download === 'true';
   if (download) {
     const logPath = logger.getLogFilePath();
@@ -280,20 +349,26 @@ app.get('/api/logs', (req, res) => {
   res.send(logs.join('\n'));
 });
 
-// Client & Service Worker Log Collector Endpoint
+// Client & Service Worker Log Collector Endpoint (Rate Limited)
 app.post('/api/client-log', (req, res) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  if (isRateLimited(`client_log_${clientIp}`, 60, 60 * 1000)) {
+    return res.status(429).json({ error: 'Trop de requêtes de journalisation' });
+  }
   const { level = 'info', tag = 'CLIENT', message = '', data = null } = req.body || {};
+  const safeTag = String(tag).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 20);
+  const safeMessage = String(message).slice(0, 500);
   if (level === 'error') {
-    logger.error(tag, message, data);
+    logger.error(safeTag, safeMessage, data);
   } else if (level === 'warn') {
-    logger.warn(tag, message, data);
+    logger.warn(safeTag, safeMessage, data);
   } else {
-    logger.info(tag, message, data);
+    logger.info(safeTag, safeMessage, data);
   }
   res.json({ success: true });
 });
 
-// 1b. Link Preview (Open Graph metadata scraper with Server-side Caching)
+// 1b. Link Preview (Open Graph metadata scraper with SSRF Protection & Caching)
 const linkPreviewServerCache = new Map();
 const LINK_PREVIEW_CACHE_TTL = 3600 * 2000; // 2 hours
 
@@ -308,10 +383,17 @@ app.get('/api/link-preview', authenticateToken, async (req, res) => {
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
       return res.status(400).json({ error: 'Invalid protocol' });
     }
-    // Block private/internal IPs (SSRF protection)
+    // Block private/internal IPs & container hostnames (SSRF protection)
     const hostname = parsedUrl.hostname.toLowerCase();
-    const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
-    if (blocked.includes(hostname) || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) {
+    const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'n8n', 'traefik', 'digicom'];
+    if (
+      blocked.includes(hostname) ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.onion') ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.)/.test(hostname) ||
+      !hostname.includes('.')
+    ) {
       return res.status(403).json({ error: 'Forbidden URL' });
     }
   } catch {
@@ -340,9 +422,13 @@ app.get('/api/link-preview', authenticateToken, async (req, res) => {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
       },
-      redirect: 'follow'
+      redirect: 'manual' // Prevent SSRF redirect bypass to internal networks
     });
     clearTimeout(timeout);
+
+    if (fetchRes.status >= 300 && fetchRes.status < 400) {
+      return res.status(400).json({ error: 'Redirections externes non supportées' });
+    }
 
     const contentType = fetchRes.headers.get('content-type') || '';
     if (!contentType.includes('text/html')) {
@@ -448,10 +534,11 @@ app.post('/api/setup', async (req, res) => {
 
     const user = { id: userId, username, display_name: displayName || username, role: 'admin' };
     const token = generateToken(user);
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
 
     res.cookie('digicom_token', token, {
       httpOnly: true,
-      secure: false, // works behind Traefik HTTPS reverse proxy
+      secure: isHttps,
       sameSite: 'lax',
       path: '/',
       maxAge: 90 * 24 * 60 * 60 * 1000
@@ -463,9 +550,14 @@ app.post('/api/setup', async (req, res) => {
   }
 });
 
-// 3. Login
+// 3. Login (Protected with Rate Limiting)
 app.post('/api/login', async (req, res) => {
   try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(`login_${clientIp}`, 10, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop de tentatives de connexion. Veuillez patienter 15 minutes.' });
+    }
+
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Veuillez saisir votre nom d\'utilisateur et mot de passe.' });
@@ -482,9 +574,10 @@ app.post('/api/login', async (req, res) => {
     }
 
     const token = generateToken(user);
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
     res.cookie('digicom_token', token, {
       httpOnly: true,
-      secure: false,
+      secure: isHttps,
       sameSite: 'lax',
       path: '/',
       maxAge: 90 * 24 * 60 * 60 * 1000
@@ -505,9 +598,14 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 3b. Public Self Registration Endpoint
+// 3b. Public Self Registration Endpoint (Rate Limited)
 app.post('/api/auth/register', async (req, res) => {
   try {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(`register_${clientIp}`, 5, 60 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Trop d\'inscriptions créées depuis cette adresse. Veuillez patienter.' });
+    }
+
     const { username, displayName, password, inviteUsername } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Veuillez renseigner un identifiant et un mot de passe.' });
@@ -546,9 +644,10 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const token = generateToken(newUser);
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
     res.cookie('digicom_token', token, {
       httpOnly: true,
-      secure: false,
+      secure: isHttps,
       sameSite: 'lax',
       path: '/',
       maxAge: 90 * 24 * 60 * 60 * 1000
@@ -920,7 +1019,7 @@ app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/salons/:id/members', authenticateToken, async (req, res) => {
+app.get('/api/salons/:id/members', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id } = req.params;
     const members = await db.getSalonMembers(id);
@@ -1140,7 +1239,7 @@ app.delete('/api/salons/:id', authenticateToken, async (req, res) => {
 // === Salon 6 Collaborative Modules REST Endpoints ===
 
 // 1. Tâches (Tasks & Kanban)
-app.get('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
+app.get('/api/salons/:id/tasks', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const tasks = await db.getSalonTasks(req.params.id);
     res.json({ tasks });
@@ -1149,7 +1248,7 @@ app.get('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
+app.post('/api/salons/:id/tasks', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, assignedTo, dueDate } = req.body;
@@ -1228,7 +1327,7 @@ app.post('/api/salons/:id/tasks', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) => {
+app.put('/api/salons/:id/tasks/:taskId', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id, taskId } = req.params;
     const { status } = req.body;
@@ -1288,7 +1387,7 @@ app.put('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) => 
   }
 });
 
-app.delete('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) => {
+app.delete('/api/salons/:id/tasks/:taskId', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id, taskId } = req.params;
     await db.deleteSalonTask(taskId);
@@ -1302,7 +1401,7 @@ app.delete('/api/salons/:id/tasks/:taskId', authenticateToken, async (req, res) 
 });
 
 // 2. Fils (Threads / Message Threads)
-app.get('/api/salons/:id/threads/:messageId', authenticateToken, async (req, res) => {
+app.get('/api/salons/:id/threads/:messageId', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const messages = await db.getThreadMessages(req.params.messageId);
     res.json({ messages });
@@ -1311,7 +1410,7 @@ app.get('/api/salons/:id/threads/:messageId', authenticateToken, async (req, res
   }
 });
 
-app.post('/api/salons/:id/threads/:messageId', authenticateToken, async (req, res) => {
+app.post('/api/salons/:id/threads/:messageId', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const { id, messageId } = req.params;
     const { content } = req.body;
@@ -1352,7 +1451,7 @@ app.put('/api/salons/:id/broadcast', authenticateToken, async (req, res) => {
 });
 
 // 5. Décisions (Decision Log)
-app.get('/api/salons/:id/decisions', authenticateToken, async (req, res) => {
+app.get('/api/salons/:id/decisions', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const decisions = await db.getSalonDecisions(req.params.id);
     res.json({ decisions });
@@ -1480,7 +1579,7 @@ app.delete('/api/salons/:id/decisions/:decisionId', authenticateToken, async (re
 });
 
 // 6. Caisse (Finances & Mobile Money Ledger)
-app.get('/api/salons/:id/finances', authenticateToken, async (req, res) => {
+app.get('/api/salons/:id/finances', authenticateToken, requireSalonMember, async (req, res) => {
   try {
     const finances = await db.getSalonFinances(req.params.id);
     res.json({ finances });
@@ -2643,29 +2742,15 @@ app.get(['/vapid-public-key', '/api/vapid-public-key'], (req, res) => {
   res.json({ publicKey: pushService.getPublicKey() });
 });
 
-// 8. Register Push Subscription
-app.post('/api/subscribe', async (req, res) => {
+// 8. Register Push Subscription (Authenticated & Scoped)
+app.post('/api/subscribe', authenticateToken, async (req, res) => {
   try {
-    const { subscription, userId } = req.body;
+    const { subscription } = req.body || {};
     if (!subscription || !subscription.endpoint || !subscription.keys) {
       return res.status(400).json({ error: 'Données de souscription invalides.' });
     }
 
-    // Try extracting authenticated user token if present in headers or cookies
-    let subUserId = userId;
-    const authHeader = req.headers['authorization'];
-    const token = (authHeader && authHeader.split(' ')[1]) || (req.cookies && req.cookies.digicom_token);
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        if (decoded && decoded.id) subUserId = decoded.id;
-      } catch (e) {}
-    }
-
-    if (!subUserId) {
-      subUserId = 'guest';
-    }
-
+    const subUserId = req.user.id;
     await db.saveSubscription({
       userId: subUserId,
       endpoint: subscription.endpoint,
@@ -2834,9 +2919,14 @@ app.patch('/api/messages/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/history/support', async (req, res) => {
+// 10. Direct / Support Message History Routes (Strictly Scoped)
+app.get('/api/history/support', authenticateToken, async (req, res) => {
   try {
-    const { senderId, limit, before } = req.query;
+    let { senderId, limit, before } = req.query;
+    // Non-admin can only access their own support messages
+    if (req.user.role !== 'admin') {
+      senderId = req.user.id;
+    }
     if (!senderId || senderId === 'undefined' || senderId === 'null' || String(senderId).trim() === '') {
       return res.json({ messages: [] });
     }
@@ -2858,13 +2948,23 @@ app.get('/api/history/support', async (req, res) => {
 app.get('/api/history/:channel', authenticateToken, async (req, res) => {
   try {
     const { channel } = req.params;
-    const { senderId } = req.query;
-    const messages = await db.getMessages({
-      channelType: channel,
-      limit: 100,
-      senderId
-    });
-    res.json({ messages });
+    if (channel === 'support') {
+      const senderId = (req.user.role === 'admin' && req.query.senderId) ? req.query.senderId : req.user.id;
+      const messages = await db.getMessages({
+        channelType: 'support',
+        limit: 100,
+        senderId
+      });
+      return res.json({ messages });
+    } else if (channel === 'private') {
+      const { targetUserId } = req.query;
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'targetUserId requis pour consulter un canal privé' });
+      }
+      const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, 100);
+      return res.json({ messages });
+    }
+    return res.status(400).json({ error: 'Canal non autorisé' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2873,6 +2973,9 @@ app.get('/api/history/:channel', authenticateToken, async (req, res) => {
 // 11. Support Conversations Summary (Admin only)
 app.get('/api/support/conversations', authenticateToken, async (req, res) => {
   try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs.' });
+    }
     const conversations = await db.getSupportConversations();
     res.json({ conversations });
   } catch (err) {
@@ -2895,7 +2998,7 @@ app.post('/api/test-notification', authenticateToken, async (req, res) => {
   }
 });
 
-// 13. File & Media Upload Endpoint
+// 13. File & Media Upload Endpoint (Authenticated & Extension-Restricted)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -2910,10 +3013,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 150 * 1024 * 1024 } // 150MB
+  limits: { fileSize: 150 * 1024 * 1024 }, // 150MB
+  fileFilter: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    const disallowedExts = ['.html', '.htm', '.svg', '.xml', '.php', '.phtml', '.sh', '.bash', '.exe', '.bat', '.cmd', '.js', '.mjs', '.vbs'];
+    if (disallowedExts.includes(ext)) {
+      return cb(new Error('Format de fichier non autorisé pour des raisons de sécurité.'));
+    }
+    cb(null, true);
+  }
 });
 
-app.post('/api/upload', (req, res, next) => {
+app.post('/api/upload', authenticateToken, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -2940,36 +3051,57 @@ const onlineUsers = new Map(); // userId -> Set of socketIds
 io.on('connection', (socket) => {
   let currentUser = null;
 
-  const queryUserId = socket.handshake.query && socket.handshake.query.userId;
-  if (queryUserId) {
-    socket.join(`support_${queryUserId}`);
-    socket.join(`user_${queryUserId}`);
-  }
-
   socket.on('join_support', (data) => {
-    if (data && data.senderId) {
-      socket.join(`support_${data.senderId}`);
+    if (currentUser && data && data.senderId) {
+      if (currentUser.id === data.senderId || currentUser.role === 'admin') {
+        socket.join(`support_${data.senderId}`);
+      }
     }
   });
 
   socket.on('authenticate', (userData) => {
-    if (!userData || !userData.id) return;
-    currentUser = userData;
-    socket.userId = userData.id;
-
-    if (!onlineUsers.has(userData.id)) {
-      onlineUsers.set(userData.id, new Set());
+    // 1. Extract token from payload OR cookie header
+    let token = userData && userData.token;
+    if (!token && socket.request && socket.request.headers && socket.request.headers.cookie) {
+      const match = socket.request.headers.cookie.match(/(?:^|;\s*)digicom_token=([^;]+)/);
+      if (match) token = match[1];
     }
-    onlineUsers.get(userData.id).add(socket.id);
 
-    socket.join(`user_${userData.id}`);
-    socket.join(`support_${userData.id}`);
-    if (userData.role === 'admin') {
+    if (!token) {
+      return socket.emit('auth_error', { error: 'Jeton de session manquant.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return socket.emit('auth_error', { error: 'Session invalide ou expirée.' });
+    }
+
+    // Always use verified token identity
+    const verifiedUser = {
+      id: decoded.id,
+      username: decoded.username,
+      role: decoded.role || 'family',
+      displayName: decoded.displayName || decoded.username
+    };
+
+    currentUser = verifiedUser;
+    socket.userId = verifiedUser.id;
+
+    if (!onlineUsers.has(verifiedUser.id)) {
+      onlineUsers.set(verifiedUser.id, new Set());
+    }
+    onlineUsers.get(verifiedUser.id).add(socket.id);
+
+    socket.join(`user_${verifiedUser.id}`);
+    socket.join(`support_${verifiedUser.id}`);
+    if (verifiedUser.role === 'admin') {
       socket.join('admin_room');
     }
 
     // Auto-join user's Salon rooms
-    db.getSalonsForUser(userData.id).then(salons => {
+    db.getSalonsForUser(verifiedUser.id).then(salons => {
       if (Array.isArray(salons)) {
         salons.forEach(s => socket.join(`salon_${s.id}`));
       }
