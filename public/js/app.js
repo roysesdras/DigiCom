@@ -330,6 +330,11 @@ function updateCurrentUserUI() {
     menuSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 
+  const drawerAdminSection = document.getElementById('drawer-admin-section');
+  if (drawerAdminSection) {
+    drawerAdminSection.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
+  }
+
   // Check if current user has a recovery PIN configured
   const pinBanner = document.getElementById('pin-security-banner');
   if (pinBanner) {
@@ -3113,6 +3118,13 @@ function setupEventListeners() {
           : 'Mode Standard : DigiCom → "Alex : Salut, es-tu disponible ?"';
       }
 
+      const drawerBadge = document.getElementById('drawer-push-privacy-badge');
+      if (drawerBadge) {
+        drawerBadge.textContent = isChecked ? '🔒 Discret' : 'Standard';
+        drawerBadge.style.color = isChecked ? '#10b981' : '#94a3b8';
+        drawerBadge.style.background = isChecked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+      }
+
       try {
         const res = await fetch('/api/user/push-privacy', {
           method: 'PUT',
@@ -3134,6 +3146,165 @@ function setupEventListeners() {
         console.error('[-] Error updating push privacy:', err);
         if (typeof showToast === 'function') showToast('Erreur réseau.', 'error');
       }
+    });
+  }
+
+  // ==========================================
+  // Settings & Tools Drawer (Tiroir Paramètres)
+  // ==========================================
+  function openSettingsDrawer() {
+    const drawer = document.getElementById('settings-drawer-overlay');
+    if (!drawer) return;
+    drawer.style.display = 'flex';
+
+    if (state.user) {
+      const avatarEl = document.getElementById('drawer-user-avatar');
+      const nameEl = document.getElementById('drawer-user-name');
+      const usernameEl = document.getElementById('drawer-user-username');
+      const roleBadgeEl = document.getElementById('drawer-user-role-badge');
+      const adminSection = document.getElementById('drawer-admin-section');
+
+      if (avatarEl) {
+        avatarEl.textContent = (state.user.displayName || state.user.username || 'U').charAt(0).toUpperCase();
+      }
+      if (nameEl) nameEl.textContent = state.user.displayName || state.user.username;
+      if (usernameEl) usernameEl.textContent = `@${state.user.username}`;
+      if (roleBadgeEl) {
+        roleBadgeEl.textContent = state.user.role === 'admin' ? 'Administrateur' : 'Membre';
+        roleBadgeEl.style.color = state.user.role === 'admin' ? '#a78bfa' : '#60a5fa';
+        roleBadgeEl.style.background = state.user.role === 'admin' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(59, 130, 246, 0.2)';
+      }
+      if (adminSection) {
+        adminSection.style.display = state.user.role === 'admin' ? 'flex' : 'none';
+      }
+    }
+
+    // Refresh push privacy badge
+    fetch('/api/user/push-privacy')
+      .then(r => r.json())
+      .then(data => {
+        const badge = document.getElementById('drawer-push-privacy-badge');
+        if (badge) {
+          if (data.hidePushContent) {
+            badge.textContent = '🔒 Discret';
+            badge.style.color = '#10b981';
+            badge.style.background = 'rgba(16, 185, 129, 0.2)';
+          } else {
+            badge.textContent = 'Standard';
+            badge.style.color = '#94a3b8';
+            badge.style.background = 'rgba(255, 255, 255, 0.1)';
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Refresh PWA badge
+    const pwaBadge = document.getElementById('drawer-pwa-badge');
+    if (pwaBadge && typeof isPWAInstalled === 'function') {
+      if (isPWAInstalled()) {
+        pwaBadge.textContent = '✓ Installé';
+        pwaBadge.style.color = '#10b981';
+        pwaBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+      }
+    }
+  }
+
+  function closeSettingsDrawer() {
+    const drawer = document.getElementById('settings-drawer-overlay');
+    if (drawer) drawer.style.display = 'none';
+  }
+
+  window.openSettingsDrawer = openSettingsDrawer;
+  window.closeSettingsDrawer = closeSettingsDrawer;
+
+  const btnSettings = document.getElementById('btn-settings-drawer');
+  if (btnSettings) {
+    btnSettings.addEventListener('click', openSettingsDrawer);
+  }
+
+  const btnCloseSettings = document.getElementById('btn-close-settings-drawer');
+  if (btnCloseSettings) {
+    btnCloseSettings.addEventListener('click', closeSettingsDrawer);
+  }
+
+  const settingsOverlay = document.getElementById('settings-drawer-overlay');
+  if (settingsOverlay) {
+    settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === settingsOverlay) {
+        closeSettingsDrawer();
+      }
+    });
+  }
+
+  // Wire Drawer Items
+  const drawerSuperAdmin = document.getElementById('drawer-item-superadmin');
+  if (drawerSuperAdmin) {
+    drawerSuperAdmin.addEventListener('click', () => {
+      closeSettingsDrawer();
+      if (window.AdminDashboard) {
+        window.AdminDashboard.open();
+      } else {
+        const script = document.createElement('script');
+        script.src = '/js/admin-dashboard.min.js?v=1238';
+        script.onload = () => {
+          if (window.AdminDashboard) window.AdminDashboard.open();
+        };
+        document.body.appendChild(script);
+      }
+    });
+  }
+
+  const drawerAdminManage = document.getElementById('drawer-item-admin-manage');
+  if (drawerAdminManage) {
+    drawerAdminManage.addEventListener('click', () => {
+      closeSettingsDrawer();
+      const adminModal = document.getElementById('admin-modal');
+      if (adminModal) adminModal.style.display = 'flex';
+      if (typeof loadAdminUsers === 'function') loadAdminUsers();
+    });
+  }
+
+  const drawerPushPrivacy = document.getElementById('drawer-item-push-privacy');
+  if (drawerPushPrivacy) {
+    drawerPushPrivacy.addEventListener('click', () => {
+      closeSettingsDrawer();
+      openPushPrivacyModal();
+    });
+  }
+
+  const drawerSetPin = document.getElementById('drawer-item-set-pin');
+  if (drawerSetPin) {
+    drawerSetPin.addEventListener('click', () => {
+      closeSettingsDrawer();
+      openSetPinModal();
+    });
+  }
+
+  const drawerPushToggle = document.getElementById('drawer-item-push-toggle');
+  if (drawerPushToggle) {
+    drawerPushToggle.addEventListener('click', async () => {
+      const ok = await state.pushClient.subscribeUser(state.user ? state.user.id : null);
+      if (ok) {
+        playNotificationSound();
+        showLocalNotification('DigiCom', 'Notifications activées avec succès !');
+        fetch('/api/test-notification', { method: 'POST' }).catch(() => {});
+        const statusBadge = document.getElementById('drawer-push-status-badge');
+        if (statusBadge) {
+          statusBadge.textContent = '✓ Activé';
+          statusBadge.style.color = '#10b981';
+          statusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        }
+      } else {
+        alert('Veuillez autoriser les notifications dans votre navigateur pour recevoir les alertes.');
+      }
+    });
+  }
+
+  const drawerPwaInstall = document.getElementById('drawer-item-pwa-install');
+  if (drawerPwaInstall) {
+    drawerPwaInstall.addEventListener('click', () => {
+      closeSettingsDrawer();
+      if (typeof handlePWAInstallAction === 'function') handlePWAInstallAction();
     });
   }
 

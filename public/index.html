@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1237" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1237">
+    <link rel="preload" href="/css/style.min.css?v=1238" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1238">
   </head>
 
   <body>
@@ -34,70 +34,37 @@
           </div>
 
           <div class="header-actions">
-            <button type="button" class="action-btn" id="btn-pwa-install" title="Installer l'application"
-              aria-label="Installer">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-            </button>
-            <button type="button" class="action-btn" id="btn-push-toggle" title="Notifications Web Push"
-              aria-label="Notifications">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
-            </button>
-            <button type="button" class="action-btn" id="btn-start-tour" title="Guide interactif (Visite guidée)"
-              aria-label="Guide interactif">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-              </svg>
-            </button>
-            <button type="button" class="action-btn" id="btn-add-contact" title="Ajouter un contact / Connexions"
-              aria-label="Ajouter contact">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
+            <!-- Add Contact & Requests -->
+            <button type="button" class="action-btn" id="btn-add-contact" title="Ajouter un contact / Connexions" aria-label="Ajouter contact">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                 <circle cx="8.5" cy="7" r="4"></circle>
                 <line x1="20" y1="8" x2="20" y2="14"></line>
                 <line x1="17" y1="11" x2="23" y2="11"></line>
               </svg>
-
               <span class="action-btn-badge action-btn-badge-hidden" id="btn-add-contact-badge">0</span>
             </button>
-            <button type="button" class="action-btn" id="btn-admin-manage" title="Gérer les membres"
-              style="display: none;" aria-label="Membres">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+
+            <!-- Guide interactif / Aide -->
+            <button type="button" class="action-btn" id="btn-start-tour" title="Guide interactif (Aide)" aria-label="Aide">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
               </svg>
             </button>
-            <button type="button" class="action-btn btn-admin-dashboard" id="btn-superadmin-dashboard" title="SuperAdmin Control Center"
-              style="display: none;" aria-label="SuperAdmin Dashboard">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+
+            <!-- Paramètres & Outils (Ouvre le tiroir de menu unifié) -->
+            <button type="button" class="action-btn" id="btn-settings-drawer" title="Paramètres & Outils" aria-label="Paramètres">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
             </button>
-            <button type="button" class="action-btn" id="btn-push-privacy" title="Confidentialité des notifications" aria-label="Confidentialité des notifications">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-              </svg>
-            </button>
+
+            <!-- Déconnexion -->
             <button type="button" class="action-btn" id="btn-logout" title="Déconnexion" aria-label="Déconnexion">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16 17 21 12 16 7"></polyline>
                 <line x1="21" y1="12" x2="9" y2="12"></line>
@@ -313,7 +280,8 @@
                 <button type="button" class="dropdown-item" id="menu-item-push-privacy">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
                   </svg>
                   <span>Confidentialité notifications</span>
                 </button>
@@ -2056,7 +2024,8 @@
         <div class="modal-header">
           <div class="modal-title-group">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
             </svg>
             <h3>Confidentialité des Notifications</h3>
           </div>
@@ -2072,8 +2041,8 @@
             <div class="privacy-shield-info">
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
                 </svg>
                 <strong style="color: #f8fafc; font-size: 0.95rem;">Mode Discret (Écran verrouillé)</strong>
               </div>
@@ -2276,12 +2245,174 @@
       <button type="button" id="btn-pwa-banner-action" class="pwa-banner-btn">Installer</button>
     </div>
 
+    <!-- DRAWER: Settings & Tools Drawer (Tiroir Paramètres & Outils) -->
+    <div class="settings-drawer-overlay" id="settings-drawer-overlay" style="display: none;">
+      <div class="settings-drawer" id="settings-drawer">
+        <div class="drawer-header">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; display: flex; align-items: center; justify-content: center;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+            <div class="drawer-title" style="font-size: 1.05rem; font-weight: 700; color: #f8fafc;">Paramètres &amp; Outils</div>
+          </div>
+          <button type="button" class="drawer-close-btn" id="btn-close-settings-drawer" title="Fermer" aria-label="Fermer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="settings-drawer-content">
+          <!-- Mini Profile Card -->
+          <div class="settings-user-card" id="drawer-user-card">
+            <div class="avatar" id="drawer-user-avatar" style="width: 44px; height: 44px; font-size: 1.1rem; border-radius: 12px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;">
+              U
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div id="drawer-user-name" style="font-weight: 700; font-size: 0.95rem; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                Utilisateur
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.2rem;">
+                <span id="drawer-user-username" style="font-size: 0.78rem; color: #94a3b8;">@user</span>
+                <span id="drawer-user-role-badge" class="badge-role" style="font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 6px; background: rgba(59, 130, 246, 0.2); color: #60a5fa;">Membre</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Administration (Visible only if admin) -->
+          <div id="drawer-admin-section" style="display: none; flex-direction: column; gap: 0.65rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 0.4rem 0 0.1rem 0.2rem;">
+              Administration
+            </div>
+
+            <!-- SuperAdmin Dashboard Item -->
+            <button type="button" class="settings-menu-item" id="drawer-item-superadmin">
+              <div class="settings-item-icon" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </div>
+              <div class="settings-item-text">
+                <div class="settings-item-title">
+                  <span>SuperAdmin Control Center</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+                <div class="settings-item-desc">Métriques serveur, gestion globale &amp; maintenance</div>
+              </div>
+            </button>
+
+            <!-- Admin Member Management Item -->
+            <button type="button" class="settings-menu-item" id="drawer-item-admin-manage">
+              <div class="settings-item-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div class="settings-item-text">
+                <div class="settings-item-title">
+                  <span>Gestion des utilisateurs</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+                <div class="settings-item-desc">Créer des membres, rôles et modération</div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Section: Sécurité & Confidentialité -->
+          <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 0.4rem 0 0.1rem 0.2rem;">
+            Sécurité &amp; Confidentialité
+          </div>
+
+          <!-- Push Privacy (Discreet Mode) Item -->
+          <button type="button" class="settings-menu-item" id="drawer-item-push-privacy">
+            <div class="settings-item-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </div>
+            <div class="settings-item-text">
+              <div class="settings-item-title">
+                <span>Mode discret notifications</span>
+                <span id="drawer-push-privacy-badge" style="font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 9999px; background: rgba(255,255,255,0.1); color: #94a3b8;">Standard</span>
+              </div>
+              <div class="settings-item-desc">Masquer l'expéditeur et le texte sur l'écran verrouillé</div>
+            </div>
+          </button>
+
+          <!-- Recovery PIN Item -->
+          <button type="button" class="settings-menu-item" id="drawer-item-set-pin">
+            <div class="settings-item-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <div class="settings-item-text">
+              <div class="settings-item-title">
+                <span>Code PIN de secours</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </div>
+              <div class="settings-item-desc">Récupération autonome de compte sécurisée</div>
+            </div>
+          </button>
+
+          <!-- Section: Alertes & Appareil -->
+          <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 0.4rem 0 0.1rem 0.2rem;">
+            Notifications &amp; Application
+          </div>
+
+          <!-- Web Push Alerts Toggle / Test Item -->
+          <button type="button" class="settings-menu-item" id="drawer-item-push-toggle">
+            <div class="settings-item-icon" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+            </div>
+            <div class="settings-item-text">
+              <div class="settings-item-title">
+                <span>Alertes Web Push</span>
+                <span id="drawer-push-status-badge" style="font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 9999px; background: rgba(14, 165, 233, 0.2); color: #38bdf8;">Tester / Activer</span>
+              </div>
+              <div class="settings-item-desc">Recevoir les messages quand DigiCom est fermé</div>
+            </div>
+          </button>
+
+          <!-- PWA Install Item -->
+          <button type="button" class="settings-menu-item" id="drawer-item-pwa-install">
+            <div class="settings-item-icon" style="background: rgba(34, 197, 94, 0.15); color: #4ade80;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <div class="settings-item-text">
+              <div class="settings-item-title">
+                <span>Installer sur l'appareil</span>
+                <span id="drawer-pwa-badge" style="font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 9999px; background: rgba(34, 197, 94, 0.2); color: #4ade80;">Installer</span>
+              </div>
+              <div class="settings-item-desc">Application rapide sur votre écran d'accueil</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1237" defer></script>
-    <script src="/js/idb-store.min.js?v=1237" defer></script>
-    <script src="/js/push-client.min.js?v=1237" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1237" defer></script>
-    <script src="/js/app.min.js?v=1237" defer></script>
+    <script src="/socket.io/socket.io.js?v=1238" defer></script>
+    <script src="/js/idb-store.min.js?v=1238" defer></script>
+    <script src="/js/push-client.min.js?v=1238" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1238" defer></script>
+    <script src="/js/app.min.js?v=1238" defer></script>
   </body>
 
 </html>
