@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1235" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1235">
+    <link rel="preload" href="/css/style.min.css?v=1236" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1236">
   </head>
 
   <body>
@@ -384,8 +384,8 @@
         </div>
 
         <!-- Pinned Message Banner -->
-        <div class="salon-pinned-banner" id="salon-pinned-banner" style="display: none;">
-          <div class="pinned-banner-icon" title="Messages épinglés">
+        <div class="salon-pinned-banner" id="salon-pinned-banner" style="display: none;" role="button" tabindex="0">
+          <div class="pinned-banner-icon" aria-label="Messages épinglés">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="17" x2="12" y2="22"></line>
@@ -393,14 +393,14 @@
               <path d="M9 11V4a3 3 0 0 1 6 0v7"></path>
             </svg>
           </div>
-          <div class="pinned-banner-content" id="pinned-banner-text" title="Cliquer pour voir le message dans la discussion">Message épinglé...</div>
-          <span class="pinned-banner-badge" id="pinned-banner-badge" title="Voir tous les messages épinglés" style="display: none;">1/5</span>
-          <button type="button" class="pinned-banner-btn-icon" id="btn-next-pinned" title="Message suivant" style="display: none;">
+          <div class="pinned-banner-content" id="pinned-banner-text">Message épinglé...</div>
+          <span class="pinned-banner-badge" id="pinned-banner-badge" aria-label="Voir tous les messages épinglés" style="display: none;">1/5</span>
+          <button type="button" class="pinned-banner-btn-icon" id="btn-next-pinned" aria-label="Message suivant" style="display: none;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
           </button>
-          <button type="button" class="pinned-banner-btn-icon" id="btn-list-pinned" title="Tous les messages épinglés">
+          <button type="button" class="pinned-banner-btn-icon" id="btn-list-pinned" aria-label="Tous les messages épinglés">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"></line>
               <line x1="8" y1="12" x2="21" y2="12"></line>
@@ -410,7 +410,7 @@
               <line x1="3" y1="18" x2="3.01" y2="18"></line>
             </svg>
           </button>
-          <button type="button" class="pinned-banner-close" id="btn-unpin-message" title="Dépingler"
+          <button type="button" class="pinned-banner-close" id="btn-unpin-message" aria-label="Dépingler"
             style="display: none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round" stroke-linejoin="round">
@@ -2204,11 +2204,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1235" defer></script>
-    <script src="/js/idb-store.min.js?v=1235" defer></script>
-    <script src="/js/push-client.min.js?v=1235" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1235" defer></script>
-    <script src="/js/app.min.js?v=1235" defer></script>
+    <script src="/socket.io/socket.io.js?v=1236" defer></script>
+    <script src="/js/idb-store.min.js?v=1236" defer></script>
+    <script src="/js/push-client.min.js?v=1236" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1236" defer></script>
+    <script src="/js/app.min.js?v=1236" defer></script>
   </body>
 
 </html>

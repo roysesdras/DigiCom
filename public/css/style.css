@@ -789,6 +789,7 @@ body {
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   contain: content;
@@ -5381,11 +5382,23 @@ body {
   z-index: 15;
   cursor: pointer;
   user-select: none;
-  transition: all 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.salon-pinned-banner:hover {
-  background: rgba(24, 32, 40, 0.98);
+@media (hover: hover) {
+  .salon-pinned-banner:hover {
+    background: rgba(24, 32, 40, 0.98);
+  }
+  .pinned-banner-content:hover {
+    color: #38bdf8;
+  }
+}
+
+.salon-pinned-banner:active {
+  background: rgba(30, 41, 59, 0.95);
+  transform: scale(0.995);
 }
 
 .pinned-banner-icon {
@@ -5394,6 +5407,7 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 .pinned-banner-content {
@@ -5406,11 +5420,7 @@ body {
   cursor: pointer;
   padding: 3px 6px;
   border-radius: 4px;
-  transition: color 0.15s ease;
-}
-
-.pinned-banner-content:hover {
-  color: #38bdf8;
+  touch-action: manipulation;
 }
 
 /* WhatsApp-style Flash Highlight on Pinned Jump & Quoted Replies */

@@ -3398,7 +3398,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1235';
+        script.src = '/js/admin-dashboard.min.js?v=1236';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3486,7 +3486,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1235';
+        s.src = '/js/admin-dashboard.min.js?v=1236';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -9319,9 +9319,6 @@ window.jumpToPinnedMessage = async function(messageId) {
     window.closeModal('modal-salon-search');
   }
 
-  // Small delay to allow modal exit and layout calculation to settle
-  await new Promise(r => setTimeout(r, 60));
-
   const findElement = () => {
     try {
       return document.getElementById(targetId) || 
@@ -9365,39 +9362,25 @@ window.jumpToPinnedMessage = async function(messageId) {
 
   msgEl = findElement();
   if (msgEl) {
-    const feed = document.getElementById('messages-feed');
-    if (feed) {
-      // Precise offset centering inside #messages-feed
-      const feedRect = feed.getBoundingClientRect();
-      const elRect = msgEl.getBoundingClientRect();
-      const targetScrollTop = feed.scrollTop + (elRect.top - feedRect.top) - (feed.clientHeight / 2) + (elRect.height / 2);
-      feed.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    // 3. Ultra-fluid native compositor smooth scroll directly into vertical center of stream
+    requestAnimationFrame(() => {
+      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
-      // Fallback correction after smooth scroll animation completes to lock dead-center
+      // 4. Trigger signature WhatsApp emerald bubble flash as it glides into view
+      const bubble = msgEl.querySelector('.msg-bubble') || msgEl;
       setTimeout(() => {
-        const uFeedRect = feed.getBoundingClientRect();
-        const uElRect = msgEl.getBoundingClientRect();
-        if (uElRect.top < uFeedRect.top || uElRect.bottom > uFeedRect.bottom) {
-          const correctedTop = feed.scrollTop + (uElRect.top - uFeedRect.top) - (feed.clientHeight / 2) + (uElRect.height / 2);
-          feed.scrollTop = Math.max(0, correctedTop);
-        }
-      }, 350);
-    } else {
-      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+        bubble.classList.remove('whatsapp-flash-highlight');
+        msgEl.classList.remove('whatsapp-flash-highlight');
+        void bubble.offsetWidth; // Force reflow
+        bubble.classList.add('whatsapp-flash-highlight');
+        msgEl.classList.add('whatsapp-flash-highlight');
 
-    // 3. Trigger WhatsApp signature flash highlight on bubble & row
-    const bubble = msgEl.querySelector('.msg-bubble') || msgEl;
-    bubble.classList.remove('whatsapp-flash-highlight');
-    msgEl.classList.remove('whatsapp-flash-highlight');
-    void bubble.offsetWidth; // Force reflow
-    bubble.classList.add('whatsapp-flash-highlight');
-    msgEl.classList.add('whatsapp-flash-highlight');
-
-    setTimeout(() => {
-      bubble.classList.remove('whatsapp-flash-highlight');
-      msgEl.classList.remove('whatsapp-flash-highlight');
-    }, 2400);
+        setTimeout(() => {
+          bubble.classList.remove('whatsapp-flash-highlight');
+          msgEl.classList.remove('whatsapp-flash-highlight');
+        }, 2500);
+      }, 100);
+    });
   }
 };
 
@@ -9522,14 +9505,30 @@ window.updatePinnedMessageBanner = function(channelType, targetId, pinnedMessage
     bannerText.innerHTML = `<span>${escapeHtml(rawText)}</span>`;
   }
 
-  // Clicking anywhere on the banner jumps to the currently displayed pinned message
-  banner.onclick = (e) => {
+  // Clicking anywhere on the banner jumps instantly to the currently displayed pinned message
+  const handleBannerJump = (e) => {
     if (e.target.closest('.pinned-banner-badge') || 
         e.target.closest('.pinned-banner-btn-icon') || 
         e.target.closest('.pinned-banner-close')) {
       return;
     }
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Dismiss soft keyboard immediately if active so viewport doesn't shift
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+
     window.jumpToPinnedMessage(activeMsgId);
+  };
+
+  banner.onclick = handleBannerJump;
+  banner.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleBannerJump(e);
+    }
   };
 
   // Counter badge (e.g. 1/5)
