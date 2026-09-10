@@ -2991,7 +2991,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1228';
+        script.src = '/js/admin-dashboard.min.js?v=1229';
         script.onload = () => {
           if (window.AdminDashboard) window.AdminDashboard.open();
         };
@@ -3079,7 +3079,7 @@ function setupEventListeners() {
         window.AdminDashboard.open();
       } else {
         const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1228';
+        s.src = '/js/admin-dashboard.min.js?v=1229';
         s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
         document.body.appendChild(s);
       }
@@ -5379,13 +5379,24 @@ function renderDirectFeed(targetUserId) {
   const feed = document.getElementById('messages-feed');
   feed.innerHTML = '';
 
-  const msgs = state.directMessages[targetUserId] || [];
-  if (msgs.length === 0) {
+  const allMsgs = state.directMessages[targetUserId] || [];
+  // Cap in-memory array to 200 items to prevent unbounded heap growth on mobile
+  if (allMsgs.length > 200) {
+    state.directMessages[targetUserId] = allMsgs.slice(-200);
+  }
+  if (allMsgs.length === 0) {
     const emptyNotice = document.createElement('div');
     emptyNotice.style.cssText = 'margin: auto; text-align: center; color: var(--text-dim); font-size: 0.85rem;';
     emptyNotice.textContent = `Début de votre conversation privée avec ${(state.activeContact && (state.activeContact.display_name || state.activeContact.username)) || 'votre contact'}.`;
     feed.appendChild(emptyNotice);
     return;
+  }
+
+  // Render max 60 messages initially to keep mobile DOM ultra-lightweight
+  const msgs = allMsgs.length > 60 ? allMsgs.slice(-60) : allMsgs;
+  if (allMsgs.length > 60 && state.feedPagination && state.feedPagination[targetUserId]) {
+    state.feedPagination[targetUserId].hasMore = true;
+    state.feedPagination[targetUserId].oldestTimestamp = msgs[0].timestamp;
   }
 
   let lastDateKey = null;
@@ -6178,6 +6189,66 @@ function prependOlderMessagesToFeed(olderMsgs) {
   feed.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
 }
 
+// RAM & VRAM Pruning Engine (Guarantees stability on 4GB / Older phones like Samsung Galaxy S9)
+const MAX_FEED_DOM_MESSAGES = 70;
+const PRUNE_BATCH_SIZE = 15;
+
+function pruneFeedDomIfNeeded() {
+  const feed = document.getElementById('messages-feed');
+  if (!feed) return;
+
+  const messageRows = feed.querySelectorAll('.message-row');
+  if (messageRows.length <= MAX_FEED_DOM_MESSAGES) return;
+
+  // Only prune from the top if user is reading near the bottom of the feed (within 700px)
+  const isNearBottom = (feed.scrollHeight - feed.scrollTop - feed.clientHeight) < 700;
+  if (!isNearBottom) return;
+
+  const countToRemove = Math.min(PRUNE_BATCH_SIZE, messageRows.length - (MAX_FEED_DOM_MESSAGES - 10));
+  for (let i = 0; i < countToRemove; i++) {
+    const row = messageRows[i];
+    if (row && row.parentNode === feed) {
+      // 1. Immediately pause and release media decoders/buffers to free RAM & VRAM
+      row.querySelectorAll('audio, video').forEach(media => {
+        try {
+          media.pause();
+          media.removeAttribute('src');
+          media.load();
+        } catch (e) {}
+      });
+      row.querySelectorAll('img').forEach(img => {
+        try { img.src = ''; } catch (e) {}
+      });
+      feed.removeChild(row);
+    }
+  }
+
+  // 2. Clean up any orphaned date separators at the top of the feed
+  const firstChild = feed.firstElementChild;
+  if (firstChild && firstChild.classList.contains('chat-date-separator')) {
+    const nextElem = firstChild.nextElementSibling;
+    if (!nextElem || nextElem.classList.contains('chat-date-separator')) {
+      feed.removeChild(firstChild);
+    }
+  }
+
+  // 3. Update pagination pointer so scrolling up seamlessly fetches older messages
+  const newTopRow = feed.querySelector('.message-row');
+  if (newTopRow && newTopRow.dataset.timestamp) {
+    if (state.activeTab === 'salons' && state.activeSalon) {
+      if (state.salonPagination && state.salonPagination[state.activeSalon.id]) {
+        state.salonPagination[state.activeSalon.id].hasMore = true;
+        state.salonPagination[state.activeSalon.id].oldestTimestamp = newTopRow.dataset.timestamp;
+      }
+    } else if (state.activeContact) {
+      if (state.feedPagination && state.feedPagination[state.activeContact.id]) {
+        state.feedPagination[state.activeContact.id].hasMore = true;
+        state.feedPagination[state.activeContact.id].oldestTimestamp = newTopRow.dataset.timestamp;
+      }
+    }
+  }
+}
+
 function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSep = true) {
   const feed = document.getElementById('messages-feed');
   if (!feed) return;
@@ -6212,6 +6283,9 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
 
   feed.appendChild(row);
   attachLinkPreviews(row);
+
+  // Auto-prune top messages if feed exceeds safe memory threshold
+  pruneFeedDomIfNeeded();
 
   if (autoScroll) {
     scrollToBottom(false);
@@ -7561,6 +7635,9 @@ async function loadSalonHistory(salonId, loadMore = false) {
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];
+      if (state.salonMessages[salonId].length > 200) {
+        state.salonMessages[salonId] = state.salonMessages[salonId].slice(-200);
+      }
       state.unreadSalonCounts[salonId] = 0;
       renderSalonsList();
       const messages = state.salonMessages[salonId];
