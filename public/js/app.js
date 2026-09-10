@@ -3053,6 +3053,90 @@ function setupEventListeners() {
     });
   }
 
+  // ==========================================
+  // Push Notification Privacy (Mode Discret)
+  // ==========================================
+  async function openPushPrivacyModal() {
+    const modal = document.getElementById('modal-push-privacy');
+    if (modal) modal.style.display = 'flex';
+
+    const toggle = document.getElementById('toggle-push-privacy');
+    const preview = document.getElementById('push-privacy-preview');
+
+    try {
+      const res = await fetch('/api/user/push-privacy');
+      if (res.ok) {
+        const data = await res.json();
+        const isDiscreet = Boolean(data.hidePushContent);
+        if (toggle) toggle.checked = isDiscreet;
+        if (preview) {
+          preview.textContent = isDiscreet
+            ? 'Mode Discret : DigiCom → "Nouveau message confidentiel reçu"'
+            : 'Mode Standard : DigiCom → "Alex : Salut, es-tu disponible ?"';
+        }
+      }
+    } catch (err) {
+      console.error('[-] Error fetching push privacy settings:', err);
+    }
+  }
+
+  window.openPushPrivacyModal = openPushPrivacyModal;
+
+  const btnPushPrivacy = document.getElementById('btn-push-privacy');
+  if (btnPushPrivacy) {
+    btnPushPrivacy.addEventListener('click', openPushPrivacyModal);
+  }
+
+  const menuItemPushPrivacy = document.getElementById('menu-item-push-privacy');
+  if (menuItemPushPrivacy) {
+    menuItemPushPrivacy.addEventListener('click', () => {
+      if (typeof window.closeChatMoreMenu === 'function') window.closeChatMoreMenu();
+      openPushPrivacyModal();
+    });
+  }
+
+  const btnClosePushPrivacy = document.getElementById('btn-close-push-privacy-modal');
+  if (btnClosePushPrivacy) {
+    btnClosePushPrivacy.addEventListener('click', () => {
+      hideModal('modal-push-privacy');
+    });
+  }
+
+  const togglePushPrivacy = document.getElementById('toggle-push-privacy');
+  if (togglePushPrivacy) {
+    togglePushPrivacy.addEventListener('change', async (e) => {
+      const isChecked = e.target.checked;
+      const preview = document.getElementById('push-privacy-preview');
+      if (preview) {
+        preview.textContent = isChecked
+          ? 'Mode Discret : DigiCom → "Nouveau message confidentiel reçu"'
+          : 'Mode Standard : DigiCom → "Alex : Salut, es-tu disponible ?"';
+      }
+
+      try {
+        const res = await fetch('/api/user/push-privacy', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hidePushContent: isChecked })
+        });
+        if (res.ok) {
+          if (typeof showToast === 'function') {
+            showToast(isChecked
+              ? 'Mode discret activé (contenu masqué sur l\'écran verrouillé) 🔒'
+              : 'Mode standard rétabli (aperçu affiché) 👁️',
+              'success'
+            );
+          }
+        } else {
+          if (typeof showToast === 'function') showToast('Erreur lors de la sauvegarde.', 'error');
+        }
+      } catch (err) {
+        console.error('[-] Error updating push privacy:', err);
+        if (typeof showToast === 'function') showToast('Erreur réseau.', 'error');
+      }
+    });
+  }
+
   const btnCloseSetPin = document.getElementById('btn-close-set-pin-modal');
   if (btnCloseSetPin) {
     btnCloseSetPin.addEventListener('click', () => {
@@ -7189,6 +7273,15 @@ function updateAllTabsBadges() {
   if (supportBadge) {
     supportBadge.textContent = supportUnread > 99 ? '99+' : supportUnread;
     supportBadge.style.display = supportUnread > 0 ? 'inline-block' : 'none';
+  }
+
+  // Native PWA App Badge API (Android / iOS / Chrome / Edge)
+  if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+    if (totalUnread > 0) {
+      navigator.setAppBadge(totalUnread).catch(() => {});
+    } else {
+      navigator.clearAppBadge().catch(() => {});
+    }
   }
 }
 

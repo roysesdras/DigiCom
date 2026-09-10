@@ -126,11 +126,31 @@ async function sendNotificationToUser(userId, payload) {
     return { success: false, sentCount: 0, reason: 'No subscriptions found' };
   }
 
+  let finalPayload = payload;
+  try {
+    const hideContent = await db.getUserPushPrivacy(userId);
+    if (hideContent) {
+      const payloadObj = typeof payload === 'string' ? JSON.parse(payload) : { ...payload };
+      const isCall = (payloadObj && payloadObj.data && (payloadObj.data.type === 'call_incoming' || payloadObj.data.callerId)) ||
+                     (payloadObj && payloadObj.title && payloadObj.title.toLowerCase().includes('appel'));
+
+      if (!isCall) {
+        finalPayload = {
+          ...payloadObj,
+          title: 'DigiCom',
+          body: 'Nouveau message confidentiel reçu'
+        };
+      }
+    }
+  } catch (err) {
+    console.error('[-] Error applying push privacy filter:', err.message);
+  }
+
   const results = await Promise.all(
-    subscriptions.map(sub => sendNotificationToSubscription(sub, payload))
+    subscriptions.map(sub => sendNotificationToSubscription(sub, finalPayload))
   );
   const sentCount = results.filter(Boolean).length;
-  logger.info('PUSH', `Sent push notification to user: ${userId} (${sentCount}/${subscriptions.length} succeeded)`, { title: payload.title, body: payload.body });
+  logger.info('PUSH', `Sent push notification to user: ${userId} (${sentCount}/${subscriptions.length} succeeded)`, { title: finalPayload.title, body: finalPayload.body });
   return { success: true, sentCount, total: subscriptions.length };
 }
 

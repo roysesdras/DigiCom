@@ -848,6 +848,26 @@ app.post('/api/auth/set-pin', authenticateToken, async (req, res) => {
   }
 });
 
+// Push Privacy (Mode Discret) Preferences
+app.get('/api/user/push-privacy', authenticateToken, async (req, res) => {
+  try {
+    const hidePushContent = await db.getUserPushPrivacy(req.user.id);
+    res.json({ success: true, hidePushContent });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/user/push-privacy', authenticateToken, async (req, res) => {
+  try {
+    const { hidePushContent } = req.body || {};
+    await db.setUserPushPrivacy(req.user.id, Boolean(hidePushContent));
+    res.json({ success: true, hidePushContent: Boolean(hidePushContent) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 3c. Contact Management Endpoints
 app.get('/api/contacts/search', authenticateToken, async (req, res) => {
   try {

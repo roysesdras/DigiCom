@@ -135,6 +135,9 @@ async function initTables() {
   try {
     await run(`ALTER TABLE users ADD COLUMN recovery_pin_hash TEXT DEFAULT NULL`);
   } catch (e) {}
+  try {
+    await run(`ALTER TABLE users ADD COLUMN hide_push_content INTEGER DEFAULT 0`);
+  } catch (e) {}
   await run(`
     CREATE TABLE IF NOT EXISTS password_reset_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -418,11 +421,11 @@ async function getUserByUsername(username) {
 }
 
 async function getUserById(id) {
-  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, created_at FROM users WHERE id = ?`, [id]);
+  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users WHERE id = ?`, [id]);
 }
 
 async function getAllUsers() {
-  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, created_at FROM users ORDER BY created_at ASC`);
+  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users ORDER BY created_at ASC`);
 }
 
 async function updateUser(id, { username, displayName, passwordHash, role }) {
@@ -444,6 +447,17 @@ async function deleteUser(id) {
   await run(`DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?`, [id, id]);
   await run(`DELETE FROM push_subscriptions WHERE user_id = ?`, [id]);
   return await run(`DELETE FROM users WHERE id = ?`, [id]);
+}
+
+// Push Privacy Helpers (Mode Discret)
+async function getUserPushPrivacy(userId) {
+  const row = await get(`SELECT COALESCE(hide_push_content, 0) as hide_push_content FROM users WHERE id = ?`, [userId]);
+  return row ? Boolean(row.hide_push_content) : false;
+}
+
+async function setUserPushPrivacy(userId, hidePushContent) {
+  const val = hidePushContent ? 1 : 0;
+  return await run(`UPDATE users SET hide_push_content = ? WHERE id = ?`, [val, userId]);
 }
 
 // Password Recovery & PIN Helpers
@@ -1720,5 +1734,8 @@ module.exports = {
   approveResetRequest,
   getApprovedResetRequestByUsername,
   markResetRequestUsed,
+  // Push Privacy exports
+  getUserPushPrivacy,
+  setUserPushPrivacy,
   initTables
 };

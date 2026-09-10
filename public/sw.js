@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1236';
+const CACHE_NAME = 'digicom-pwa-v1237';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -288,6 +288,11 @@ self.addEventListener('push', (event) => {
     }).catch(() => {});
   } catch (e) {}
 
+  // App Badging API for PWA app icon on mobile / desktop
+  if (self.navigator && 'setAppBadge' in self.navigator) {
+    self.navigator.setAppBadge().catch(() => {});
+  }
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'DigiCom', options)
   );
@@ -296,6 +301,11 @@ self.addEventListener('push', (event) => {
 // Notification Click Handler (v1201 - Targeted foreground focus + Android openWindow fallback)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+
+  // Clear App Badge when notification is clicked
+  if (self.navigator && 'clearAppBadge' in self.navigator) {
+    self.navigator.clearAppBadge().catch(() => {});
+  }
 
   const notifData = (event.notification && event.notification.data) || {};
   const action = event.action;
