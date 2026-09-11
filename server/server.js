@@ -3434,16 +3434,11 @@ io.on('connection', (socket) => {
         receiverId: receiverId,
         content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
         contextData: null,
-        is_read: isRecipientActiveInChat ? 1 : 0,
+        is_read: 0,
         timestamp: new Date().toISOString()
       };
 
       await db.saveMessage(messageRecord);
-
-      if (isRecipientActiveInChat) {
-        await db.markMessagesAsRead(receiverId, senderId);
-        io.to(`user_${senderId}`).emit('messages_read_by_recipient', { readerId: receiverId });
-      }
 
       // Deliver ONLY to the target recipient room and echo back to sender's devices
       io.to(`user_${receiverId}`).emit('private_message', messageRecord);

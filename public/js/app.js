@@ -767,7 +767,8 @@ function initSocket() {
       state.activeContact &&
       String(state.activeContact.id) === String(otherPartyId) &&
       !document.hidden &&
-      document.visibilityState === 'visible'
+      document.visibilityState === 'visible' &&
+      (typeof document.hasFocus === 'function' ? document.hasFocus() : true)
     );
 
     if (!isChatVisibleToUser) {
@@ -2203,28 +2204,46 @@ function setupEventListeners() {
     } catch (e) {}
   }
 
-  // Page Visibility & Tab Focus Handler (Debounced, eliminates duplicate socket spam)
+  // Page Visibility & Tab Focus Handler (Instant synchronous leave on backgrounding, debounced on resume)
   let currentActiveRoomId = null;
   let activeRoomSyncTimeout = null;
 
   function syncActiveChatPresence() {
+    const isVisible = !document.hidden && document.visibilityState === 'visible' && (typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+
+    if (!isVisible) {
+      // 1. Immediately cancel any pending enter room timeout
+      if (activeRoomSyncTimeout) {
+        clearTimeout(activeRoomSyncTimeout);
+        activeRoomSyncTimeout = null;
+      }
+      // 2. Synchronous immediate leave emission over websocket
+      if (state.socket && state.socket.connected && currentActiveRoomId) {
+        state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
+        currentActiveRoomId = null;
+      }
+      // 3. Inform Service Worker immediately
+      if (typeof syncActiveChatToServiceWorker === 'function') {
+        syncActiveChatToServiceWorker({ isVisible: false });
+      }
+      return;
+    }
+
+    // When becoming visible again, debounce slightly (100ms) to ensure viewport / activeTab state has settled
     if (activeRoomSyncTimeout) clearTimeout(activeRoomSyncTimeout);
     activeRoomSyncTimeout = setTimeout(() => {
       if (!state.socket || !state.socket.connected) return;
 
       let targetRoomId = null;
       let targetSenderId = null;
-      const isVisible = !document.hidden && document.visibilityState === 'visible';
 
-      if (isVisible) {
-        if (state.activeTab === 'contacts' && state.activeContact) {
-          targetRoomId = String(state.activeContact.id);
-          targetSenderId = state.activeContact.id;
-        } else if (state.activeTab === 'salons' && state.activeSalon) {
-          targetRoomId = String(state.activeSalon.id);
-        } else if (state.activeTab === 'support' && state.activeSupportSession) {
-          targetRoomId = 'admin_' + state.activeSupportSession;
-        }
+      if (state.activeTab === 'contacts' && state.activeContact) {
+        targetRoomId = String(state.activeContact.id);
+        targetSenderId = state.activeContact.id;
+      } else if (state.activeTab === 'salons' && state.activeSalon) {
+        targetRoomId = String(state.activeSalon.id);
+      } else if (state.activeTab === 'support' && state.activeSupportSession) {
+        targetRoomId = 'admin_' + state.activeSupportSession;
       }
 
       if (currentActiveRoomId && currentActiveRoomId !== targetRoomId) {
@@ -2245,41 +2264,31 @@ function setupEventListeners() {
         }
       }
 
-      if (document.visibilityState === 'visible') {
-        if (state.activeContact) {
-          if (typeof syncActiveChatToServiceWorker === 'function') {
-            syncActiveChatToServiceWorker({ contactId: state.activeContact.id, isVisible: true });
-          }
-          if (typeof dismissPushNotificationForChat === 'function') {
-            dismissPushNotificationForChat({ contactId: state.activeContact.id });
-          }
-        } else if (state.activeSalon) {
-          if (typeof syncActiveChatToServiceWorker === 'function') {
-            syncActiveChatToServiceWorker({ salonId: state.activeSalon.id, isVisible: true });
-          }
-          if (typeof dismissPushNotificationForChat === 'function') {
-            dismissPushNotificationForChat({ salonId: state.activeSalon.id });
-          }
-        }
-      } else {
+      if (state.activeContact) {
         if (typeof syncActiveChatToServiceWorker === 'function') {
-          syncActiveChatToServiceWorker({ isVisible: false });
+          syncActiveChatToServiceWorker({ contactId: state.activeContact.id, isVisible: true });
+        }
+        if (typeof dismissPushNotificationForChat === 'function') {
+          dismissPushNotificationForChat({ contactId: state.activeContact.id });
+        }
+      } else if (state.activeSalon) {
+        if (typeof syncActiveChatToServiceWorker === 'function') {
+          syncActiveChatToServiceWorker({ salonId: state.activeSalon.id, isVisible: true });
+        }
+        if (typeof dismissPushNotificationForChat === 'function') {
+          dismissPushNotificationForChat({ salonId: state.activeSalon.id });
         }
       }
 
       currentActiveRoomId = targetRoomId;
-    }, 200);
+    }, 100);
   }
 
   document.addEventListener('visibilitychange', syncActiveChatPresence);
   window.addEventListener('blur', syncActiveChatPresence);
   window.addEventListener('focus', syncActiveChatPresence);
-  window.addEventListener('pagehide', () => {
-    if (state.socket && currentActiveRoomId) {
-      state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
-      currentActiveRoomId = null;
-    }
-  });
+  window.addEventListener('pagehide', syncActiveChatPresence);
+  window.addEventListener('freeze', syncActiveChatPresence);
 
   // Push subscription toggle & Immediate Test
   const btnPushToggle = document.getElementById('btn-push-toggle');
