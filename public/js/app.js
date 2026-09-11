@@ -3031,6 +3031,8 @@ function setupEventListeners() {
     showModal('set-pin-modal');
   }
 
+  window.openSetPinModal = openSetPinModal;
+
   const btnBannerSetPin = document.getElementById('btn-banner-set-pin');
   if (btnBannerSetPin) {
     btnBannerSetPin.addEventListener('click', openSetPinModal);
@@ -9193,19 +9195,44 @@ window.toggleChatMoreMenu = function(e) {
   if (!dropdown) return;
   const isShown = dropdown.style.display === 'flex';
   dropdown.style.display = isShown ? 'none' : 'flex';
+  if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
 };
+
 window.closeChatMoreMenu = function() {
   const dropdown = document.getElementById('chat-more-dropdown-menu');
   if (dropdown) dropdown.style.display = 'none';
 };
 
+window.toggleSidebarMoreMenu = function(e) {
+  if (e) e.stopPropagation();
+  const dropdown = document.getElementById('sidebar-more-dropdown-menu');
+  if (!dropdown) return;
+  const isShown = dropdown.style.display === 'flex';
+  dropdown.style.display = isShown ? 'none' : 'flex';
+  if (typeof window.closeChatMoreMenu === 'function') window.closeChatMoreMenu();
+};
+
+window.closeSidebarMoreMenu = function() {
+  const dropdown = document.getElementById('sidebar-more-dropdown-menu');
+  if (dropdown) dropdown.style.display = 'none';
+};
+
 document.addEventListener('click', (e) => {
-  const dropdown = document.getElementById('chat-more-dropdown-menu');
-  const btn = document.getElementById('btn-chat-more-menu');
-  if (dropdown && dropdown.style.display === 'flex') {
-    if (btn && btn.contains(e.target)) return;
-    if (!dropdown.contains(e.target)) {
-      dropdown.style.display = 'none';
+  const chatDropdown = document.getElementById('chat-more-dropdown-menu');
+  const chatBtn = document.getElementById('btn-chat-more-menu');
+  if (chatDropdown && chatDropdown.style.display === 'flex') {
+    if (chatBtn && chatBtn.contains(e.target)) return;
+    if (!chatDropdown.contains(e.target)) {
+      chatDropdown.style.display = 'none';
+    }
+  }
+
+  const sidebarDropdown = document.getElementById('sidebar-more-dropdown-menu');
+  const sidebarBtn = document.getElementById('btn-sidebar-more-menu');
+  if (sidebarDropdown && sidebarDropdown.style.display === 'flex') {
+    if (sidebarBtn && sidebarBtn.contains(e.target)) return;
+    if (!sidebarDropdown.contains(e.target)) {
+      sidebarDropdown.style.display = 'none';
     }
   }
 });
