@@ -138,6 +138,9 @@ async function initTables() {
   try {
     await run(`ALTER TABLE users ADD COLUMN hide_push_content INTEGER DEFAULT 0`);
   } catch (e) {}
+  try {
+    await run(`ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT NULL`);
+  } catch (e) {}
   await run(`
     CREATE TABLE IF NOT EXISTS password_reset_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -421,11 +424,23 @@ async function getUserByUsername(username) {
 }
 
 async function getUserById(id) {
-  return await get(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users WHERE id = ?`, [id]);
+  return await get(`SELECT id, username, display_name, avatar_url, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users WHERE id = ?`, [id]);
 }
 
 async function getAllUsers() {
-  return await all(`SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users ORDER BY created_at ASC`);
+  return await all(`SELECT id, username, display_name, avatar_url, role, COALESCE(is_banned, 0) as is_banned, (recovery_pin_hash IS NOT NULL) as has_recovery_pin, COALESCE(hide_push_content, 0) as hide_push_content, created_at FROM users ORDER BY created_at ASC`);
+}
+
+async function updateUserAvatar(id, avatarUrl) {
+  await run(`UPDATE users SET avatar_url = ? WHERE id = ?`, [avatarUrl || null, id]);
+  return await getUserById(id);
+}
+
+async function updateUserProfile(id, { displayName }) {
+  if (displayName !== undefined && displayName !== null) {
+    await run(`UPDATE users SET display_name = ? WHERE id = ?`, [String(displayName).trim(), id]);
+  }
+  return await getUserById(id);
 }
 
 async function updateUser(id, { username, displayName, passwordHash, role }) {
@@ -951,7 +966,7 @@ async function getMessageContext(messageId, userId, userRole = 'family', beforeC
 async function getUserByExactUsername(username) {
   if (!username) return null;
   const clean = username.toLowerCase().trim().replace(/^@/, '');
-  return await get(`SELECT id, username, display_name, role, created_at FROM users WHERE LOWER(username) = ?`, [clean]);
+  return await get(`SELECT id, username, display_name, avatar_url, role, created_at FROM users WHERE LOWER(username) = ?`, [clean]);
 }
 
 async function createContactRequest(senderId, receiverId) {
@@ -986,7 +1001,7 @@ async function createContactRequest(senderId, receiverId) {
 
 async function getPendingContactRequests(receiverId) {
   return await all(
-    `SELECT cr.id as request_id, cr.created_at, u.id as sender_id, u.username, u.display_name, u.role
+    `SELECT cr.id as request_id, cr.created_at, u.id as sender_id, u.username, u.display_name, u.avatar_url, u.role
      FROM contact_requests cr
      JOIN users u ON cr.sender_id = u.id
      WHERE cr.receiver_id = ? AND cr.status = 'pending'
@@ -1025,7 +1040,7 @@ async function rejectContactRequest(requestId, receiverId) {
 async function getContactsForUser(currentUserId, currentUserRole = 'family') {
   const contacts = await all(
     `SELECT DISTINCT 
-       u.id, u.username, u.display_name, u.role, u.created_at,
+       u.id, u.username, u.display_name, u.avatar_url, u.role, u.created_at,
        m.content AS last_message,
        m.timestamp AS last_message_time,
        m.sender_id AS last_sender_id,
@@ -1153,7 +1168,7 @@ async function getSalonById(salonId) {
 
 async function getSalonMembers(salonId) {
   return await all(
-    `SELECT u.id, u.username, u.display_name, u.role as global_role, sm.role as salon_role, COALESCE(sm.is_blocked, 0) as is_blocked, sm.joined_at
+    `SELECT u.id, u.username, u.display_name, u.avatar_url, u.role as global_role, sm.role as salon_role, COALESCE(sm.is_blocked, 0) as is_blocked, sm.joined_at
      FROM salon_members sm
      JOIN users u ON sm.user_id = u.id
      WHERE sm.salon_id = ?
@@ -1427,7 +1442,7 @@ async function banUser(userId, banState = 1) {
 
 async function getAllUsersForAdmin() {
   return await all(`
-    SELECT id, username, display_name, role, COALESCE(is_banned, 0) as is_banned, created_at
+    SELECT id, username, display_name, avatar_url, role, COALESCE(is_banned, 0) as is_banned, created_at
     FROM users
     ORDER BY created_at DESC
   `);
@@ -1937,5 +1952,7 @@ module.exports = {
   setUserPushPrivacy,
   searchInChatMessages,
   getMessageContext,
+  updateUserAvatar,
+  updateUserProfile,
   initTables
 };

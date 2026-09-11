@@ -302,6 +302,29 @@ function updateCurrentUserUI() {
   const usernameEl = document.getElementById('current-username');
   if (usernameEl) usernameEl.textContent = username;
 
+  const sidebarNameEl = document.getElementById('sidebar-user-display-name');
+  if (sidebarNameEl) sidebarNameEl.textContent = username;
+
+  const sidebarRoleEl = document.getElementById('sidebar-user-role-label');
+  if (sidebarRoleEl) sidebarRoleEl.textContent = state.user.role === 'admin' ? 'Admin' : 'En ligne';
+
+  const initial = (username || '?').charAt(0).toUpperCase();
+  const avatarInitEl = document.getElementById('sidebar-user-avatar-initial');
+  const avatarImgEl = document.getElementById('sidebar-user-avatar-img');
+  const avatarUrl = state.user.avatarUrl || state.user.avatar_url;
+
+  if (avatarInitEl) avatarInitEl.textContent = initial;
+  if (avatarImgEl) {
+    if (avatarUrl) {
+      avatarImgEl.src = avatarUrl;
+      avatarImgEl.style.display = 'block';
+      if (avatarInitEl) avatarInitEl.style.display = 'none';
+    } else {
+      avatarImgEl.style.display = 'none';
+      if (avatarInitEl) avatarInitEl.style.display = 'block';
+    }
+  }
+
   const roleEl = document.getElementById('user-role-badge');
   if (roleEl) roleEl.textContent = state.user.role === 'admin' ? 'Admin' : 'Membre';
 
@@ -1336,6 +1359,66 @@ function initSocket() {
     }
     renderCurrentActiveTabFeed();
     updateAllTabsBadges();
+  });
+
+  // Realtime User Avatar & Profile Updates
+  state.socket.on('user_avatar_updated', (data) => {
+    if (!data || !data.userId) return;
+    const uId = String(data.userId);
+    if (state.user && String(state.user.id) === uId) {
+      state.user.avatarUrl = data.avatarUrl;
+      state.user.avatar_url = data.avatarUrl;
+      localStorage.setItem('digicom_user', JSON.stringify(state.user));
+      updateCurrentUserUI();
+    }
+    if (state.contacts && Array.isArray(state.contacts)) {
+      const found = state.contacts.find(c => String(c.id) === uId);
+      if (found) {
+        found.avatar_url = data.avatarUrl;
+        found.avatarUrl = data.avatarUrl;
+        renderCurrentActiveTabFeed();
+      }
+    }
+    if (state.activeContact && String(state.activeContact.id) === uId) {
+      state.activeContact.avatar_url = data.avatarUrl;
+      state.activeContact.avatarUrl = data.avatarUrl;
+      const avatarEl = document.getElementById('active-contact-avatar');
+      if (avatarEl) {
+        const initial = (state.activeContact.display_name || state.activeContact.username || '?').charAt(0).toUpperCase();
+        if (data.avatarUrl) {
+          avatarEl.innerHTML = `<img src="${escapeHtml(data.avatarUrl)}" class="chat-header-avatar-img" alt="${escapeHtml(state.activeContact.display_name || state.activeContact.username)}" onerror="this.onerror=null; this.replaceWith('${initial}');">`;
+        } else {
+          avatarEl.textContent = initial;
+        }
+      }
+    }
+  });
+
+  state.socket.on('user_updated', (data) => {
+    if (!data || !data.userId) return;
+    const uId = String(data.userId);
+    if (state.user && String(state.user.id) === uId) {
+      state.user.displayName = data.displayName;
+      if (data.avatarUrl !== undefined) {
+        state.user.avatarUrl = data.avatarUrl;
+        state.user.avatar_url = data.avatarUrl;
+      }
+      localStorage.setItem('digicom_user', JSON.stringify(state.user));
+      updateCurrentUserUI();
+    }
+    if (state.contacts && Array.isArray(state.contacts)) {
+      const found = state.contacts.find(c => String(c.id) === uId);
+      if (found) {
+        found.display_name = data.displayName;
+        if (data.avatarUrl !== undefined) found.avatar_url = data.avatarUrl;
+        renderCurrentActiveTabFeed();
+      }
+    }
+    if (state.activeContact && String(state.activeContact.id) === uId) {
+      state.activeContact.display_name = data.displayName;
+      const nameEl = document.getElementById('active-contact-name');
+      if (nameEl) nameEl.textContent = data.displayName;
+    }
   });
 
   // Helper for applying message edit across Memory, DOM, and IndexedDB
@@ -4546,11 +4629,14 @@ function renderPendingContactRequests(requests) {
 
   requests.forEach(r => {
     const initial = (r.display_name || r.username || '?').charAt(0).toUpperCase();
+    const avHtml = r.avatar_url 
+      ? `<img src="${escapeHtml(r.avatar_url)}" class="user-avatar-img" alt="${escapeHtml(r.display_name || r.username)}" onerror="this.onerror=null; this.replaceWith('${initial}');">` 
+      : initial;
     const card = document.createElement('div');
     card.className = 'pending-request-card';
     card.innerHTML = `
       <div class="exact-user-info">
-        <div class="exact-user-avatar">${initial}</div>
+        <div class="exact-user-avatar">${avHtml}</div>
         <div class="exact-user-details">
           <strong>${escapeHtml(r.display_name || r.username)}</strong>
           <span>@${escapeHtml(r.username)}</span>
@@ -4641,10 +4727,14 @@ async function handleExactContactSearch(e) {
       actionBtnHtml = `<button type="button" class="btn-action-accept" id="btn-exact-send-invite">+ Envoyer une invitation</button>`;
     }
 
+    const uAvatar = u.avatarUrl || u.avatar_url;
+    const avHtml = uAvatar 
+      ? `<img src="${escapeHtml(uAvatar)}" class="user-avatar-img" alt="${escapeHtml(u.displayName || u.username)}" onerror="this.onerror=null; this.replaceWith('${initial}');">` 
+      : initial;
     feedback.innerHTML = `
       <div class="exact-user-card">
         <div class="exact-user-info">
-          <div class="exact-user-avatar">${initial}</div>
+          <div class="exact-user-avatar">${avHtml}</div>
           <div class="exact-user-details">
             <strong>${escapeHtml(u.displayName || u.username)}</strong>
             <span>@${escapeHtml(u.username)}</span>
@@ -4983,7 +5073,7 @@ function sortConversationsWithPin(items) {
   });
 }
 
-function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, isActive, unreadCount, categoryTag, categoryClass, lastInfo }) {
+function renderConversationCardHtml({ type, id, title, avatarInitial, avatarUrl, isOnline, isActive, unreadCount, categoryTag, categoryClass, lastInfo }) {
   const eyeHtml = lastInfo.isMe ? renderEyeStatusHtml(lastInfo.isRead, lastInfo.isPending) : '';
   const isUnreadMsg = !lastInfo.isMe && unreadCount > 0;
   const timeClass = unreadCount > 0 ? 'contact-time-text has-unread' : 'contact-time-text';
@@ -5005,9 +5095,13 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, isOnline, 
   const isPinned = Boolean(state.pinned && state.pinned.has(String(id)));
   const pinIconHtml = isPinned ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="color: #34d399; margin-left: 3px; flex-shrink: 0;" title="Épinglé en haut"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V7h1a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1v3.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path></svg>` : '';
 
+  const avatarContentHtml = (avatarUrl && type !== 'salon')
+    ? `<img src="${escapeHtml(avatarUrl)}" class="contact-avatar-img" alt="${escapeHtml(title)}" onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';"><span class="avatar-fallback" style="display:none;">${avatarInitial}</span>`
+    : `<span>${avatarInitial}</span>`;
+
   return `
     <div class="${avatarClass}">
-      ${avatarInitial}
+      ${avatarContentHtml}
       ${badgeOnline}
     </div>
     <div class="contact-details">
@@ -5088,6 +5182,7 @@ function renderAllConversationsList() {
       title: c.display_name || c.username,
       rawItem: c,
       avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+      avatarUrl: c.avatar_url || c.avatarUrl || null,
       isOnline,
       unreadCount,
       categoryTag: '',
@@ -5175,6 +5270,7 @@ function renderAllConversationsList() {
       id: item.id,
       title: item.title,
       avatarInitial: item.avatarInitial,
+      avatarUrl: item.avatarUrl || null,
       isOnline: item.isOnline,
       isActive,
       unreadCount: item.unreadCount,
@@ -5214,6 +5310,7 @@ function renderUnreadConversationsList() {
         title: c.display_name || c.username,
         rawItem: c,
         avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+        avatarUrl: c.avatar_url || c.avatarUrl || null,
         isOnline,
         unreadCount,
         categoryTag: '',
@@ -5307,6 +5404,7 @@ function renderUnreadConversationsList() {
       id: item.id,
       title: item.title,
       avatarInitial: item.avatarInitial,
+      avatarUrl: item.avatarUrl || null,
       isOnline: item.isOnline,
       isActive,
       unreadCount: item.unreadCount,
@@ -5345,6 +5443,7 @@ function renderArchivedConversationsList() {
         title: c.display_name || c.username,
         rawItem: c,
         avatarInitial: (c.display_name || c.username || '?').charAt(0).toUpperCase(),
+        avatarUrl: c.avatar_url || c.avatarUrl || null,
         isOnline,
         unreadCount,
         categoryTag: 'Archivé',
@@ -5437,6 +5536,7 @@ function renderArchivedConversationsList() {
       id: item.id,
       title: item.title,
       avatarInitial: item.avatarInitial,
+      avatarUrl: item.avatarUrl || null,
       isOnline: item.isOnline,
       isActive,
       unreadCount: item.unreadCount,
@@ -5549,6 +5649,7 @@ function renderContactsList() {
       id: c.id,
       title: c.display_name || c.username,
       avatarInitial: initial,
+      avatarUrl: c.avatar_url || c.avatarUrl || null,
       isOnline,
       isActive,
       unreadCount,
@@ -5651,7 +5752,12 @@ function selectContact(contact) {
   const avatarEl = document.getElementById('active-contact-avatar');
   if (avatarEl) {
     const initial = (contact.display_name || contact.username || '?').charAt(0).toUpperCase();
-    avatarEl.textContent = initial;
+    const avUrl = contact.avatar_url || contact.avatarUrl;
+    if (avUrl) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(avUrl)}" class="chat-header-avatar-img" alt="${escapeHtml(contact.display_name || contact.username)}" onerror="this.onerror=null; this.replaceWith('${initial}');">`;
+    } else {
+      avatarEl.textContent = initial;
+    }
   }
   const nameEl = document.getElementById('active-contact-name');
   if (nameEl) {
@@ -12483,6 +12589,242 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initInChatSearchEvents);
 } else {
   initInChatSearchEvents();
+}
+
+// ====================================================
+// User Profile & Avatar Management (WhatsApp Style)
+// ====================================================
+window._pendingAvatarBlob = null;
+
+window.openUserProfileModal = function() {
+  if (!state.user) return;
+  if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
+
+  const modal = document.getElementById('modal-user-profile');
+  if (!modal) return;
+
+  const displayName = state.user.displayName || state.user.username || '';
+  const username = state.user.username || '';
+  const role = state.user.role === 'admin' ? 'Administrateur' : 'Membre';
+  const initial = (displayName || username || '?').charAt(0).toUpperCase();
+  const avatarUrl = state.user.avatarUrl || state.user.avatar_url;
+
+  const nameInput = document.getElementById('input-profile-displayname');
+  if (nameInput) nameInput.value = displayName;
+
+  const usernameEl = document.getElementById('profile-display-username');
+  if (usernameEl) usernameEl.textContent = `@${username}`;
+
+  const roleEl = document.getElementById('profile-display-role');
+  if (roleEl) roleEl.textContent = role;
+
+  const letterEl = document.getElementById('profile-avatar-letter');
+  const imgEl = document.getElementById('profile-avatar-img');
+  const removeBtn = document.getElementById('btn-profile-remove-photo');
+
+  if (letterEl) letterEl.textContent = initial;
+  window._pendingAvatarBlob = null;
+
+  if (avatarUrl) {
+    if (imgEl) {
+      imgEl.src = avatarUrl;
+      imgEl.style.display = 'block';
+    }
+    if (letterEl) letterEl.style.display = 'none';
+    if (removeBtn) removeBtn.style.display = 'inline-flex';
+  } else {
+    if (imgEl) {
+      imgEl.src = '';
+      imgEl.style.display = 'none';
+    }
+    if (letterEl) letterEl.style.display = 'block';
+    if (removeBtn) removeBtn.style.display = 'none';
+  }
+
+  modal.style.display = 'flex';
+};
+
+window.closeUserProfileModal = function() {
+  const modal = document.getElementById('modal-user-profile');
+  if (modal) modal.style.display = 'none';
+  window._pendingAvatarBlob = null;
+  const fileInput = document.getElementById('input-profile-avatar-file');
+  if (fileInput) fileInput.value = '';
+};
+
+// Client-side lightweight image crop & compression for mobile efficiency
+window.handleProfileAvatarSelect = function(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    alert('Veuillez sélectionner un fichier image valide (JPG, PNG ou WebP).');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const maxDim = 320;
+      let w = img.width;
+      let h = img.height;
+      const minSide = Math.min(w, h);
+      const sx = (w - minSide) / 2;
+      const sy = (h - minSide) / 2;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = maxDim;
+      canvas.height = maxDim;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim);
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        window._pendingAvatarBlob = blob;
+        const previewUrl = URL.createObjectURL(blob);
+        const imgEl = document.getElementById('profile-avatar-img');
+        const letterEl = document.getElementById('profile-avatar-letter');
+        const removeBtn = document.getElementById('btn-profile-remove-photo');
+        if (imgEl) {
+          imgEl.src = previewUrl;
+          imgEl.style.display = 'block';
+        }
+        if (letterEl) letterEl.style.display = 'none';
+        if (removeBtn) removeBtn.style.display = 'inline-flex';
+      }, 'image/webp', 0.85);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+window.saveUserProfile = async function() {
+  if (!state.user) return;
+  const saveBtn = document.getElementById('btn-save-profile');
+  const nameInput = document.getElementById('input-profile-displayname');
+  const newName = nameInput ? nameInput.value.trim() : '';
+
+  if (!newName) {
+    alert('Le nom d\'affichage ne peut pas être vide.');
+    return;
+  }
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span>Enregistrement...</span>';
+  }
+
+  try {
+    let updatedAvatarUrl = state.user.avatarUrl || state.user.avatar_url;
+
+    // 1. Upload avatar if pending
+    if (window._pendingAvatarBlob) {
+      const formData = new FormData();
+      formData.append('avatar', window._pendingAvatarBlob, 'avatar.webp');
+      const avRes = await authFetch('/api/user/avatar', {
+        method: 'POST',
+        body: formData
+      });
+      if (avRes.ok) {
+        const avData = await avRes.json();
+        if (avData && avData.avatarUrl) {
+          updatedAvatarUrl = avData.avatarUrl;
+        }
+      } else {
+        const err = await avRes.json().catch(() => ({}));
+        alert(err.error || 'Erreur lors du téléversement de la photo.');
+      }
+    }
+
+    // 2. Update display name if changed
+    if (newName !== (state.user.displayName || state.user.username)) {
+      const profRes = await authFetch('/api/user/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: newName })
+      });
+      if (!profRes.ok) {
+        const err = await profRes.json().catch(() => ({}));
+        alert(err.error || 'Erreur lors de la mise à jour du profil.');
+      }
+    }
+
+    // 3. Update local state
+    state.user.displayName = newName;
+    state.user.avatarUrl = updatedAvatarUrl;
+    state.user.avatar_url = updatedAvatarUrl;
+    localStorage.setItem('digicom_user', JSON.stringify(state.user));
+
+    updateCurrentUserUI();
+    window.closeUserProfileModal();
+    if (typeof showToast === 'function') {
+      showToast('Profil mis à jour avec succès');
+    }
+  } catch (err) {
+    console.error('[-] Error saving user profile:', err);
+    alert('Erreur lors de l\'enregistrement : ' + err.message);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<span>Enregistrer</span>';
+    }
+  }
+};
+
+window.removeUserAvatar = async function() {
+  if (!confirm('Voulez-vous supprimer votre photo de profil ?')) return;
+  try {
+    const res = await authFetch('/api/user/avatar', { method: 'DELETE' });
+    if (res.ok) {
+      state.user.avatarUrl = null;
+      state.user.avatar_url = null;
+      localStorage.setItem('digicom_user', JSON.stringify(state.user));
+      window._pendingAvatarBlob = null;
+
+      const imgEl = document.getElementById('profile-avatar-img');
+      const letterEl = document.getElementById('profile-avatar-letter');
+      const removeBtn = document.getElementById('btn-profile-remove-photo');
+      const initial = (state.user.displayName || state.user.username || '?').charAt(0).toUpperCase();
+
+      if (imgEl) {
+        imgEl.src = '';
+        imgEl.style.display = 'none';
+      }
+      if (letterEl) {
+        letterEl.textContent = initial;
+        letterEl.style.display = 'block';
+      }
+      if (removeBtn) removeBtn.style.display = 'none';
+
+      updateCurrentUserUI();
+      if (typeof showToast === 'function') {
+        showToast('Photo de profil supprimée');
+      }
+    } else {
+      alert('Erreur lors de la suppression de la photo.');
+    }
+  } catch (err) {
+    console.error('[-] Error deleting avatar:', err);
+  }
+};
+
+// Hook file input listener
+document.addEventListener('DOMContentLoaded', () => {
+  const inputAvatarFile = document.getElementById('input-profile-avatar-file');
+  if (inputAvatarFile) {
+    inputAvatarFile.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) window.handleProfileAvatarSelect(file);
+    });
+  }
+});
+if (document.readyState !== 'loading') {
+  const inputAvatarFile = document.getElementById('input-profile-avatar-file');
+  if (inputAvatarFile) {
+    inputAvatarFile.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) window.handleProfileAvatarSelect(file);
+    });
+  }
 }
 
 

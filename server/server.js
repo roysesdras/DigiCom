@@ -589,6 +589,8 @@ app.post('/api/login', async (req, res) => {
         id: user.id,
         username: user.username,
         displayName: user.display_name,
+        avatarUrl: user.avatar_url,
+        avatar_url: user.avatar_url,
         role: user.role,
         hasRecoveryPin: !!user.recovery_pin_hash
       },
@@ -665,6 +667,8 @@ app.post('/api/auth/register', async (req, res) => {
         id: newUser.id,
         username: newUser.username,
         displayName: newUser.display_name,
+        avatarUrl: newUser.avatar_url,
+        avatar_url: newUser.avatar_url,
         role: newUser.role,
         hasRecoveryPin: !!(recoveryPin && /^[0-9]{4,8}$/.test(String(recoveryPin).trim()))
       },
@@ -3371,6 +3375,79 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
       mimeType: req.file.mimetype
     });
   });
+});
+
+// 13b. User Avatar & Profile Management
+const avatarUpload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    const safeImageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+    if (!safeImageExts.includes(ext)) {
+      return cb(new Error('Format d\'image non autorisé. Utilisez JPG, PNG ou WebP.'));
+    }
+    cb(null, true);
+  }
+});
+
+app.post('/api/user/avatar', authenticateToken, (req, res) => {
+  avatarUpload.single('avatar')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Aucune image fournie.' });
+    }
+    try {
+      const fileUrl = '/uploads/' + req.file.filename;
+      const updatedUser = await db.updateUserAvatar(req.user.id, fileUrl);
+      syncFileToRemoteStorage(req.file.path);
+      io.emit('user_avatar_updated', {
+        userId: req.user.id,
+        avatarUrl: fileUrl,
+        displayName: updatedUser ? updatedUser.display_name : req.user.displayName
+      });
+      res.json({ success: true, avatarUrl: fileUrl, user: updatedUser });
+    } catch (dbErr) {
+      console.error('[-] Error updating user avatar in db:', dbErr);
+      res.status(500).json({ error: 'Erreur lors de l\'enregistrement de l\'avatar.' });
+    }
+  });
+});
+
+app.delete('/api/user/avatar', authenticateToken, async (req, res) => {
+  try {
+    const updatedUser = await db.updateUserAvatar(req.user.id, null);
+    io.emit('user_avatar_updated', {
+      userId: req.user.id,
+      avatarUrl: null,
+      displayName: updatedUser ? updatedUser.display_name : req.user.displayName
+    });
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error('[-] Error deleting user avatar:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const { displayName } = req.body || {};
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ error: 'Le nom d\'affichage ne peut pas être vide.' });
+    }
+    const updatedUser = await db.updateUserProfile(req.user.id, { displayName: displayName.trim().substring(0, 50) });
+    io.emit('user_updated', {
+      userId: req.user.id,
+      displayName: updatedUser.display_name,
+      avatarUrl: updatedUser.avatar_url
+    });
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error('[-] Error updating user profile:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---------------- SOCKET.IO REALTIME ENGINE ----------------
