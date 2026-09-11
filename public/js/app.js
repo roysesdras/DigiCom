@@ -5723,11 +5723,11 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=40&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 40) {
+        if (olderMsgs.length < 20) {
           pag.hasMore = false;
         }
         if (olderMsgs.length > 0) {
@@ -5747,14 +5747,14 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     return;
   }
 
-  // Initial load of 50 messages
+  // Initial load of 20 messages
   pag.hasMore = true;
   pag.isLoading = false;
 
-  // 1. Instant local offline load from IndexedDB (first 50)
+  // 1. Instant local offline load from IndexedDB (first 20)
   if (window.digiStore && state.user) {
     try {
-      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 50);
+      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 20);
       if (cachedMsgs && cachedMsgs.length > 0) {
         state.directMessages[targetUserId] = cachedMsgs;
         pag.oldestTimestamp = cachedMsgs[0].timestamp;
@@ -5770,7 +5770,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
   }
 
   try {
-    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50`);
+    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20`);
     if (res.ok) {
       const data = await res.json();
       const newMsgs = data.messages || [];
@@ -5784,7 +5784,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
       state.unreadCounts[targetUserId] = 0;
       if (newMsgs.length > 0) {
         pag.oldestTimestamp = newMsgs[0].timestamp;
-        if (newMsgs.length < 50) pag.hasMore = false;
+        if (newMsgs.length < 20) pag.hasMore = false;
       } else {
         pag.hasMore = false;
       }
@@ -6065,9 +6065,9 @@ function renderDirectFeed(targetUserId) {
     return;
   }
 
-  // Render up to 50 messages initially to keep mobile DOM performant while showing ample history
-  const msgs = allMsgs.length > 50 ? allMsgs.slice(-50) : allMsgs;
-  if (allMsgs.length > 50 && state.feedPagination && state.feedPagination[targetUserId]) {
+  // Render max 20 messages initially to keep mobile DOM ultra-lightweight
+  const msgs = allMsgs.length > 20 ? allMsgs.slice(-20) : allMsgs;
+  if (allMsgs.length > 20 && state.feedPagination && state.feedPagination[targetUserId]) {
     state.feedPagination[targetUserId].hasMore = true;
     state.feedPagination[targetUserId].oldestTimestamp = msgs[0].timestamp;
   }
@@ -8528,11 +8528,11 @@ async function loadSalonHistory(salonId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/salons/${salonId}/messages?limit=40&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/salons/${salonId}/messages?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 40) pag.hasMore = false;
+        if (olderMsgs.length < 20) pag.hasMore = false;
         if (olderMsgs.length > 0) {
           pag.oldestTimestamp = olderMsgs[0].timestamp;
           state.salonMessages[salonId] = [...olderMsgs, ...(state.salonMessages[salonId] || [])];
@@ -8552,7 +8552,7 @@ async function loadSalonHistory(salonId, loadMore = false) {
   feed.innerHTML = '';
 
   try {
-    const res = await authFetch(`/api/salons/${salonId}/messages?limit=50`);
+    const res = await authFetch(`/api/salons/${salonId}/messages?limit=20`);
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];

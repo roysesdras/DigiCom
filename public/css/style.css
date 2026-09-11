@@ -7360,7 +7360,7 @@ input[type="date"].form-input-date {
    ======================================================= */
 
 .chat-contract-card-premium {
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: rgba(15, 23, 42, 0.85) !important;
   border-radius: 12px !important;
   padding: 12px 14px !important;
   margin-top: 4px !important;
@@ -7372,30 +7372,25 @@ input[type="date"].form-input-date {
   max-width: 340px !important;
   width: 100% !important;
   box-sizing: border-box !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-left: 3px solid #f59e0b !important;
+  border: none !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
   color: #f1f5f9 !important;
 }
 
 .chat-contract-card-premium.status-accepted {
-  border-left-color: #10b981 !important;
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: rgba(15, 23, 42, 0.85) !important;
 }
 
 .chat-contract-card-premium.status-adjustment_requested {
-  border-left-color: #38bdf8 !important;
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: rgba(15, 23, 42, 0.85) !important;
 }
 
 .chat-contract-card-premium.status-completed {
-  border-left-color: #6366f1 !important;
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: rgba(15, 23, 42, 0.85) !important;
 }
 
 .chat-contract-card-premium.status-cancelled {
-  border-left-color: #64748b !important;
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: rgba(15, 23, 42, 0.85) !important;
 }
 
 .contract-card-header-bar {
@@ -7491,10 +7486,10 @@ input[type="date"].form-input-date {
 .contract-note-text {
   font-size: 0.74rem !important;
   color: #bae6fd !important;
-  background: rgba(56, 189, 248, 0.08) !important;
-  padding: 4px 8px !important;
-  border-radius: 4px !important;
-  border-left: 2px solid #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.1) !important;
+  padding: 5px 8px !important;
+  border-radius: 6px !important;
+  border: none !important;
   margin-top: 3px !important;
 }
 
@@ -7553,7 +7548,7 @@ input[type="date"].form-input-date {
   -webkit-appearance: none !important;
   appearance: none !important;
   outline: none !important;
-  border: 1px solid transparent !important;
+  border: none !important;
   cursor: pointer !important;
   user-select: none !important;
   transition: all 0.15s ease !important;
@@ -7576,6 +7571,7 @@ input[type="date"].form-input-date {
 .btn-contract-accept-lg {
   background: #059669 !important;
   color: #ffffff !important;
+  border: none !important;
   box-shadow: none !important;
   width: 100% !important;
 }
@@ -7586,44 +7582,45 @@ input[type="date"].form-input-date {
 
 /* 🔵 Ajuster */
 .btn-contract-adjust-sm {
-  background: rgba(56, 189, 248, 0.12) !important;
+  background: rgba(56, 189, 248, 0.16) !important;
   color: #38bdf8 !important;
-  border-color: rgba(56, 189, 248, 0.25) !important;
+  border: none !important;
   flex: 1 !important;
 }
 
 .btn-contract-adjust-sm:hover {
-  background: rgba(56, 189, 248, 0.2) !important;
+  background: rgba(56, 189, 248, 0.25) !important;
 }
 
 /* 🔴 Rejeter */
 .btn-contract-reject-sm {
-  background: rgba(244, 63, 94, 0.12) !important;
+  background: rgba(244, 63, 94, 0.16) !important;
   color: #f43f5e !important;
-  border-color: rgba(244, 63, 94, 0.25) !important;
+  border: none !important;
   flex: 1 !important;
 }
 
 .btn-contract-reject-sm:hover {
-  background: rgba(244, 63, 94, 0.2) !important;
+  background: rgba(244, 63, 94, 0.25) !important;
 }
 
 /* 🔴 Annuler */
 .btn-contract-cancel-lg {
-  background: rgba(244, 63, 94, 0.12) !important;
+  background: rgba(244, 63, 94, 0.16) !important;
   color: #f43f5e !important;
-  border-color: rgba(244, 63, 94, 0.25) !important;
+  border: none !important;
   width: 100% !important;
 }
 
 .btn-contract-cancel-lg:hover {
-  background: rgba(244, 63, 94, 0.2) !important;
+  background: rgba(244, 63, 94, 0.25) !important;
 }
 
 /* 🟣 Terminer */
 .btn-contract-complete-lg {
   background: #4f46e5 !important;
   color: #ffffff !important;
+  border: none !important;
   box-shadow: none !important;
   width: 100% !important;
 }
