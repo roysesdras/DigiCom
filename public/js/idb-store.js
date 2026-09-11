@@ -148,6 +148,56 @@ class DigiStore {
     });
   }
 
+  async clearMessagesForChat(currentUserId, targetUserId) {
+    if (!this.db) await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      const cId = String(currentUserId || '').replace(/^admin_/, '');
+      const tId = String(targetUserId || '').replace(/^admin_/, '');
+      const request = store.openCursor();
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const m = cursor.value;
+          const sId = String(m.senderId || m.sender_id || '').replace(/^admin_/, '');
+          const rId = String(m.receiverId || m.receiver_id || '').replace(/^admin_/, '');
+          if ((sId === cId && rId === tId) || (sId === tId && rId === cId)) {
+            cursor.delete();
+          }
+          cursor.continue();
+        } else {
+          resolve(true);
+        }
+      };
+      request.onerror = (err) => reject(err.target.error);
+    });
+  }
+
+  async clearMessagesForSalon(salonId) {
+    if (!this.db) await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      const targetSalonId = String(salonId || '');
+      const request = store.openCursor();
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const m = cursor.value;
+          const rId = String(m.receiverId || m.receiver_id || '');
+          if (rId === targetSalonId) {
+            cursor.delete();
+          }
+          cursor.continue();
+        } else {
+          resolve(true);
+        }
+      };
+      request.onerror = (err) => reject(err.target.error);
+    });
+  }
+
   async getMessages(currentUserId, targetUserId, limit = 20, beforeTimestamp = null) {
     if (!this.db) await this.init();
     return new Promise((resolve, reject) => {

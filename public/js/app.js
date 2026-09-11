@@ -829,9 +829,11 @@ function initSocket() {
     }
   });
 
-  // Real-time Read Receipts (Eye Icon Updates to Orange)
+  // Real-time Read Receipts (Eye Icon Updates to Orange - prefix tolerant)
   state.socket.on('messages_read_by_recipient', (data) => {
-    if (state.activeContact && String(state.activeContact.id) === String(data.readerId)) {
+    const readerClean = String(data && data.readerId || '').replace(/^admin_/, '');
+    const activeClean = state.activeContact ? String(state.activeContact.id).replace(/^admin_/, '') : '';
+    if (state.activeContact && (String(state.activeContact.id) === String(data.readerId) || (readerClean && readerClean === activeClean))) {
       const unreadEyes = document.querySelectorAll('.msg-status-eye.unread');
       unreadEyes.forEach(eye => {
         eye.className = 'msg-status-eye read';
@@ -844,15 +846,35 @@ function initSocket() {
         `;
       });
 
-      if (state.directMessages[data.readerId]) {
-        state.directMessages[data.readerId].forEach(m => {
-          if (m.senderId === state.user.id || m.sender_id === state.user.id) {
-            m.is_read = 1;
-            m.isRead = true;
-          }
-        });
+      for (const k in state.directMessages) {
+        if (String(k).replace(/^admin_/, '') === readerClean) {
+          state.directMessages[k].forEach(m => {
+            if (m.senderId === state.user.id || m.sender_id === state.user.id) {
+              m.is_read = 1;
+              m.isRead = true;
+            }
+          });
+        }
       }
     }
+  });
+
+  // Real-time Contact Removed Event
+  state.socket.on('contact_removed', (data) => {
+    const cId = data && data.contactId;
+    if (!cId) return;
+    const cleanCId = String(cId).replace(/^admin_/, '');
+    if (state.activeContact) {
+      const activeClean = String(state.activeContact.id).replace(/^admin_/, '');
+      if (activeClean === cleanCId) {
+        state.activeContact = null;
+        showEmptyFeed(true, 'Ce contact a été retiré de vos liaisons.');
+        if (typeof showToast === 'function') {
+          showToast('Cette liaison de contact a été supprimée.', 'info');
+        }
+      }
+    }
+    loadContacts();
   });
 
   // Contact Request & Direct Connection Real-time Events
@@ -1279,6 +1301,9 @@ function initSocket() {
     if (!data) return;
     if (data.contactId) {
       state.directMessages[data.contactId] = [];
+      if (window.digiStore && state.user) {
+        window.digiStore.clearMessagesForChat(state.user.id, data.contactId).catch(() => {});
+      }
       if (state.activeContact && String(state.activeContact.id) === String(data.contactId)) {
         const feed = document.getElementById('messages-feed');
         if (feed) feed.innerHTML = '';
@@ -1286,6 +1311,9 @@ function initSocket() {
       }
     } else if (data.salonId) {
       state.salonMessages[data.salonId] = [];
+      if (window.digiStore) {
+        window.digiStore.clearMessagesForSalon(data.salonId).catch(() => {});
+      }
       if (state.activeSalon && String(state.activeSalon.id) === String(data.salonId)) {
         const feed = document.getElementById('messages-feed');
         if (feed) feed.innerHTML = '';
@@ -5592,7 +5620,6 @@ function selectContact(contact) {
   state.activeSalon = null;
   state.activeSalonMembers = [];
   state.activeSupportSession = null;
-  state.activeTab = 'contacts';
   state.unreadCounts[contact.id] = 0;
   if (typeof syncActiveChatToServiceWorker === 'function') {
     syncActiveChatToServiceWorker({ contactId: contact.id, isVisible: true });
@@ -5767,6 +5794,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
         window.digiStore.pruneOldMessages().catch(() => {});
       }
       renderContactsList();
+      updateAllTabsBadges();
       if (hasChanged && state.activeContact && String(state.activeContact.id) === String(targetUserId)) {
         renderDirectFeed(targetUserId);
         updateActiveContactStatus();
@@ -7201,7 +7229,7 @@ async function sendMessage(contentPayload) {
     dismissPushNotificationForChat({ salonId: state.activeSalon.id });
   }
 
-  if (state.activeTab === 'contacts' && state.activeContact) {
+  if (state.activeContact) {
     const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     let replyData = null;
     if (state.replyingTo) {
@@ -7254,7 +7282,7 @@ async function sendMessage(contentPayload) {
     state.directMessages[state.activeContact.id].push(msgPayload);
     appendMessageToFeed(msgPayload, false, true);
 
-  } else if (state.activeTab === 'salons' && state.activeSalon) {
+  } else if (state.activeSalon) {
     const salonId = state.activeSalon.id;
     const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     let replyData = null;
@@ -7310,7 +7338,7 @@ async function sendMessage(contentPayload) {
     state.salonMessages[salonId].push(msgPayload);
     appendMessageToFeed(msgPayload, false, true);
 
-  } else if (state.activeTab === 'support' && state.activeSupportSession) {
+  } else if (state.activeSupportSession) {
     const replyPayload = {
       targetUserId: state.activeSupportSession,
       senderName: state.user.displayName || 'Support DigiCom',
@@ -11983,6 +12011,9 @@ window.confirmClearCurrentConversation = async function(e) {
     if (res.ok) {
       if (type === 'contact') {
         state.directMessages[id] = [];
+        if (window.digiStore && state.user) {
+          window.digiStore.clearMessagesForChat(state.user.id, id).catch(() => {});
+        }
         if (state.activeContact && String(state.activeContact.id) === String(id)) {
           const feed = document.getElementById('messages-feed');
           if (feed) feed.innerHTML = '';
@@ -11990,6 +12021,9 @@ window.confirmClearCurrentConversation = async function(e) {
         }
       } else if (type === 'salon') {
         state.salonMessages[id] = [];
+        if (window.digiStore) {
+          window.digiStore.clearMessagesForSalon(id).catch(() => {});
+        }
         if (state.activeSalon && String(state.activeSalon.id) === String(id)) {
           const feed = document.getElementById('messages-feed');
           if (feed) feed.innerHTML = '';
