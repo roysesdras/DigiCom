@@ -198,6 +198,7 @@ async function initTables() {
       description TEXT,
       icon TEXT DEFAULT '🛡️',
       created_by TEXT NOT NULL,
+      avatar_url TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -222,6 +223,9 @@ async function initTables() {
   } catch (e) {}
   try {
     await run(`ALTER TABLE salons ADD COLUMN pinned_message_id TEXT`);
+  } catch (e) {}
+  try {
+    await run(`ALTER TABLE salons ADD COLUMN avatar_url TEXT`);
   } catch (e) {}
 
   await run(`
@@ -1166,6 +1170,11 @@ async function getSalonById(salonId) {
   return await get(`SELECT * FROM salons WHERE id = ?`, [salonId]);
 }
 
+async function updateSalonAvatar(salonId, avatarUrl) {
+  await run(`UPDATE salons SET avatar_url = ? WHERE id = ?`, [avatarUrl, salonId]);
+  return await getSalonById(salonId);
+}
+
 async function getSalonMembers(salonId) {
   return await all(
     `SELECT u.id, u.username, u.display_name, u.avatar_url, u.role as global_role, sm.role as salon_role, COALESCE(sm.is_blocked, 0) as is_blocked, sm.joined_at
@@ -1954,5 +1963,6 @@ module.exports = {
   getMessageContext,
   updateUserAvatar,
   updateUserProfile,
+  updateSalonAvatar,
   initTables
 };

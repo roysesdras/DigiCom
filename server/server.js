@@ -88,6 +88,9 @@ function pruneLocalUploadsCache(maxAgeDays = 7) {
     }
 
     files.forEach(file => {
+      // Never prune user or salon profile avatars from local disk
+      if (file.startsWith('avatar_') || file.toLowerCase().includes('avatar')) return;
+
       const filePath = path.join(uploadsDir, file);
       fs.stat(filePath, (statErr, stats) => {
         if (statErr) return;
@@ -3377,9 +3380,21 @@ app.post('/api/upload', authenticateToken, (req, res, next) => {
   });
 });
 
-// 13b. User Avatar & Profile Management
+// 13b. User & Salon Avatar Management
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    const safeBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const uniqueName = 'avatar_' + Date.now() + '_' + (safeBase.substring(0, 20) || 'pic') + (ext || '.webp');
+    cb(null, uniqueName);
+  }
+});
+
 const avatarUpload = multer({
-  storage: storage,
+  storage: avatarStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const ext = (path.extname(file.originalname) || '').toLowerCase();
@@ -3427,6 +3442,57 @@ app.delete('/api/user/avatar', authenticateToken, async (req, res) => {
     res.json({ success: true, user: updatedUser });
   } catch (err) {
     console.error('[-] Error deleting user avatar:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 13c. Salon Group Photo / Avatar Management
+app.post('/api/salons/:id/avatar', authenticateToken, (req, res) => {
+  const salonId = req.params.id;
+  avatarUpload.single('avatar')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'Aucune image fournie.' });
+
+    try {
+      const isAllowed = await db.isSalonAdmin(salonId, req.user.id);
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Seul le créateur ou un administrateur du Salon peut modifier sa photo.' });
+      }
+
+      const fileUrl = '/uploads/' + req.file.filename;
+      const updatedSalon = await db.updateSalonAvatar(salonId, fileUrl);
+      syncFileToRemoteStorage(req.file.path);
+
+      io.emit('salon_avatar_updated', {
+        salonId,
+        avatarUrl: fileUrl
+      });
+
+      res.json({ success: true, avatarUrl: fileUrl, salon: updatedSalon });
+    } catch (dbErr) {
+      console.error('[-] Error updating salon avatar:', dbErr);
+      res.status(500).json({ error: 'Erreur lors de l\'enregistrement de la photo du Salon.' });
+    }
+  });
+});
+
+app.delete('/api/salons/:id/avatar', authenticateToken, async (req, res) => {
+  const salonId = req.params.id;
+  try {
+    const isAllowed = await db.isSalonAdmin(salonId, req.user.id);
+    if (!isAllowed) {
+      return res.status(403).json({ error: 'Seul le créateur ou un administrateur du Salon peut modifier sa photo.' });
+    }
+
+    const updatedSalon = await db.updateSalonAvatar(salonId, null);
+    io.emit('salon_avatar_updated', {
+      salonId,
+      avatarUrl: null
+    });
+
+    res.json({ success: true, salon: updatedSalon });
+  } catch (err) {
+    console.error('[-] Error deleting salon avatar:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -1396,6 +1396,28 @@ function initSocket() {
     }
   });
 
+  // Realtime Salon Avatar Updates
+  state.socket.on('salon_avatar_updated', (data) => {
+    if (!data || !data.salonId) return;
+    const sId = String(data.salonId);
+    if (state.salons && Array.isArray(state.salons)) {
+      const found = state.salons.find(s => String(s.id) === sId);
+      if (found) found.avatar_url = data.avatarUrl;
+    }
+    if (state.activeSalon && String(state.activeSalon.id) === sId) {
+      state.activeSalon.avatar_url = data.avatarUrl;
+      const avatarEl = document.getElementById('active-contact-avatar');
+      if (avatarEl) {
+        if (data.avatarUrl) {
+          avatarEl.innerHTML = `<img src="${escapeHtml(data.avatarUrl)}" class="header-avatar-img" alt="${escapeHtml(state.activeSalon.name || 'Salon')}" onerror="this.onerror=null; this.parentElement.textContent='#';">`;
+        } else {
+          avatarEl.textContent = '#';
+        }
+      }
+    }
+    loadSalons();
+  });
+
   state.socket.on('user_updated', (data) => {
     if (!data || !data.userId) return;
     const uId = String(data.userId);
@@ -5101,7 +5123,7 @@ function renderConversationCardHtml({ type, id, title, avatarInitial, avatarUrl,
   const isPinned = Boolean(state.pinned && state.pinned.has(String(id)));
   const pinIconHtml = isPinned ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="color: #34d399; margin-left: 3px; flex-shrink: 0;" title="Épinglé en haut"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V7h1a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1v3.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path></svg>` : '';
 
-  const avatarContentHtml = (avatarUrl && type !== 'salon')
+  const avatarContentHtml = avatarUrl
     ? `<img src="${escapeHtml(avatarUrl)}" class="contact-avatar-img" alt="${escapeHtml(title)}" onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';"><span class="avatar-fallback" style="display:none;">${avatarInitial}</span>`
     : `<span>${avatarInitial}</span>`;
 
@@ -8458,6 +8480,7 @@ function renderSalonsList() {
       id: s.id,
       title: displayName,
       avatarInitial: '#',
+      avatarUrl: s.avatar_url || null,
       isOnline: false,
       isActive,
       unreadCount,
@@ -8538,7 +8561,11 @@ async function selectSalon(salon) {
   // Update top bar for Salon
   const avatarEl = document.getElementById('active-contact-avatar');
   if (avatarEl) {
-    avatarEl.textContent = '#';
+    if (salon.avatar_url) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(salon.avatar_url)}" class="header-avatar-img" alt="${formattedName}" onerror="this.onerror=null; this.parentElement.textContent='#';">`;
+    } else {
+      avatarEl.textContent = '#';
+    }
     avatarEl.style.fontWeight = '800';
   }
   const nameEl = document.getElementById('active-contact-name');
@@ -8881,6 +8908,140 @@ async function openSalonInfoModal(salonId) {
         `;
       }
 
+      // Salon avatar UI
+      const badgeEl = document.getElementById('salon-info-badge');
+      const imgEl = document.getElementById('salon-info-avatar-img');
+      const editOverlay = document.getElementById('salon-info-avatar-edit-overlay');
+      const avatarActions = document.getElementById('salon-info-avatar-actions');
+      const removePhotoBtn = document.getElementById('btn-remove-salon-photo');
+      const triggerPhotoBtn = document.getElementById('btn-trigger-salon-photo');
+      const fileInput = document.getElementById('input-salon-avatar-file');
+      const avatarWrapper = document.getElementById('salon-info-avatar-wrapper');
+
+      const updateSalonModalAvatar = (url) => {
+        if (url) {
+          if (imgEl) {
+            imgEl.src = url;
+            imgEl.style.display = 'block';
+          }
+          if (badgeEl) badgeEl.style.display = 'none';
+          if (removePhotoBtn) removePhotoBtn.style.display = isCreatorOrAdmin ? 'inline' : 'none';
+        } else {
+          if (imgEl) {
+            imgEl.src = '';
+            imgEl.style.display = 'none';
+          }
+          if (badgeEl) badgeEl.style.display = 'flex';
+          if (removePhotoBtn) removePhotoBtn.style.display = 'none';
+        }
+      };
+
+      updateSalonModalAvatar(salon ? salon.avatar_url : null);
+
+      if (editOverlay) editOverlay.style.display = isCreatorOrAdmin ? 'flex' : 'none';
+      if (avatarActions) avatarActions.style.display = isCreatorOrAdmin ? 'flex' : 'none';
+
+      if (isCreatorOrAdmin && fileInput) {
+        if (avatarWrapper) {
+          avatarWrapper.onclick = (e) => {
+            if (e.target !== removePhotoBtn) fileInput.click();
+          };
+        }
+        if (triggerPhotoBtn) {
+          triggerPhotoBtn.onclick = () => fileInput.click();
+        }
+
+        fileInput.onchange = async (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          if (!file.type.startsWith('image/')) {
+            alert('Veuillez sélectionner un fichier image valide (JPG, PNG ou WebP).');
+            return;
+          }
+
+          // Client-side lightweight compression (320x320, WebP 85% ~25KB)
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            const img = new Image();
+            img.onload = function() {
+              const maxDim = 320;
+              let w = img.width;
+              let h = img.height;
+              const minSide = Math.min(w, h);
+              const sx = (w - minSide) / 2;
+              const sy = (h - minSide) / 2;
+
+              const canvas = document.createElement('canvas');
+              canvas.width = maxDim;
+              canvas.height = maxDim;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim);
+
+              canvas.toBlob(async (blob) => {
+                if (!blob) return;
+                try {
+                  if (triggerPhotoBtn) triggerPhotoBtn.textContent = 'Téléversement...';
+                  const formData = new FormData();
+                  formData.append('avatar', blob, 'salon_avatar.webp');
+
+                  const uploadRes = await authFetch(`/api/salons/${salonId}/avatar`, {
+                    method: 'POST',
+                    body: formData
+                  });
+
+                  if (uploadRes.ok) {
+                    const uploadData = await uploadRes.json();
+                    if (salon) salon.avatar_url = uploadData.avatarUrl;
+                    if (state.activeSalon && String(state.activeSalon.id) === String(salonId)) {
+                      state.activeSalon.avatar_url = uploadData.avatarUrl;
+                    }
+                    updateSalonModalAvatar(uploadData.avatarUrl);
+                    selectSalon(salon);
+                    loadSalons();
+                    if (typeof showToast === 'function') showToast('Photo du Salon mise à jour avec succès');
+                  } else {
+                    const err = await uploadRes.json().catch(() => ({}));
+                    alert(err.error || 'Erreur lors du téléversement de la photo.');
+                  }
+                } catch (upErr) {
+                  alert('Erreur lors du téléversement : ' + upErr.message);
+                } finally {
+                  if (triggerPhotoBtn) triggerPhotoBtn.textContent = 'Changer la photo';
+                  fileInput.value = '';
+                }
+              }, 'image/webp', 0.85);
+            };
+            img.src = evt.target.result;
+          };
+          reader.readAsDataURL(file);
+        };
+
+        if (removePhotoBtn) {
+          removePhotoBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm('Supprimer la photo de ce Salon ?')) return;
+            try {
+              removePhotoBtn.textContent = 'Suppression...';
+              const delRes = await authFetch(`/api/salons/${salonId}/avatar`, { method: 'DELETE' });
+              if (delRes.ok) {
+                if (salon) salon.avatar_url = null;
+                if (state.activeSalon && String(state.activeSalon.id) === String(salonId)) {
+                  state.activeSalon.avatar_url = null;
+                }
+                updateSalonModalAvatar(null);
+                selectSalon(salon);
+                loadSalons();
+                if (typeof showToast === 'function') showToast('Photo du Salon supprimée');
+              }
+            } catch (delErr) {
+              alert('Erreur lors de la suppression : ' + delErr.message);
+            } finally {
+              removePhotoBtn.textContent = 'Supprimer';
+            }
+          };
+        }
+      }
+
       // Setup Edit Salon feature
       if (btnToggleEdit) {
         btnToggleEdit.style.display = isCreatorOrAdmin ? 'inline-flex' : 'none';
@@ -8970,9 +9131,14 @@ async function openSalonInfoModal(salonId) {
                 label.style.cursor = 'pointer';
 
                 const initial = (c.display_name || c.username || '?').charAt(0).toUpperCase();
+                const cAvatar = c.avatar_url || c.avatarUrl;
+                const cAvatarHtml = cAvatar
+                  ? `<img src="${escapeHtml(cAvatar)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="${escapeHtml(c.display_name || c.username)}" onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';"><span class="avatar-fallback" style="display:none;">${initial}</span>`
+                  : `<span>${initial}</span>`;
+
                 label.innerHTML = `
                   <input type="checkbox" value="${c.id}" class="salon-add-contact-checkbox">
-                  <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(0,168,132,0.2); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: #10b981;">${initial}</div>
+                  <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(0,168,132,0.2); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: #10b981; overflow: hidden; flex-shrink: 0;">${cAvatarHtml}</div>
                   <span style="font-size: 0.8rem; color: var(--text-main); font-weight: 500;">${escapeHtml(c.display_name || c.username)}</span>
                   <span style="font-size: 0.72rem; color: var(--text-dim);">(@${escapeHtml(c.username)})</span>
                 `;
@@ -9159,10 +9325,15 @@ async function openSalonInfoModal(salonId) {
               `;
             }
 
+            const mAvatar = m.avatar_url || m.avatarUrl;
+            const mAvatarHtml = mAvatar
+              ? `<img src="${escapeHtml(mAvatar)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="${escapeHtml(m.display_name || m.username)}" onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';"><span class="avatar-fallback" style="display:none;">${initial}</span>`
+              : `<span>${initial}</span>`;
+
             row.innerHTML = `
               <div style="display: flex; align-items: center; gap: 0.65rem; min-width: 0;">
-                <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,168,132,0.15); border: 1px solid rgba(0,168,132,0.3); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.82rem; color: #10b981; flex-shrink: 0;">
-                  ${initial}
+                <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,168,132,0.15); border: 1px solid rgba(0,168,132,0.3); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.82rem; color: #10b981; flex-shrink: 0; overflow: hidden;">
+                  ${mAvatarHtml}
                   <div class="micro-dot ${isOnline ? 'online' : ''}" style="width: 9px; height: 9px;"></div>
                 </div>
                 <div style="min-width: 0; overflow: hidden;">

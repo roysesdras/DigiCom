@@ -8640,7 +8640,9 @@ mark.chat-search-match.current-active {
 
 .contact-avatar-img,
 .chat-header-avatar-img,
+.header-avatar-img,
 .user-avatar-img,
+.salon-member-avatar-img,
 .reader-avatar-img,
 .sender-avatar-img,
 .mention-avatar-img {
@@ -8652,6 +8654,7 @@ mark.chat-search-match.current-active {
 }
 
 .contact-avatar-box,
+.salon-icon-box,
 .reader-avatar,
 .user-avatar-sm,
 .exact-user-avatar {

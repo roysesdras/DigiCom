@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1262" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1262">
+    <link rel="preload" href="/css/style.min.css?v=1263" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1263">
   </head>
 
   <body>
@@ -1387,9 +1387,25 @@
     <div class="modal-backdrop" id="salon-info-modal">
       <div class="glass-modal">
         <div class="modal-top">
-          <div class="modal-title-with-icon">
-            <div class="modal-icon-badge">#</div>
-            <h3 id="salon-info-title">#Salon</h3>
+          <div class="modal-title-with-icon" style="align-items: center; gap: 0.75rem;">
+            <div class="salon-avatar-wrapper" id="salon-info-avatar-wrapper" style="position: relative; width: 44px; height: 44px; flex-shrink: 0; cursor: pointer;" title="Photo du Salon">
+              <div class="modal-icon-badge" id="salon-info-badge" style="width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; background: rgba(0, 168, 132, 0.15); border: 1px solid rgba(0, 168, 132, 0.3); font-weight: 700; font-size: 1.1rem; color: #10b981;">#</div>
+              <img id="salon-info-avatar-img" src="" alt="Photo du Salon" style="display: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.15);">
+              <div id="salon-info-avatar-edit-overlay" style="display: none; position: absolute; bottom: -2px; right: -2px; width: 20px; height: 20px; border-radius: 50%; background: #10b981; color: #111b21; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+              </div>
+              <input type="file" id="input-salon-avatar-file" accept="image/jpeg,image/png,image/webp" style="display: none;">
+            </div>
+            <div>
+              <h3 id="salon-info-title" style="margin: 0; line-height: 1.2;">#Salon</h3>
+              <div id="salon-info-avatar-actions" style="display: none; margin-top: 3px; font-size: 0.72rem; gap: 8px;">
+                <span id="btn-trigger-salon-photo" style="color: #10b981; cursor: pointer; text-decoration: underline;">Changer la photo</span>
+                <span id="btn-remove-salon-photo" style="color: #ef4444; cursor: pointer; display: none; text-decoration: underline;">Supprimer</span>
+              </div>
+            </div>
           </div>
           <div class="modal-top-actions">
             <button type="button" class="btn-icon-action" id="btn-toggle-edit-salon" title="Modifier le nom du Salon"
@@ -2426,11 +2442,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1262" defer></script>
-    <script src="/js/idb-store.min.js?v=1262" defer></script>
-    <script src="/js/push-client.min.js?v=1262" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1262" defer></script>
-    <script src="/js/app.min.js?v=1262" defer></script>
+    <script src="/socket.io/socket.io.js?v=1263" defer></script>
+    <script src="/js/idb-store.min.js?v=1263" defer></script>
+    <script src="/js/push-client.min.js?v=1263" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1263" defer></script>
+    <script src="/js/app.min.js?v=1263" defer></script>
   </body>
 
 </html>
