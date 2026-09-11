@@ -667,14 +667,14 @@ function initSocket() {
         token: state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('digicom_token') : null)
       });
     }
-    if (state.activeContact && state.activeTab === 'contacts' && !document.hidden && document.visibilityState === 'visible') {
+    if (state.activeContact && !document.hidden && document.visibilityState === 'visible') {
       state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
       state.socket.emit('mark_read', { senderId: state.activeContact.id });
       if (typeof dismissPushNotificationForChat === 'function') {
         dismissPushNotificationForChat({ contactId: state.activeContact.id });
       }
     }
-    if (state.activeSalon && state.activeTab === 'salons') {
+    if (state.activeSalon) {
       state.socket.emit('join_salon', state.activeSalon.id);
       if (!document.hidden && document.visibilityState === 'visible' && typeof dismissPushNotificationForChat === 'function') {
         dismissPushNotificationForChat({ salonId: state.activeSalon.id });
@@ -776,7 +776,6 @@ function initSocket() {
     state.directMessages[otherPartyId].push(msg);
 
     const isChatVisibleToUser = Boolean(
-      state.activeTab === 'contacts' &&
       state.activeContact &&
       String(state.activeContact.id) === String(otherPartyId) &&
       !document.hidden &&
@@ -1897,21 +1896,21 @@ function setupEventListeners() {
         // 2. Feed must have real scrollable overflow (scrollHeight > clientHeight + 15)
         // 3. User must be scrolling near the top (scrollTop <= 120) and not resting at the absolute bottom
         // 4. Cooldown throttle of 600ms between page fetches
-        if (!state.isInitialFeedLoading && feed.scrollTop <= 120 && (feed.scrollHeight > feed.clientHeight + 15)) {
+        if (!state.isInitialFeedLoading && feed.scrollTop <= 150 && (feed.scrollHeight > feed.clientHeight + 15)) {
           const now = Date.now();
           if (now - (state.lastPaginationScrollTime || 0) > 600) {
             state.lastPaginationScrollTime = now;
-            if (state.activeTab === 'contacts' && state.activeContact) {
+            if (state.activeContact) {
               const pag = state.feedPagination && state.feedPagination[state.activeContact.id];
               if (pag && !pag.isLoading && pag.hasMore) {
                 loadDirectHistory(state.activeContact.id, true);
               }
-            } else if (state.activeTab === 'salons' && state.activeSalon) {
+            } else if (state.activeSalon) {
               const pag = state.salonPagination && state.salonPagination[state.activeSalon.id];
               if (pag && !pag.isLoading && pag.hasMore) {
                 loadSalonHistory(state.activeSalon.id, true);
               }
-            } else if (state.activeTab === 'support' && state.activeSupportSession) {
+            } else if (state.activeSupportSession) {
               loadSupportHistory(state.activeSupportSession, true);
             }
           }
@@ -2299,12 +2298,12 @@ function setupEventListeners() {
       let targetRoomId = null;
       let targetSenderId = null;
 
-      if (state.activeTab === 'contacts' && state.activeContact) {
+      if (state.activeContact) {
         targetRoomId = String(state.activeContact.id);
         targetSenderId = state.activeContact.id;
-      } else if (state.activeTab === 'salons' && state.activeSalon) {
+      } else if (state.activeSalon) {
         targetRoomId = String(state.activeSalon.id);
-      } else if (state.activeTab === 'support' && state.activeSupportSession) {
+      } else if (state.activeSupportSession) {
         targetRoomId = 'admin_' + state.activeSupportSession;
       }
 
@@ -2559,14 +2558,14 @@ function setupEventListeners() {
       const now = Date.now();
       if (state.socket && now - lastTypingEmit > 1500) {
         lastTypingEmit = now;
-        if (state.activeTab === 'contacts' && state.activeContact) {
+        if (state.activeContact) {
           state.socket.emit('typing', {
             channel: 'private',
             senderId: state.user.id,
             senderName: state.user.displayName || state.user.username,
             receiverId: state.activeContact.id
           });
-        } else if (state.activeTab === 'salons' && state.activeSalon) {
+        } else if (state.activeSalon) {
           state.socket.emit('typing', {
             channel: 'salon',
             salonId: state.activeSalon.id,
@@ -5703,7 +5702,7 @@ function updateActiveContactStatus() {
   const isOnline = state.onlineUserIds.includes(state.activeContact.id);
   dotEl.className = `status-dot-overlay ${isOnline ? 'online' : 'offline'}`;
   dotEl.removeAttribute('title');
-  if (statusEl && state.activeTab === 'contacts') {
+  if (statusEl && state.activeContact) {
     statusEl.textContent = '';
     statusEl.style.display = 'none';
   }
@@ -5724,11 +5723,11 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=40&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 20) {
+        if (olderMsgs.length < 40) {
           pag.hasMore = false;
         }
         if (olderMsgs.length > 0) {
@@ -5748,14 +5747,14 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     return;
   }
 
-  // Initial load of 20 messages
+  // Initial load of 50 messages
   pag.hasMore = true;
   pag.isLoading = false;
 
-  // 1. Instant local offline load from IndexedDB (first 20)
+  // 1. Instant local offline load from IndexedDB (first 50)
   if (window.digiStore && state.user) {
     try {
-      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 20);
+      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 50);
       if (cachedMsgs && cachedMsgs.length > 0) {
         state.directMessages[targetUserId] = cachedMsgs;
         pag.oldestTimestamp = cachedMsgs[0].timestamp;
@@ -5771,7 +5770,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
   }
 
   try {
-    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20`);
+    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50`);
     if (res.ok) {
       const data = await res.json();
       const newMsgs = data.messages || [];
@@ -5785,7 +5784,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
       state.unreadCounts[targetUserId] = 0;
       if (newMsgs.length > 0) {
         pag.oldestTimestamp = newMsgs[0].timestamp;
-        if (newMsgs.length < 20) pag.hasMore = false;
+        if (newMsgs.length < 50) pag.hasMore = false;
       } else {
         pag.hasMore = false;
       }
@@ -6066,9 +6065,9 @@ function renderDirectFeed(targetUserId) {
     return;
   }
 
-  // Render max 25 messages initially to keep mobile DOM ultra-lightweight
-  const msgs = allMsgs.length > 25 ? allMsgs.slice(-25) : allMsgs;
-  if (allMsgs.length > 25 && state.feedPagination && state.feedPagination[targetUserId]) {
+  // Render up to 50 messages initially to keep mobile DOM performant while showing ample history
+  const msgs = allMsgs.length > 50 ? allMsgs.slice(-50) : allMsgs;
+  if (allMsgs.length > 50 && state.feedPagination && state.feedPagination[targetUserId]) {
     state.feedPagination[targetUserId].hasMore = true;
     state.feedPagination[targetUserId].oldestTimestamp = msgs[0].timestamp;
   }
@@ -8529,11 +8528,11 @@ async function loadSalonHistory(salonId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/salons/${salonId}/messages?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/salons/${salonId}/messages?limit=40&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 20) pag.hasMore = false;
+        if (olderMsgs.length < 40) pag.hasMore = false;
         if (olderMsgs.length > 0) {
           pag.oldestTimestamp = olderMsgs[0].timestamp;
           state.salonMessages[salonId] = [...olderMsgs, ...(state.salonMessages[salonId] || [])];
@@ -8553,7 +8552,7 @@ async function loadSalonHistory(salonId, loadMore = false) {
   feed.innerHTML = '';
 
   try {
-    const res = await authFetch(`/api/salons/${salonId}/messages?limit=20`);
+    const res = await authFetch(`/api/salons/${salonId}/messages?limit=50`);
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];

@@ -658,8 +658,8 @@ async function editMessage(messageId, senderId, newContent) {
   return await get('SELECT * FROM messages WHERE id = ?', [messageId]);
 }
 
-async function getDirectMessages(userA, userB, userRole = 'family', limit = 20, before = null) {
-  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
+async function getDirectMessages(userA, userB, userRole = 'family', limit = 50, before = null) {
+  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 100));
   const beforeClause = before ? 'AND timestamp < ?' : '';
   const baseParams = [userA, userB, userB, userA];
   if (userRole === 'admin') {

@@ -3091,7 +3091,7 @@ app.get('/api/history/direct/:targetUserId', authenticateToken, async (req, res)
     const { limit, before } = req.query;
     await db.markMessagesAsRead(req.user.id, targetUserId);
     io.to(`user_${targetUserId}`).emit('messages_read_by_recipient', { readerId: req.user.id });
-    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, limit || 20, before || null);
+    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, limit || 50, before || null);
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: err.message });
