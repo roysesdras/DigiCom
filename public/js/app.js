@@ -1416,6 +1416,7 @@ function initSocket() {
       }
     }
     loadSalons();
+    renderCurrentActiveTabFeed();
   });
 
   state.socket.on('user_updated', (data) => {
@@ -5230,6 +5231,7 @@ function renderAllConversationsList() {
       title: formatSalonName(s.name),
       rawItem: s,
       avatarInitial: '#',
+      avatarUrl: s.avatar_url || null,
       isOnline: false,
       unreadCount,
       categoryTag: 'Salon',
@@ -5360,6 +5362,7 @@ function renderUnreadConversationsList() {
         title: formatSalonName(s.name),
         rawItem: s,
         avatarInitial: '#',
+        avatarUrl: s.avatar_url || null,
         isOnline: false,
         unreadCount,
         categoryTag: 'Salon',
@@ -5492,6 +5495,7 @@ function renderArchivedConversationsList() {
         title: formatSalonName(s.name),
         rawItem: s,
         avatarInitial: '#',
+        avatarUrl: s.avatar_url || null,
         isOnline: false,
         unreadCount,
         categoryTag: 'Archivé',
@@ -8998,6 +9002,7 @@ async function openSalonInfoModal(salonId) {
                     updateSalonModalAvatar(uploadData.avatarUrl);
                     selectSalon(salon);
                     loadSalons();
+                    renderCurrentActiveTabFeed();
                     if (typeof showToast === 'function') showToast('Photo du Salon mise à jour avec succès');
                   } else {
                     const err = await uploadRes.json().catch(() => ({}));
@@ -9031,6 +9036,7 @@ async function openSalonInfoModal(salonId) {
                 updateSalonModalAvatar(null);
                 selectSalon(salon);
                 loadSalons();
+                renderCurrentActiveTabFeed();
                 if (typeof showToast === 'function') showToast('Photo du Salon supprimée');
               }
             } catch (delErr) {
