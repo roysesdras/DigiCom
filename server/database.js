@@ -818,6 +818,136 @@ async function searchInChatMessages(userId, contactId, salonId, query, userRole 
   return [];
 }
 
+async function getMessageContext(messageId, userId, userRole = 'family', beforeCount = 10, afterCount = 10) {
+  if (!messageId) return null;
+  const msg = await get(
+    `SELECT m.*, u.display_name as sender_name
+     FROM messages m
+     LEFT JOIN users u ON u.id = m.sender_id
+     WHERE m.id = ? AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')`,
+    [String(messageId)]
+  );
+  if (!msg) return null;
+
+  if (msg.channel_type === 'private') {
+    const aStr = String(userId);
+    const aClean = aStr.replace(/^admin_/, '');
+    const sStr = String(msg.sender_id);
+    const rStr = String(msg.receiver_id);
+    const isSender = (sStr === aStr || sStr === aClean || sStr === `admin_${aClean}`);
+    const isReceiver = (rStr === aStr || rStr === aClean || rStr === `admin_${aClean}`);
+    if (!isSender && !isReceiver && userRole !== 'admin') {
+      return null;
+    }
+
+    const contactId = isSender ? msg.receiver_id : msg.sender_id;
+    const bStr = String(contactId);
+    const bClean = bStr.replace(/^admin_/, '');
+
+    const beforeMsgs = await all(
+      `SELECT * FROM (
+         SELECT m.*, u.display_name as sender_name
+         FROM messages m
+         LEFT JOIN users u ON u.id = m.sender_id
+         WHERE m.channel_type = 'private'
+           AND (
+             ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+             OR
+             ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+           )
+           AND m.timestamp < ?
+           AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+         ORDER BY m.timestamp DESC
+         LIMIT ?
+       ) ORDER BY m.timestamp ASC`,
+      [
+        aStr, aClean, `admin_${aClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        aStr, aClean, `admin_${aClean}`,
+        msg.timestamp,
+        beforeCount
+      ]
+    );
+
+    const afterMsgs = await all(
+      `SELECT m.*, u.display_name as sender_name
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.channel_type = 'private'
+         AND (
+           ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+           OR
+           ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+         )
+         AND m.timestamp > ?
+         AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+       ORDER BY m.timestamp ASC
+       LIMIT ?`,
+      [
+        aStr, aClean, `admin_${aClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        aStr, aClean, `admin_${aClean}`,
+        msg.timestamp,
+        afterCount
+      ]
+    );
+
+    return {
+      channelType: 'private',
+      targetId: bStr,
+      targetMessageId: msg.id,
+      messages: [...(beforeMsgs || []), msg, ...(afterMsgs || [])]
+    };
+  } else if (msg.channel_type === 'salon') {
+    const salonId = String(msg.receiver_id);
+    if (userRole !== 'admin') {
+      const row = await get(
+        `SELECT role FROM salon_members WHERE salon_id = ? AND user_id = ? AND (is_blocked = 0 OR is_blocked IS NULL)`,
+        [salonId, String(userId)]
+      );
+      if (!row) return null;
+    }
+
+    const beforeMsgs = await all(
+      `SELECT * FROM (
+         SELECT m.*, u.display_name as sender_name
+         FROM messages m
+         LEFT JOIN users u ON u.id = m.sender_id
+         WHERE m.channel_type = 'salon'
+           AND m.receiver_id = ?
+           AND m.timestamp < ?
+           AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+         ORDER BY m.timestamp DESC
+         LIMIT ?
+       ) ORDER BY m.timestamp ASC`,
+      [salonId, msg.timestamp, beforeCount]
+    );
+
+    const afterMsgs = await all(
+      `SELECT m.*, u.display_name as sender_name
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.channel_type = 'salon'
+         AND m.receiver_id = ?
+         AND m.timestamp > ?
+         AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+       ORDER BY m.timestamp ASC
+       LIMIT ?`,
+      [salonId, msg.timestamp, afterCount]
+    );
+
+    return {
+      channelType: 'salon',
+      targetId: salonId,
+      targetMessageId: msg.id,
+      messages: [...(beforeMsgs || []), msg, ...(afterMsgs || [])]
+    };
+  }
+  return null;
+}
+
 async function getUserByExactUsername(username) {
   if (!username) return null;
   const clean = username.toLowerCase().trim().replace(/^@/, '');
@@ -1806,5 +1936,6 @@ module.exports = {
   getUserPushPrivacy,
   setUserPushPrivacy,
   searchInChatMessages,
+  getMessageContext,
   initTables
 };

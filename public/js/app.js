@@ -9816,19 +9816,74 @@ window.jumpToPinnedMessage = async function(messageId) {
     }
   };
 
-  let msgEl = findElement();
+  const flashBubble = (el) => {
+    if (!el) return;
+    const bubble = el.querySelector('.msg-bubble') || el;
+    setTimeout(() => {
+      bubble.classList.remove('whatsapp-flash-highlight');
+      el.classList.remove('whatsapp-flash-highlight');
+      void bubble.offsetWidth; // Force reflow
+      bubble.classList.add('whatsapp-flash-highlight');
+      el.classList.add('whatsapp-flash-highlight');
 
-  // 2. If not in DOM, check if already cached in memory (state.directMessages or state.salonMessages)
-  if (!msgEl) {
-    if (state.activeContact) {
-      const allDirect = state.directMessages[state.activeContact.id] || [];
-      const inMemory = allDirect.some(m => String(m.id) === targetId);
-      if (inMemory) {
+      setTimeout(() => {
+        bubble.classList.remove('whatsapp-flash-highlight');
+        el.classList.remove('whatsapp-flash-highlight');
+      }, 2500);
+    }, 100);
+  };
+
+  const smoothScrollToElement = (el) => {
+    if (!el) return;
+    const feed = document.getElementById('messages-feed');
+    if (feed) {
+      const targetScrollTop = el.offsetTop - (feed.clientHeight / 2) + (el.clientHeight / 2);
+      feed.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    }
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      flashBubble(el);
+    });
+  };
+
+  // Step A: Instant check in existing DOM (0ms)
+  let msgEl = findElement();
+  if (msgEl) {
+    smoothScrollToElement(msgEl);
+    return;
+  }
+
+  // Step B: Instant Server Context Teleport (1 single roundtrip of ~20 contextual messages)
+  try {
+    const res = await authFetch(`/api/messages/${encodeURIComponent(targetId)}/context`);
+    if (res.ok) {
+      const context = await res.json();
+      if (context && Array.isArray(context.messages) && context.messages.length > 0) {
         const feed = document.getElementById('messages-feed');
         if (feed) {
           feed.innerHTML = '';
+          const targetKey = context.targetId;
+
+          if (context.channelType === 'private') {
+            state.directMessages[targetKey] = context.messages;
+            if (!state.feedPagination) state.feedPagination = {};
+            state.feedPagination[targetKey] = {
+              hasMore: true,
+              isLoading: false,
+              oldestTimestamp: context.messages[0].timestamp
+            };
+          } else if (context.channelType === 'salon') {
+            state.salonMessages[targetKey] = context.messages;
+            if (!state.salonPagination) state.salonPagination = {};
+            state.salonPagination[targetKey] = {
+              hasMore: true,
+              isLoading: false,
+              oldestTimestamp: context.messages[0].timestamp
+            };
+          }
+
           let lastDateKey = null;
-          allDirect.forEach(msg => {
+          context.messages.forEach(msg => {
             const dateKey = formatMessageDateGroup(msg.timestamp);
             if (dateKey && dateKey !== lastDateKey) {
               const sep = document.createElement('div');
@@ -9840,36 +9895,20 @@ window.jumpToPinnedMessage = async function(messageId) {
             }
             appendMessageToFeed(msg, false, false, false);
           });
+
           msgEl = findElement();
-        }
-      }
-    } else if (state.activeSalon) {
-      const allSalon = state.salonMessages[state.activeSalon.id] || [];
-      const inMemory = allSalon.some(m => String(m.id) === targetId);
-      if (inMemory) {
-        const feed = document.getElementById('messages-feed');
-        if (feed) {
-          feed.innerHTML = '';
-          let lastDateKey = null;
-          allSalon.forEach(msg => {
-            const dateKey = formatMessageDateGroup(msg.timestamp);
-            if (dateKey && dateKey !== lastDateKey) {
-              const sep = document.createElement('div');
-              sep.className = 'chat-date-separator';
-              sep.dataset.dateKey = dateKey;
-              sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
-              feed.appendChild(sep);
-              lastDateKey = dateKey;
-            }
-            appendMessageToFeed(msg, false, false, false);
-          });
-          msgEl = findElement();
+          if (msgEl) {
+            smoothScrollToElement(msgEl);
+            return;
+          }
         }
       }
     }
+  } catch (err) {
+    console.warn('[-] Context teleport failed, falling back to local/batch search:', err);
   }
 
-  // 3. If still not in DOM, fetch older history progressively (bypassing user scroll 800ms cooldown)
+  // Step C: Fallback progressive batch loader if offline or context missed
   if (!msgEl) {
     let attempts = 0;
     while (!findElement() && attempts < 10) {
@@ -9903,30 +9942,7 @@ window.jumpToPinnedMessage = async function(messageId) {
 
   msgEl = findElement();
   if (msgEl) {
-    // 4. Reliable smooth scroll: scroll container directly + compositor scrollIntoView
-    const feed = document.getElementById('messages-feed');
-    if (feed) {
-      const targetScrollTop = msgEl.offsetTop - (feed.clientHeight / 2) + (msgEl.clientHeight / 2);
-      feed.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
-    }
-    requestAnimationFrame(() => {
-      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-
-      // 5. Trigger signature WhatsApp emerald bubble flash as it glides into view
-      const bubble = msgEl.querySelector('.msg-bubble') || msgEl;
-      setTimeout(() => {
-        bubble.classList.remove('whatsapp-flash-highlight');
-        msgEl.classList.remove('whatsapp-flash-highlight');
-        void bubble.offsetWidth; // Force reflow
-        bubble.classList.add('whatsapp-flash-highlight');
-        msgEl.classList.add('whatsapp-flash-highlight');
-
-        setTimeout(() => {
-          bubble.classList.remove('whatsapp-flash-highlight');
-          msgEl.classList.remove('whatsapp-flash-highlight');
-        }, 2500);
-      }, 100);
-    });
+    smoothScrollToElement(msgEl);
   }
 };
 

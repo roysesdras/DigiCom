@@ -3112,6 +3112,20 @@ app.get('/api/messages/search', authenticateToken, async (req, res) => {
   }
 });
 
+// 10a-3. Instant Direct Message Context (Teleport to Pinned / Searched Message)
+app.get('/api/messages/:messageId/context', authenticateToken, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const context = await db.getMessageContext(messageId, req.user.id, req.user.role, 10, 10);
+    if (!context) {
+      return res.status(404).json({ error: 'Message non trouvé ou accès non autorisé' });
+    }
+    res.json(context);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 10b. Delete / Recall Message REST Endpoint
 app.delete('/api/messages/:messageId', authenticateToken, async (req, res) => {
   try {
