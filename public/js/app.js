@@ -1761,6 +1761,7 @@ function setupEventListeners() {
   const btnBack = document.getElementById('btn-back-to-contacts');
   if (btnBack) {
     btnBack.addEventListener('click', () => {
+      if (typeof window.closeInChatSearch === 'function') window.closeInChatSearch();
       document.body.classList.remove('mobile-chat-open');
       if (typeof syncActiveChatToServiceWorker === 'function') {
         syncActiveChatToServiceWorker({ clear: true });
@@ -5601,6 +5602,7 @@ function showEmptyFeed(show, text = 'Choisissez un contact dans la liste pour d�
 
 function selectContact(contact) {
   if (!contact) return;
+  if (typeof window.closeInChatSearch === 'function') window.closeInChatSearch();
   state.isInitialFeedLoading = true;
 
   if (state.socket) {
@@ -8399,6 +8401,7 @@ async function selectSalon(salon) {
     state.socket.emit('salon_mark_read', { salonId: salon.id });
   }
 
+  if (typeof window.closeInChatSearch === 'function') window.closeInChatSearch();
   hideMentionsPopover();
   state.activeSalon = salon;
   state.activeSalonMembers = [];
@@ -12048,6 +12051,332 @@ window.confirmClearCurrentConversation = async function(e) {
     showToast('Erreur réseau lors de la suppression.', 'error');
   }
 };
+
+/* =======================================================
+   IN-CHAT MESSAGE SEARCH MODULE (Retractable Bar / Ctrl+F)
+   Zero border, sovereign, instant DOM highlighting + Deep history
+   ======================================================= */
+
+let inChatSearchState = {
+  isOpen: false,
+  matches: [],
+  currentIndex: -1,
+  query: '',
+  debounceTimer: null
+};
+
+function clearSearchHighlights() {
+  const container = document.getElementById('messages-feed');
+  if (!container) return;
+  const marks = container.querySelectorAll('mark.chat-search-match');
+  marks.forEach(mark => {
+    const parent = mark.parentNode;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    }
+  });
+}
+
+function highlightSearchMatches(query) {
+  clearSearchHighlights();
+  if (!query || !query.trim()) return [];
+
+  const container = document.getElementById('messages-feed');
+  if (!container) return [];
+
+  const textNodes = [];
+  const textElements = container.querySelectorAll('.message-text, .quote-content, .msg-bubble > p, .task-card-title, .contract-compact-header');
+
+  textElements.forEach(el => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    let n;
+    while ((n = walker.nextNode())) {
+      if (n.nodeValue && n.nodeValue.trim().length > 0) {
+        textNodes.push(n);
+      }
+    }
+  });
+
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escaped})`, 'gi');
+  const matches = [];
+
+  textNodes.forEach(node => {
+    const val = node.nodeValue;
+    if (regex.test(val)) {
+      const frag = document.createDocumentFragment();
+      let lastIndex = 0;
+      regex.lastIndex = 0;
+      let match;
+      while ((match = regex.exec(val)) !== null) {
+        if (match.index > lastIndex) {
+          frag.appendChild(document.createTextNode(val.substring(lastIndex, match.index)));
+        }
+        const m = document.createElement('mark');
+        m.className = 'chat-search-match';
+        m.textContent = match[0];
+        frag.appendChild(m);
+        matches.push(m);
+        lastIndex = regex.lastIndex;
+      }
+      if (lastIndex < val.length) {
+        frag.appendChild(document.createTextNode(val.substring(lastIndex)));
+      }
+      if (node.parentNode) {
+        node.parentNode.replaceChild(frag, node);
+      }
+    }
+  });
+
+  return matches;
+}
+
+window.toggleInChatSearch = function() {
+  const bar = document.getElementById('in-chat-search-bar');
+  const input = document.getElementById('in-chat-search-input');
+  if (!bar) return;
+
+  if (inChatSearchState.isOpen) {
+    window.closeInChatSearch();
+  } else {
+    bar.style.display = 'block';
+    inChatSearchState.isOpen = true;
+    if (input) {
+      const selected = window.getSelection ? window.getSelection().toString().trim() : '';
+      if (selected && selected.length < 50) {
+        input.value = selected;
+      }
+      input.focus();
+      input.select();
+      if (input.value.trim()) {
+        performInChatSearch(input.value.trim());
+      }
+    }
+  }
+};
+
+window.closeInChatSearch = function() {
+  const bar = document.getElementById('in-chat-search-bar');
+  const input = document.getElementById('in-chat-search-input');
+  const counter = document.getElementById('in-chat-search-counter');
+  const serverResults = document.getElementById('in-chat-server-results');
+
+  clearSearchHighlights();
+
+  if (bar) bar.style.display = 'none';
+  if (serverResults) {
+    serverResults.style.display = 'none';
+    serverResults.innerHTML = '';
+  }
+  if (counter) counter.textContent = '';
+  if (input) input.value = '';
+
+  inChatSearchState.isOpen = false;
+  inChatSearchState.matches = [];
+  inChatSearchState.currentIndex = -1;
+  inChatSearchState.query = '';
+  if (inChatSearchState.debounceTimer) clearTimeout(inChatSearchState.debounceTimer);
+};
+
+window.navigateInChatSearch = function(direction = 1) {
+  const matches = inChatSearchState.matches;
+  if (!matches || matches.length === 0) return;
+
+  if (inChatSearchState.currentIndex >= 0 && matches[inChatSearchState.currentIndex]) {
+    matches[inChatSearchState.currentIndex].classList.remove('current-active');
+  }
+
+  let nextIdx = inChatSearchState.currentIndex + direction;
+  if (nextIdx >= matches.length) nextIdx = 0;
+  if (nextIdx < 0) nextIdx = matches.length - 1;
+
+  inChatSearchState.currentIndex = nextIdx;
+  const currentMatch = matches[nextIdx];
+  if (currentMatch) {
+    currentMatch.classList.add('current-active');
+    currentMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  const counter = document.getElementById('in-chat-search-counter');
+  if (counter) {
+    counter.textContent = `${nextIdx + 1}/${matches.length}`;
+  }
+};
+
+function performInChatSearch(query) {
+  inChatSearchState.query = query;
+  const counter = document.getElementById('in-chat-search-counter');
+
+  if (!query || query.trim().length === 0) {
+    clearSearchHighlights();
+    inChatSearchState.matches = [];
+    inChatSearchState.currentIndex = -1;
+    if (counter) counter.textContent = '';
+    const serverResults = document.getElementById('in-chat-server-results');
+    if (serverResults) {
+      serverResults.style.display = 'none';
+      serverResults.innerHTML = '';
+    }
+    return;
+  }
+
+  // 1. Instant local DOM highlight
+  const matches = highlightSearchMatches(query);
+  inChatSearchState.matches = matches;
+
+  if (matches.length > 0) {
+    inChatSearchState.currentIndex = 0;
+    matches[0].classList.add('current-active');
+    matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (counter) counter.textContent = `1/${matches.length}`;
+  } else {
+    inChatSearchState.currentIndex = -1;
+    if (counter) counter.textContent = '0/0';
+  }
+
+  // 2. Query deep server history if search string >= 2 chars
+  if (query.trim().length >= 2) {
+    triggerDeepServerSearch(query.trim());
+  } else {
+    const serverResults = document.getElementById('in-chat-server-results');
+    if (serverResults) {
+      serverResults.style.display = 'none';
+      serverResults.innerHTML = '';
+    }
+  }
+}
+
+async function triggerDeepServerSearch(query) {
+  let contactId = null;
+  let salonId = null;
+
+  if (state.activeTab === 'salons' && state.activeSalon) {
+    salonId = state.activeSalon.id;
+  } else if (state.activeContact) {
+    contactId = state.activeContact.id;
+  } else {
+    return;
+  }
+
+  const serverResults = document.getElementById('in-chat-server-results');
+  if (!serverResults) return;
+
+  try {
+    const params = new URLSearchParams({ q: query });
+    if (salonId) params.append('salonId', salonId);
+    else if (contactId) params.append('contactId', contactId);
+
+    const res = await authFetch(`/api/messages/search?${params.toString()}`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const serverMsgs = data.messages || [];
+
+    if (serverMsgs.length === 0) {
+      if (inChatSearchState.matches.length === 0) {
+        serverResults.innerHTML = '<div style="padding: 6px 10px; font-size: 0.75rem; color: #64748b; text-align: center;">Aucun message trouvé dans l’historique</div>';
+        serverResults.style.display = 'flex';
+      } else {
+        serverResults.style.display = 'none';
+      }
+      return;
+    }
+
+    serverResults.innerHTML = `
+      <div style="font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 6px;">
+        ${serverMsgs.length} résultat${serverMsgs.length > 1 ? 's' : ''} dans l'historique :
+      </div>
+      ${serverMsgs.map(msg => {
+        let snippet = msg.content || '';
+        try {
+          const parsed = JSON.parse(snippet);
+          if (parsed && parsed.text) snippet = parsed.text;
+          else if (parsed && parsed.type) snippet = `[${parsed.type}]`;
+        } catch (e) {}
+
+        const timeStr = msg.timestamp ? safeParseDate(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        const sender = msg.sender_name || (String(msg.sender_id) === String(state.user ? state.user.id : '') ? 'Vous' : 'Membre');
+        
+        return `
+          <div class="in-chat-server-item" onclick="window.jumpToOlderSearchResult('${msg.id}')" title="Aller à ce message">
+            <div class="in-chat-server-item-header">
+              <span style="font-weight: 600; color: #cbd5e1;">${escapeHtml(sender)}</span>
+              <span>${timeStr}</span>
+            </div>
+            <div class="in-chat-server-item-text">${escapeHtml(snippet)}</div>
+          </div>
+        `;
+      }).join('')}
+    `;
+    serverResults.style.display = 'flex';
+
+  } catch (err) {
+    console.error('[-] Error fetching server in-chat search:', err);
+  }
+}
+
+window.jumpToOlderSearchResult = async function(messageId) {
+  const serverResults = document.getElementById('in-chat-server-results');
+  if (serverResults) serverResults.style.display = 'none';
+
+  if (typeof window.jumpToPinnedMessage === 'function') {
+    await window.jumpToPinnedMessage(messageId);
+    if (inChatSearchState.query) {
+      setTimeout(() => {
+        inChatSearchState.matches = highlightSearchMatches(inChatSearchState.query);
+        const counter = document.getElementById('in-chat-search-counter');
+        if (counter && inChatSearchState.matches.length > 0) {
+          counter.textContent = `${inChatSearchState.currentIndex + 1 || 1}/${inChatSearchState.matches.length}`;
+        }
+      }, 300);
+    }
+  }
+};
+
+function initInChatSearchEvents() {
+  const input = document.getElementById('in-chat-search-input');
+  if (input) {
+    input.addEventListener('input', (e) => {
+      const q = e.target.value;
+      if (inChatSearchState.debounceTimer) clearTimeout(inChatSearchState.debounceTimer);
+      inChatSearchState.debounceTimer = setTimeout(() => {
+        performInChatSearch(q);
+      }, 180);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          window.navigateInChatSearch(-1);
+        } else {
+          window.navigateInChatSearch(1);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        window.closeInChatSearch();
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      const isChatActive = Boolean(state.activeContact || state.activeSalon);
+      if (isChatActive) {
+        e.preventDefault();
+        window.toggleInChatSearch();
+      }
+    }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initInChatSearchEvents);
+} else {
+  initInChatSearchEvents();
+}
+
 
 
 

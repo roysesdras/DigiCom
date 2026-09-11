@@ -768,6 +768,43 @@ async function areUsersContacts(userAId, userBId) {
   return Boolean(row);
 }
 
+async function searchInChatMessages(userId, contactId, salonId, query, userRole = 'family', limit = 20) {
+  if (!query || typeof query !== 'string') return [];
+  const searchTerm = `%${query.trim()}%`;
+  const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 50));
+
+  if (salonId) {
+    return await all(
+      `SELECT m.*, u.display_name as sender_name
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.channel_type = 'salon'
+         AND m.receiver_id = ?
+         AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+         AND m.content LIKE ?
+       ORDER BY m.timestamp DESC
+       LIMIT ?`,
+      [String(salonId), searchTerm, safeLimit]
+    );
+  } else if (contactId) {
+    const uA = String(userId);
+    const uB = String(contactId);
+    return await all(
+      `SELECT m.*, u.display_name as sender_name
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.channel_type = 'private'
+         AND ((m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?))
+         AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
+         AND m.content LIKE ?
+       ORDER BY m.timestamp DESC
+       LIMIT ?`,
+      [uA, uB, uB, uA, searchTerm, safeLimit]
+    );
+  }
+  return [];
+}
+
 async function getUserByExactUsername(username) {
   if (!username) return null;
   const clean = username.toLowerCase().trim().replace(/^@/, '');
@@ -1755,5 +1792,6 @@ module.exports = {
   // Push Privacy exports
   getUserPushPrivacy,
   setUserPushPrivacy,
+  searchInChatMessages,
   initTables
 };

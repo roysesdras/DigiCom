@@ -3098,6 +3098,20 @@ app.get('/api/history/direct/:targetUserId', authenticateToken, async (req, res)
   }
 });
 
+// 10a-2. In-Chat Message Search Endpoint
+app.get('/api/messages/search', authenticateToken, async (req, res) => {
+  try {
+    const { contactId, salonId, q } = req.query;
+    if (!q || q.trim().length < 1) {
+      return res.json({ messages: [] });
+    }
+    const messages = await db.searchInChatMessages(req.user.id, contactId, salonId, q.trim(), req.user.role, 20);
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 10b. Delete / Recall Message REST Endpoint
 app.delete('/api/messages/:messageId', authenticateToken, async (req, res) => {
   try {
