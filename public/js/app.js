@@ -347,7 +347,12 @@ function updateCurrentUserUI() {
 
   const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
   if (btnSuperAdmin) {
-    btnSuperAdmin.style.display = 'none';
+    btnSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+  }
+
+  const sidebarMenuSuperAdmin = document.getElementById('sidebar-menu-item-superadmin');
+  if (sidebarMenuSuperAdmin) {
+    sidebarMenuSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 
   const menuSuperAdmin = document.getElementById('menu-item-superadmin');
@@ -3696,19 +3701,30 @@ function setupEventListeners() {
     });
   }
 
+  const openSuperAdminDashboard = () => {
+    if (window.AdminDashboard) {
+      window.AdminDashboard.open();
+    } else {
+      const script = document.createElement('script');
+      script.src = '/js/admin-dashboard.min.js?v=1262';
+      script.onload = () => {
+        if (window.AdminDashboard) window.AdminDashboard.open();
+      };
+      document.body.appendChild(script);
+    }
+  };
+
   const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
   if (btnSuperAdmin) {
-    btnSuperAdmin.addEventListener('click', () => {
-      if (window.AdminDashboard) {
-        window.AdminDashboard.open();
-      } else {
-        const script = document.createElement('script');
-        script.src = '/js/admin-dashboard.min.js?v=1236';
-        script.onload = () => {
-          if (window.AdminDashboard) window.AdminDashboard.open();
-        };
-        document.body.appendChild(script);
-      }
+    btnSuperAdmin.addEventListener('click', openSuperAdminDashboard);
+  }
+
+  const sidebarMenuSuperadmin = document.getElementById('sidebar-menu-item-superadmin');
+  if (sidebarMenuSuperadmin) {
+    sidebarMenuSuperadmin.addEventListener('click', () => {
+      const moreMenu = document.getElementById('sidebar-more-dropdown-menu');
+      if (moreMenu) moreMenu.style.display = 'none';
+      openSuperAdminDashboard();
     });
   }
 
@@ -3790,14 +3806,7 @@ function setupEventListeners() {
   const menuItemSuperadmin = document.getElementById('menu-item-superadmin');
   if (menuItemSuperadmin) {
     menuItemSuperadmin.addEventListener('click', () => {
-      if (window.AdminDashboard) {
-        window.AdminDashboard.open();
-      } else {
-        const s = document.createElement('script');
-        s.src = '/js/admin-dashboard.min.js?v=1236';
-        s.onload = () => window.AdminDashboard && window.AdminDashboard.open();
-        document.body.appendChild(s);
-      }
+      openSuperAdminDashboard();
       if (window.closeChatMoreMenu) window.closeChatMoreMenu();
     });
   }
