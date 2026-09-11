@@ -573,7 +573,7 @@ async function navigateToTarget(targetData) {
   checkLatestSystemAnnouncement();
 
   // Clean URL parameters cleanly without reloading page
-  if (window.location.search && (window.location.search.includes('salon') || window.location.search.includes('contact') || window.location.search.includes('msg') || window.location.search.includes('sender') || window.location.search.includes('openDeadlines') || window.location.search.includes('announcement'))) {
+  if (window.location.search) {
     try {
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch (e) {}
@@ -1845,13 +1845,28 @@ function setupEventListeners() {
         }
 
         // Infinite scroll upward to load older messages
-        if (feed.scrollTop <= 60) {
-          if (state.activeTab === 'contacts' && state.activeContact) {
-            loadDirectHistory(state.activeContact.id, true);
-          } else if (state.activeTab === 'salons' && state.activeSalon) {
-            loadSalonHistory(state.activeSalon.id, true);
-          } else if (state.activeTab === 'support' && state.activeSupportSession) {
-            loadSupportHistory(state.activeSupportSession, true);
+        // STRICT SAFEGUARDS:
+        // 1. Never trigger during initial chat loading / rendering
+        // 2. Feed must have real scrollable overflow (scrollHeight > clientHeight + 200)
+        // 3. User must be scrolling near the top (scrollTop <= 80) and NOT at the bottom (distFromBottom > 200)
+        // 4. Cooldown throttle of at least 800ms between page fetches
+        if (!state.isInitialFeedLoading && feed.scrollTop <= 80 && distFromBottom > 200 && (feed.scrollHeight > feed.clientHeight + 200)) {
+          const now = Date.now();
+          if (now - (state.lastPaginationScrollTime || 0) > 800) {
+            state.lastPaginationScrollTime = now;
+            if (state.activeTab === 'contacts' && state.activeContact) {
+              const pag = state.feedPagination && state.feedPagination[state.activeContact.id];
+              if (pag && !pag.isLoading && pag.hasMore) {
+                loadDirectHistory(state.activeContact.id, true);
+              }
+            } else if (state.activeTab === 'salons' && state.activeSalon) {
+              const pag = state.salonPagination && state.salonPagination[state.activeSalon.id];
+              if (pag && !pag.isLoading && pag.hasMore) {
+                loadSalonHistory(state.activeSalon.id, true);
+              }
+            } else if (state.activeTab === 'support' && state.activeSupportSession) {
+              loadSupportHistory(state.activeSupportSession, true);
+            }
           }
         }
       }, { passive: true });
@@ -2195,26 +2210,6 @@ function setupEventListeners() {
   function syncActiveChatPresence() {
     if (activeRoomSyncTimeout) clearTimeout(activeRoomSyncTimeout);
     activeRoomSyncTimeout = setTimeout(() => {
-      // Check if URL parameters have deep link (e.g. from background notification navigation)
-      if (window.location.search) {
-        const currentSearchParams = new URLSearchParams(window.location.search);
-        const urlContact = currentSearchParams.get('contact') || currentSearchParams.get('contactId');
-        const urlSalon = currentSearchParams.get('salon') || currentSearchParams.get('salonId');
-        const urlMsg = currentSearchParams.get('msg') || currentSearchParams.get('messageId');
-        const urlChannel = currentSearchParams.get('channel');
-        const urlRequests = currentSearchParams.get('openRequests');
-
-        if (urlContact || urlSalon || urlMsg || urlChannel || urlRequests) {
-          navigateToTarget({
-            contactId: urlContact,
-            salonId: urlSalon,
-            messageId: urlMsg,
-            channel: urlChannel,
-            openRequests: urlRequests === 'true'
-          });
-        }
-      }
-
       if (!state.socket || !state.socket.connected) return;
 
       let targetRoomId = null;
@@ -5522,6 +5517,7 @@ function showEmptyFeed(show, text = 'Choisissez un contact dans la liste pour d√
 
 function selectContact(contact) {
   if (!contact) return;
+  state.isInitialFeedLoading = true;
 
   if (state.socket) {
     if (state.activeSalon) {
@@ -5639,8 +5635,10 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
   state.feedPagination[targetUserId] = pag;
 
   if (loadMore) {
-    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+    const now = Date.now();
+    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp || (pag.lastLoadTime && now - pag.lastLoadTime < 800)) return;
     pag.isLoading = true;
+    pag.lastLoadTime = now;
     try {
       const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
@@ -5715,10 +5713,15 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
       if (hasChanged && state.activeContact && String(state.activeContact.id) === String(targetUserId)) {
         renderDirectFeed(targetUserId);
         updateActiveContactStatus();
+      } else {
+        setTimeout(() => {
+          state.isInitialFeedLoading = false;
+        }, 300);
       }
     }
   } catch (err) {
     console.error('[-] Error loading direct history from network:', err);
+    state.isInitialFeedLoading = false;
   }
 }
 
@@ -5996,7 +5999,10 @@ function renderDirectFeed(targetUserId) {
   requestAnimationFrame(() => scrollToBottom(false));
   setTimeout(() => scrollToBottom(false), 50);
   setTimeout(() => scrollToBottom(false), 200);
-  setTimeout(() => scrollToBottom(false), 600);
+  setTimeout(() => {
+    scrollToBottom(false);
+    state.isInitialFeedLoading = false;
+  }, 600);
 }
 
 function formatBytes(bytes) {
@@ -7601,8 +7607,10 @@ async function loadSupportHistory(senderId, loadMore = false) {
     state.supportPagination[senderId] = pag;
 
     if (loadMore) {
-      if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+      const now = Date.now();
+      if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp || (pag.lastLoadTime && now - pag.lastLoadTime < 800)) return;
       pag.isLoading = true;
+      pag.lastLoadTime = now;
       try {
         const res = await fetch(`/api/history/support?senderId=${senderId}&limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
         if (res.ok) {
@@ -8253,6 +8261,7 @@ function updateSalonBlockedComposerState(isBlocked, salonName = '') {
 }
 
 async function selectSalon(salon) {
+  state.isInitialFeedLoading = true;
   if (state.socket) {
     if (state.activeContact) {
       state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
@@ -8388,8 +8397,10 @@ async function loadSalonHistory(salonId, loadMore = false) {
   state.salonPagination[salonId] = pag;
 
   if (loadMore) {
-    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp) return;
+    const now = Date.now();
+    if (pag.isLoading || !pag.hasMore || !pag.oldestTimestamp || (pag.lastLoadTime && now - pag.lastLoadTime < 800)) return;
     pag.isLoading = true;
+    pag.lastLoadTime = now;
     try {
       const res = await authFetch(`/api/salons/${salonId}/messages?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
@@ -8428,6 +8439,7 @@ async function loadSalonHistory(salonId, loadMore = false) {
 
       if (messages.length === 0) {
         pag.hasMore = false;
+        state.isInitialFeedLoading = false;
         feed.innerHTML = `
           <div style="padding: 2rem; text-align: center; color: var(--text-dim); font-size: 0.85rem;">
             D√©but du Salon Confidentiel <strong>${escapeHtml(formatSalonName(state.activeSalon ? state.activeSalon.name : ''))}</strong>.<br>
@@ -8454,9 +8466,14 @@ async function loadSalonHistory(salonId, loadMore = false) {
         appendMessageToFeed(msg, false, false, false);
       });
       scrollToBottom(false);
+      setTimeout(() => {
+        scrollToBottom(false);
+        state.isInitialFeedLoading = false;
+      }, 500);
     }
   } catch (err) {
     console.error('[-] Error loading Salon history:', err);
+    state.isInitialFeedLoading = false;
   }
 }
 
