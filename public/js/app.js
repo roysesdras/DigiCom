@@ -305,9 +305,6 @@ function updateCurrentUserUI() {
   const sidebarNameEl = document.getElementById('sidebar-user-display-name');
   if (sidebarNameEl) sidebarNameEl.textContent = username;
 
-  const sidebarRoleEl = document.getElementById('sidebar-user-role-label');
-  if (sidebarRoleEl) sidebarRoleEl.textContent = state.user.role === 'admin' ? 'Admin' : 'En ligne';
-
   const initial = (username || '?').charAt(0).toUpperCase();
   const avatarInitEl = document.getElementById('sidebar-user-avatar-initial');
   const avatarImgEl = document.getElementById('sidebar-user-avatar-img');
