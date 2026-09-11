@@ -3404,6 +3404,25 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Sovereign Rule: Discretion & Zero Distraction - Verify mutual contact relationship
+      const isContact = await db.areUsersContacts(senderId, receiverId);
+      if (!isContact) {
+        const senderUser = await db.getUserById(senderId);
+        const receiverUser = await db.getUserById(receiverId);
+        const isSenderAdmin = senderUser && senderUser.role === 'admin';
+        const isReceiverAdmin = receiverUser && receiverUser.role === 'admin';
+
+        if (!isSenderAdmin && !isReceiverAdmin) {
+          logger.warn('SECURITY', `[REJECTED] Private message blocked: ${senderId} -> ${receiverId} (not in mutual contacts)`);
+          socket.emit('message_rejected', {
+            id: msgId,
+            receiverId: receiverId,
+            error: 'Sécurité DigiCom : Vous ne pouvez pas envoyer de message privé à cet utilisateur sans invitation mutuelle acceptée.'
+          });
+          return;
+        }
+      }
+
       logger.info('MESSAGE', `Private message from ${senderName} (${senderId}) -> ${receiverId}`, { msgId });
 
       let contentToSave = data.content;
@@ -3960,10 +3979,28 @@ io.on('connection', (socket) => {
   });
 
   // ---------------- WebRTC Audio & Video Calling Signaling ----------------
-  socket.on('call_user', (data) => {
+  socket.on('call_user', async (data) => {
     const callerId = socket.user ? socket.user.id : socket.userId;
     const callerName = socket.user ? (socket.user.displayName || socket.user.username) : 'Membre';
     if (data && data.targetUserId) {
+      // Sovereign Rule: Discretion & Zero Distraction - Verify mutual contacts before signaling call
+      const isContact = await db.areUsersContacts(callerId, data.targetUserId);
+      if (!isContact) {
+        const callerUser = await db.getUserById(callerId);
+        const targetUser = await db.getUserById(data.targetUserId);
+        const isCallerAdmin = callerUser && callerUser.role === 'admin';
+        const isTargetAdmin = targetUser && targetUser.role === 'admin';
+
+        if (!isCallerAdmin && !isTargetAdmin) {
+          logger.warn('SECURITY', `[REJECTED] Call blocked: ${callerId} -> ${data.targetUserId} (not in mutual contacts)`);
+          socket.emit('call_rejected', {
+            targetUserId: data.targetUserId,
+            reason: 'Appel non autorisé : cet utilisateur n\'est pas dans vos contacts approuvés.'
+          });
+          return;
+        }
+      }
+
       io.to(`user_${data.targetUserId}`).emit('call_incoming', {
         callerId,
         callerName,

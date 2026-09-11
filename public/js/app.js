@@ -740,6 +740,13 @@ function initSocket() {
     console.warn('[!] Socket auth error:', err ? err.error : 'Session expired');
   });
 
+  // Rejection notification if sending to unverified contact (Sovereign Rule)
+  state.socket.on('message_rejected', (data) => {
+    if (typeof showToast === 'function') {
+      showToast(data.error || 'Message rejeté : cet utilisateur ne fait pas partie de vos contacts.', 'error');
+    }
+  });
+
   // Direct 1-to-1 Message Received
   state.socket.on('private_message', (msg) => {
     const otherPartyId = msg.senderId === state.user.id ? msg.receiverId : msg.senderId;
