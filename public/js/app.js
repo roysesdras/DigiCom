@@ -803,6 +803,9 @@ function initSocket() {
       if (state.socket) {
         state.socket.emit('mark_read', { senderId: otherPartyId });
       }
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ contactId: otherPartyId });
+      }
 
       // Append incoming message in active conversation and auto-scroll to bottom
       appendMessageToFeed(msg, false, true);
@@ -1145,6 +1148,9 @@ function initSocket() {
     if (isSalonActive) {
       if (state.socket && (msg.senderId !== state.user.id && msg.sender_id !== state.user.id)) {
         state.socket.emit('salon_mark_read', { salonId });
+      }
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ salonId });
       }
       appendMessageToFeed(msg, false, true);
       scrollToBottom(false);
@@ -2231,6 +2237,21 @@ function setupEventListeners() {
         state.socket.emit('enter_active_chat', { partnerId: targetRoomId });
         if (targetSenderId) {
           state.socket.emit('mark_read', { senderId: targetSenderId });
+          if (typeof dismissPushNotificationForChat === 'function') {
+            dismissPushNotificationForChat({ contactId: targetSenderId });
+          }
+        } else if (state.activeSalon) {
+          if (typeof dismissPushNotificationForChat === 'function') {
+            dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+          }
+        }
+      }
+
+      if (document.visibilityState === 'visible') {
+        if (state.activeContact && typeof dismissPushNotificationForChat === 'function') {
+          dismissPushNotificationForChat({ contactId: state.activeContact.id });
+        } else if (state.activeSalon && typeof dismissPushNotificationForChat === 'function') {
+          dismissPushNotificationForChat({ salonId: state.activeSalon.id });
         }
       }
 
@@ -3528,6 +3549,9 @@ function setupEventListeners() {
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ all: true });
+      }
       try {
         if (window.digiPushClient) {
           await window.digiPushClient.unsubscribeUser().catch(() => {});
@@ -5500,6 +5524,9 @@ function selectContact(contact) {
   state.activeSupportSession = null;
   state.activeTab = 'contacts';
   state.unreadCounts[contact.id] = 0;
+  if (typeof dismissPushNotificationForChat === 'function') {
+    dismissPushNotificationForChat({ contactId: contact.id });
+  }
   localStorage.setItem('digicom_active_contact', contact.id);
   localStorage.removeItem('digicom_active_salon');
 
@@ -7327,6 +7354,64 @@ function updateAllTabsBadges() {
   }
 }
 
+/**
+ * Dismiss OS system push notifications for a conversation when the user views it.
+ * Uses both direct ServiceWorkerRegistration.getNotifications().close() and SW postMessage.
+ */
+async function dismissPushNotificationForChat({ contactId = null, salonId = null, all = false } = {}) {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && typeof reg.getNotifications === 'function') {
+        const notifs = await reg.getNotifications();
+        if (notifs && notifs.length > 0) {
+          notifs.forEach(notif => {
+            if (all) {
+              notif.close();
+              return;
+            }
+            const d = notif.data || {};
+            const tag = notif.tag || '';
+            let shouldClose = false;
+            if (contactId) {
+              const cStr = String(contactId);
+              if (tag === `contact-${cStr}` || String(d.contactId) === cStr || String(d.senderId) === cStr) {
+                shouldClose = true;
+              }
+            }
+            if (salonId) {
+              const sStr = String(salonId);
+              if (tag === `salon-${sStr}` || String(d.salonId) === sStr) {
+                shouldClose = true;
+              }
+            }
+            if (shouldClose) {
+              notif.close();
+            }
+          });
+        }
+      }
+
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'DISMISS_NOTIFICATIONS',
+          contactId: contactId ? String(contactId) : null,
+          salonId: salonId ? String(salonId) : null,
+          all: !!all
+        });
+      }
+    }
+
+    // Refresh remaining badge count
+    if (typeof updateAllTabsBadges === 'function') {
+      updateAllTabsBadges();
+    }
+  } catch (err) {
+    console.warn('[-] dismissPushNotificationForChat warning:', err);
+  }
+}
+window.dismissPushNotificationForChat = dismissPushNotificationForChat;
+
 async function loadSupportConversations() {
   try {
     const res = await fetch('/api/support/conversations');
@@ -8140,6 +8225,9 @@ async function selectSalon(salon) {
   state.activeSupportSession = null;
   state.activeTab = 'salons';
   state.unreadSalonCounts[salon.id] = 0;
+  if (typeof dismissPushNotificationForChat === 'function') {
+    dismissPushNotificationForChat({ salonId: salon.id });
+  }
   cancelReply();
   localStorage.removeItem('digicom_active_contact');
   localStorage.setItem('digicom_active_salon', salon.id);

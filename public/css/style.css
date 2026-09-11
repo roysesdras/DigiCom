@@ -6027,6 +6027,23 @@ body {
   color: #ffffff;
 }
 
+.dropdown-item.dropdown-item-danger {
+  color: #ea4335;
+}
+
+.dropdown-item.dropdown-item-danger svg {
+  color: #ea4335;
+}
+
+.dropdown-item.dropdown-item-danger:hover {
+  background: rgba(234, 67, 53, 0.12);
+  color: #ff6b6b;
+}
+
+.dropdown-item.dropdown-item-danger:hover svg {
+  color: #ff6b6b;
+}
+
 .dropdown-item-badge {
   background: #00a884;
   color: #111b21;

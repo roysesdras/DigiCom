@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1241';
+const CACHE_NAME = 'digicom-pwa-v1242';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -382,6 +382,53 @@ self.addEventListener('sync', (event) => {
         for (const client of clientList) {
           client.postMessage({ type: 'FLUSH_OUTBOX' });
         }
+      })
+    );
+  }
+});
+
+// Real-time Push Notification Dismissal Handler
+// Closes OS/system notifications when user views or reads a conversation in foreground
+self.addEventListener('message', (event) => {
+  if (!event.data) return;
+  if (event.data.type === 'DISMISS_NOTIFICATIONS') {
+    const { contactId, salonId, all } = event.data;
+    event.waitUntil(
+      self.registration.getNotifications().then((notifications) => {
+        if (!notifications || notifications.length === 0) return;
+        notifications.forEach((notif) => {
+          if (all) {
+            notif.close();
+            return;
+          }
+          const d = notif.data || {};
+          const tag = notif.tag || '';
+          let shouldClose = false;
+          if (contactId) {
+            const cStr = String(contactId);
+            if (tag === `contact-${cStr}` || String(d.contactId) === cStr || String(d.senderId) === cStr) {
+              shouldClose = true;
+            }
+          }
+          if (salonId) {
+            const sStr = String(salonId);
+            if (tag === `salon-${sStr}` || String(d.salonId) === sStr) {
+              shouldClose = true;
+            }
+          }
+          if (shouldClose) {
+            notif.close();
+          }
+        });
+        return self.registration.getNotifications();
+      }).then((remaining) => {
+        if (!remaining || remaining.length === 0) {
+          if (self.navigator && 'clearAppBadge' in self.navigator) {
+            self.navigator.clearAppBadge().catch(() => {});
+          }
+        }
+      }).catch((err) => {
+        console.warn('[-] Error in SW DISMISS_NOTIFICATIONS:', err);
       })
     );
   }
