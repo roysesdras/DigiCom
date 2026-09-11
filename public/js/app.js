@@ -1744,10 +1744,15 @@ function setupEventListeners() {
       state.activeSalon = null;
       cancelReply();
       showEmptyFeed(true);
-      if (state.activeTab === 'salons') {
+      if (typeof renderCurrentActiveTabFeed === 'function') {
+        renderCurrentActiveTabFeed();
+      } else if (state.activeTab === 'salons') {
         renderSalonsList();
       } else {
         renderContactsList();
+      }
+      if (typeof updateAllTabsBadges === 'function') {
+        updateAllTabsBadges();
       }
     });
   }
@@ -4262,13 +4267,16 @@ async function loadContacts() {
     }
   }
 
-  state.contacts.forEach(c => {
-    if (c.unreadCount !== undefined && (!state.activeContact || String(state.activeContact.id) !== String(c.id))) {
-      state.unreadCounts[c.id] = c.unreadCount;
-    } else if (state.activeContact && String(state.activeContact.id) === String(c.id)) {
-      state.unreadCounts[c.id] = 0;
+  const newUnreadCounts = {};
+  (state.contacts || []).forEach(c => {
+    const count = Number(c.unreadCount) || 0;
+    if (state.activeContact && String(state.activeContact.id) === String(c.id)) {
+      newUnreadCounts[c.id] = 0;
+    } else {
+      newUnreadCounts[c.id] = count;
     }
   });
+  state.unreadCounts = newUnreadCounts;
   renderCurrentActiveTabFeed();
   updateAllTabsBadges();
 
@@ -7403,9 +7411,18 @@ function renderCurrentActiveTabFeed() {
 }
 
 function updateAllTabsBadges() {
-  const contactsUnread = Object.values(state.unreadCounts || {}).reduce((a, b) => a + (Number(b) || 0), 0);
-  const salonsUnread = Object.values(state.unreadSalonCounts || {}).reduce((a, b) => a + (Number(b) || 0), 0);
-  const supportUnread = (state.supportConversations || []).reduce((a, c) => a + (Number(c.unread_count) || 0), 0);
+  const contactsUnread = (state.contacts || []).reduce((acc, c) => {
+    if (state.archived && state.archived.has(String(c.id))) return acc;
+    return acc + (Number(state.unreadCounts[c.id]) || 0);
+  }, 0);
+  const salonsUnread = (state.salons || []).reduce((acc, s) => {
+    if (state.archived && state.archived.has(String(s.id))) return acc;
+    return acc + (Number(state.unreadSalonCounts[s.id]) || 0);
+  }, 0);
+  const supportUnread = (state.supportConversations || []).reduce((a, c) => {
+    if (state.archived && state.archived.has(String(c.sender_id))) return a;
+    return a + (Number(c.unread_count) || 0);
+  }, 0);
   const totalUnread = contactsUnread + salonsUnread + (state.user && state.user.role === 'admin' ? supportUnread : 0);
 
   const allBadge = document.getElementById('all-badge');

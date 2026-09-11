@@ -696,12 +696,16 @@ async function getDirectMessages(userA, userB, userRole = 'family', limit = 20, 
 }
 
 async function getUnreadCountsForUser(userId) {
+  const uStr = String(userId);
+  const uClean = uStr.replace(/^admin_/, '');
   const rows = await all(
     `SELECT sender_id, COUNT(*) as unread_count
      FROM messages
-     WHERE receiver_id = ? AND is_read = 0 AND (deleted_scope IS NULL OR deleted_scope != 'all')
+     WHERE (receiver_id = ? OR receiver_id = ? OR receiver_id = ?) 
+       AND is_read = 0 
+       AND (deleted_scope IS NULL OR deleted_scope != 'all')
      GROUP BY sender_id`,
-    [userId]
+    [uStr, uClean, `admin_${uClean}`]
   );
   const counts = {};
   rows.forEach(r => {
@@ -711,9 +715,16 @@ async function getUnreadCountsForUser(userId) {
 }
 
 async function markMessagesAsRead(receiverId, senderId) {
+  const rStr = String(receiverId);
+  const rClean = rStr.replace(/^admin_/, '');
+  const sStr = String(senderId);
+  const sClean = sStr.replace(/^admin_/, '');
   return await run(
-    `UPDATE messages SET is_read = 1 WHERE receiver_id = ? AND sender_id = ? AND is_read = 0`,
-    [receiverId, senderId]
+    `UPDATE messages SET is_read = 1 
+     WHERE (receiver_id = ? OR receiver_id = ? OR receiver_id = ?) 
+       AND (sender_id = ? OR sender_id = ? OR sender_id = ?) 
+       AND is_read = 0`,
+    [rStr, rClean, `admin_${rClean}`, sStr, sClean, `admin_${sClean}`]
   );
 }
 
