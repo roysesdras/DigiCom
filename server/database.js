@@ -953,12 +953,12 @@ async function getSalonsForUser(userId) {
        (SELECT sender_name FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_sender_name,
        (SELECT is_read FROM messages WHERE channel_type = 'salon' AND receiver_id = s.id ORDER BY timestamp DESC LIMIT 1) as last_is_read,
        (SELECT COUNT(*) FROM messages 
-        WHERE channel_type = 'salon' 
-          AND receiver_id = s.id 
-          AND sender_id != ? 
-          AND (deleted_scope IS NULL OR deleted_scope != 'all')
-          AND (sm.last_read_at IS NULL OR timestamp > sm.last_read_at)
-       ) as unread_count
+         WHERE channel_type = 'salon' 
+           AND receiver_id = s.id 
+           AND sender_id != ? 
+           AND (deleted_scope IS NULL OR deleted_scope != 'all')
+           AND timestamp > COALESCE(sm.last_read_at, sm.joined_at, CURRENT_TIMESTAMP)
+        ) as unread_count
      FROM salons s
      JOIN salon_members sm ON s.id = sm.salon_id
      WHERE sm.user_id = ?
@@ -993,9 +993,10 @@ async function isSalonAdmin(salonId, userId) {
 }
 
 async function addSalonMember(salonId, userId, role = 'member') {
+  const now = new Date().toISOString();
   await run(
-    `INSERT OR IGNORE INTO salon_members (salon_id, user_id, role, is_blocked) VALUES (?, ?, ?, 0)`,
-    [salonId, userId, role]
+    `INSERT OR IGNORE INTO salon_members (salon_id, user_id, role, is_blocked, last_read_at) VALUES (?, ?, ?, 0, ?)`,
+    [salonId, userId, role, now]
   );
 }
 

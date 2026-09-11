@@ -8242,25 +8242,15 @@ async function loadSalons() {
     if (res.ok) {
       const data = await res.json();
       state.salons = data.salons || [];
-      let totalSalonUnreads = 0;
+      const newSalonCounts = {};
       state.salons.forEach(s => {
         if (s.unread_count !== undefined && (!state.activeSalon || String(state.activeSalon.id) !== String(s.id))) {
-          state.unreadSalonCounts[s.id] = s.unread_count;
+          newSalonCounts[s.id] = s.unread_count;
         } else if (state.activeSalon && String(state.activeSalon.id) === String(s.id)) {
-          state.unreadSalonCounts[s.id] = 0;
+          newSalonCounts[s.id] = 0;
         }
-        totalSalonUnreads += (state.unreadSalonCounts[s.id] || 0);
       });
-      const sBadge = document.getElementById('salons-badge');
-      if (sBadge) {
-        if (totalSalonUnreads > 0 && state.activeTab !== 'salons') {
-          sBadge.textContent = totalSalonUnreads > 99 ? '99+' : totalSalonUnreads;
-          sBadge.style.display = 'inline-block';
-        } else if (totalSalonUnreads === 0) {
-          sBadge.textContent = '0';
-          sBadge.style.display = 'none';
-        }
-      }
+      state.unreadSalonCounts = newSalonCounts;
       renderCurrentActiveTabFeed();
       updateAllTabsBadges();
     }
@@ -8471,9 +8461,9 @@ async function selectSalon(salon) {
     if (memRes.ok) {
       const memData = await memRes.json();
       state.activeSalonMembers = memData.members || [];
-      const me = state.activeSalonMembers.find(m => m.id === (state.user ? state.user.id : ''));
+      const me = state.activeSalonMembers.find(m => String(m.id) === String(state.user ? state.user.id : ''));
       if (me) {
-        if (me.role === 'admin') isSalonAdmin = true;
+        if (me.salon_role === 'admin' || me.salon_role === 'creator' || me.role === 'admin' || me.role === 'creator') isSalonAdmin = true;
         if (Boolean(me.is_blocked)) {
           updateSalonBlockedComposerState(true, formattedName);
         }
@@ -8905,6 +8895,34 @@ async function openSalonInfoModal(salonId) {
               }
             } catch (e) {
               alert('Erreur lors de la suppression du Salon.');
+            }
+          }
+        };
+      }
+
+      // Leave Salon button (Non-creator members)
+      const leaveBtn = document.getElementById('btn-leave-active-salon');
+      if (leaveBtn) {
+        leaveBtn.style.display = !isCurrentUserCreator ? 'flex' : 'none';
+        leaveBtn.onclick = async () => {
+          if (confirm(`Êtes-vous sûr de vouloir quitter le Salon "${formatSalonName(salon.name)}" ?`)) {
+            try {
+              leaveBtn.disabled = true;
+              const res = await authFetch(`/api/salons/${salonId}/members/${state.user ? state.user.id : ''}`, { method: 'DELETE' });
+              if (res.ok) {
+                hideModal('salon-info-modal');
+                state.activeSalon = null;
+                showEmptyFeed(true);
+                await loadSalons();
+                if (typeof showToast === 'function') showToast('Vous avez quitté le Salon.');
+              } else {
+                const errData = await res.json();
+                alert(errData.error || 'Erreur lors de la sortie du Salon.');
+              }
+            } catch (e) {
+              alert('Erreur lors de la sortie du Salon.');
+            } finally {
+              leaveBtn.disabled = false;
             }
           }
         };

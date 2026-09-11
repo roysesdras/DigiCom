@@ -1154,6 +1154,19 @@ app.post('/api/salons/create', authenticateToken, async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Le nom du Salon est obligatoire' });
     }
+    // Sovereign Rule: Only mutual contacts can be added to a salon (unless admin)
+    let safeMemberIds = Array.isArray(memberIds) ? memberIds : [];
+    if (req.user.role !== 'admin') {
+      const filtered = [];
+      for (const mid of safeMemberIds) {
+        if (mid && String(mid) !== String(req.user.id)) {
+          const isContact = await db.areUsersContacts(req.user.id, mid);
+          if (isContact) filtered.push(mid);
+        }
+      }
+      safeMemberIds = filtered;
+    }
+
     const salonId = 'salon_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const salon = await db.createSalon({
       id: salonId,
@@ -1161,7 +1174,7 @@ app.post('/api/salons/create', authenticateToken, async (req, res) => {
       description: description ? description.trim() : '',
       icon: icon || '🛡️',
       created_by: req.user.id,
-      memberIds: Array.isArray(memberIds) ? memberIds : []
+      memberIds: safeMemberIds
     });
 
     // Fetch members to send notifications & socket events
@@ -1287,10 +1300,23 @@ app.post('/api/salons/:id/members/add', authenticateToken, async (req, res) => {
     if (!salon) return res.status(404).json({ error: 'Salon introuvable' });
     const formattedSalonName = '#' + (salon.name || '').replace(/^#+/, '');
 
+    // Sovereign Rule: Only mutual contacts can be added to an existing salon (unless admin)
+    let safeMemberIds = Array.isArray(memberIds) ? memberIds : [];
+    if (req.user.role !== 'admin') {
+      const filtered = [];
+      for (const uid of safeMemberIds) {
+        if (uid && String(uid) !== String(req.user.id)) {
+          const isContact = await db.areUsersContacts(req.user.id, uid);
+          if (isContact) filtered.push(uid);
+        }
+      }
+      safeMemberIds = filtered;
+    }
+
     const currentMembers = await db.getSalonMembers(id);
     const currentIds = currentMembers.map(m => m.id);
 
-    for (const uid of memberIds) {
+    for (const uid of safeMemberIds) {
       if (!currentIds.includes(uid)) {
         await db.addSalonMember(id, uid, 'member');
         io.to(`user_${uid}`).emit('salon_invited', { salonId: id, salon });
@@ -1360,13 +1386,16 @@ app.put('/api/salons/:id/members/:userId/role', authenticateToken, async (req, r
   }
 });
 
-// Remove a member from the salon (Creator only)
+// Remove a member from the salon (Creator, Co-admin or Self-Leave)
 app.delete('/api/salons/:id/members/:userId', authenticateToken, async (req, res) => {
   try {
     const { id, userId } = req.params;
+    const isSelf = String(req.user.id) === String(userId);
     const isCreator = await db.isSalonCreator(id, req.user.id);
-    if (!isCreator) {
-      return res.status(403).json({ error: 'Seul le créateur du salon peut retirer des membres.' });
+    const isAdmin = await db.isSalonAdmin(id, req.user.id);
+
+    if (!isSelf && !isCreator && !isAdmin) {
+      return res.status(403).json({ error: 'Action non autorisée.' });
     }
 
     const salon = await db.getSalonById(id);
@@ -1391,7 +1420,7 @@ app.delete('/api/salons/:id/members/:userId', authenticateToken, async (req, res
 
     io.to(`salon_${id}`).emit('salon_updated', { salonId: id });
     const members = await db.getSalonMembers(id);
-    res.json({ success: true, members });
+    res.json({ success: true, members, isSelf });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
