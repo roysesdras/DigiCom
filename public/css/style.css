@@ -3790,6 +3790,8 @@ body {
   align-items: center;
   justify-content: center;
   animation: pulse-ring 2s infinite ease-in-out;
+  overflow: hidden;
+  position: relative;
 }
 
 @keyframes pulse-ring {

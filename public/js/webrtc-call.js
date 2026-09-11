@@ -164,7 +164,8 @@
       isCaller: true
     };
 
-    showIncomingCallUI(targetUserName, callType === 'video' ? 'Appel vidéo sortant...' : 'Appel audio sortant...', false);
+    const targetAvatar = targetUser ? (targetUser.avatar_url || targetUser.avatarUrl || null) : null;
+    showIncomingCallUI(targetUserName, callType === 'video' ? 'Appel vidéo sortant...' : 'Appel audio sortant...', false, targetAvatar);
     playRingtone();
 
     window.socket.emit('call_user', {
@@ -207,7 +208,8 @@
       isCaller: false
     };
 
-    showIncomingCallUI(data.callerName || 'Correspondant', data.callType === 'video' ? 'Appel vidéo entrant...' : 'Appel audio entrant...', true);
+    const callerAvatar = data.callerAvatar || null;
+    showIncomingCallUI(data.callerName || 'Correspondant', data.callType === 'video' ? 'Appel vidéo entrant...' : 'Appel audio entrant...', true, callerAvatar);
     playRingtone();
   }
 
@@ -320,13 +322,21 @@
       ? (window.state.user.display_name || window.state.user.username) 
       : 'Membre DigiCom';
 
+    const myAvatarUrl = (window.state && window.state.user) 
+      ? (window.state.user.avatar_url || window.state.user.avatarUrl) 
+      : null;
+    const fullAvatarUrl = myAvatarUrl 
+      ? (myAvatarUrl.startsWith('http') ? myAvatarUrl : window.location.origin + myAvatarUrl) 
+      : undefined;
+
     const options = {
       roomName: roomName,
       width: '100%',
       height: '100%',
       parentNode: container,
       userInfo: {
-        displayName: myDisplayName
+        displayName: myDisplayName,
+        avatarURL: fullAvatarUrl
       },
       configOverwrite: {
         startWithAudioMuted: false,
@@ -381,7 +391,7 @@
     }
   }
 
-  function showIncomingCallUI(userName, statusText, isIncoming) {
+  function showIncomingCallUI(userName, statusText, isIncoming, avatarUrl) {
     const modal = document.getElementById('call-incoming-modal');
     const nameEl = document.getElementById('incoming-call-name');
     const typeEl = document.getElementById('incoming-call-type');
@@ -390,7 +400,14 @@
 
     if (nameEl) nameEl.textContent = userName;
     if (typeEl) typeEl.textContent = statusText;
-    if (avatarEl) avatarEl.textContent = (userName[0] || '?').toUpperCase();
+    if (avatarEl) {
+      const initial = (userName[0] || '?').toUpperCase();
+      if (avatarUrl) {
+        avatarEl.innerHTML = `<img src="${avatarUrl}" alt="${userName}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" onerror="this.onerror=null; this.parentElement.textContent='${initial}';">`;
+      } else {
+        avatarEl.textContent = initial;
+      }
+    }
     if (acceptBtn) acceptBtn.style.display = isIncoming ? 'flex' : 'none';
 
     if (modal) modal.style.display = 'flex';

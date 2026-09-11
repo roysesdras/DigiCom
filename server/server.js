@@ -4205,9 +4205,14 @@ io.on('connection', (socket) => {
         }
       }
 
+      const callerUser = await db.getUserById(callerId);
+      const callerAvatar = callerUser ? callerUser.avatar_url : null;
+      const resolvedCallerName = callerUser ? (callerUser.display_name || callerUser.username) : callerName;
+
       io.to(`user_${data.targetUserId}`).emit('call_incoming', {
         callerId,
-        callerName,
+        callerName: resolvedCallerName,
+        callerAvatar,
         callType: data.callType || 'audio',
         offer: data.offer
       });
@@ -4215,13 +4220,14 @@ io.on('connection', (socket) => {
       // Send high-priority Web Push Notification for background call alert
       pushService.sendNotificationToUser(data.targetUserId, {
         title: `Appel ${data.callType === 'video' ? 'Vidéo' : 'Vocal'} Entrant`,
-        body: `${callerName} vous appelle... Touchez pour répondre.`,
-        icon: '/img/icon-192.png',
+        body: `${resolvedCallerName} vous appelle... Touchez pour répondre.`,
+        icon: callerAvatar || '/img/icon-192.png',
         badge: '/img/badge-72.png',
         data: {
           type: 'call_incoming',
           callerId: callerId,
-          callerName: callerName,
+          callerName: resolvedCallerName,
+          callerAvatar: callerAvatar,
           callType: data.callType || 'audio',
           url: `/?contact=${encodeURIComponent(callerId)}`
         }

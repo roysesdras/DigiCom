@@ -9553,13 +9553,17 @@ window.joinJitsiSalonMeeting = async function(roomName) {
       if (typeof JitsiMeetExternalAPI !== 'undefined') {
         container.innerHTML = '';
         const domain = 'meet.digiroys.com';
-        const myDisplayName = (state.user) ? (state.user.display_name || state.user.username) : 'Membre DigiCom';
+        const myAvatarUrl = (state.user) ? (state.user.avatar_url || state.user.avatarUrl) : null;
+        const fullAvatarUrl = myAvatarUrl ? (myAvatarUrl.startsWith('http') ? myAvatarUrl : window.location.origin + myAvatarUrl) : undefined;
         const options = {
           roomName: roomName,
           width: '100%',
           height: '100%',
           parentNode: container,
-          userInfo: { displayName: myDisplayName },
+          userInfo: {
+            displayName: myDisplayName,
+            avatarURL: fullAvatarUrl
+          },
           configOverwrite: {
             prejoinPageEnabled: false,
             disableThirdPartyRequests: true,
