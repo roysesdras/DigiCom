@@ -148,7 +148,7 @@ class DigiStore {
     });
   }
 
-  async getMessages(currentUserId, targetUserId, limit = 50, beforeTimestamp = null) {
+  async getMessages(currentUserId, targetUserId, limit = 20, beforeTimestamp = null) {
     if (!this.db) await this.init();
     return new Promise((resolve, reject) => {
       const tx = this.db.transaction('messages', 'readonly');

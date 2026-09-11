@@ -5640,11 +5640,11 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 50) {
+        if (olderMsgs.length < 20) {
           pag.hasMore = false;
         }
         if (olderMsgs.length > 0) {
@@ -5664,14 +5664,14 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
     return;
   }
 
-  // Initial load of 50 messages
+  // Initial load of 20 messages
   pag.hasMore = true;
   pag.isLoading = false;
 
-  // 1. Instant local offline load from IndexedDB (first 50)
+  // 1. Instant local offline load from IndexedDB (first 20)
   if (window.digiStore && state.user) {
     try {
-      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 50);
+      const cachedMsgs = await window.digiStore.getMessages(state.user.id, targetUserId, 20);
       if (cachedMsgs && cachedMsgs.length > 0) {
         state.directMessages[targetUserId] = cachedMsgs;
         pag.oldestTimestamp = cachedMsgs[0].timestamp;
@@ -5687,7 +5687,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
   }
 
   try {
-    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=50`);
+    const res = await authFetch(`/api/history/direct/${targetUserId}?limit=20`);
     if (res.ok) {
       const data = await res.json();
       const newMsgs = data.messages || [];
@@ -5701,7 +5701,7 @@ async function loadDirectHistory(targetUserId, loadMore = false) {
       state.unreadCounts[targetUserId] = 0;
       if (newMsgs.length > 0) {
         pag.oldestTimestamp = newMsgs[0].timestamp;
-        if (newMsgs.length < 50) pag.hasMore = false;
+        if (newMsgs.length < 20) pag.hasMore = false;
       } else {
         pag.hasMore = false;
       }
@@ -5969,9 +5969,9 @@ function renderDirectFeed(targetUserId) {
     return;
   }
 
-  // Render max 60 messages initially to keep mobile DOM ultra-lightweight
-  const msgs = allMsgs.length > 60 ? allMsgs.slice(-60) : allMsgs;
-  if (allMsgs.length > 60 && state.feedPagination && state.feedPagination[targetUserId]) {
+  // Render max 25 messages initially to keep mobile DOM ultra-lightweight
+  const msgs = allMsgs.length > 25 ? allMsgs.slice(-25) : allMsgs;
+  if (allMsgs.length > 25 && state.feedPagination && state.feedPagination[targetUserId]) {
     state.feedPagination[targetUserId].hasMore = true;
     state.feedPagination[targetUserId].oldestTimestamp = msgs[0].timestamp;
   }
@@ -7612,11 +7612,11 @@ async function loadSupportHistory(senderId, loadMore = false) {
       pag.isLoading = true;
       pag.lastLoadTime = now;
       try {
-        const res = await fetch(`/api/history/support?senderId=${senderId}&limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+        const res = await fetch(`/api/history/support?senderId=${senderId}&limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
         if (res.ok) {
           const data = await res.json();
           const olderMsgs = data.messages || [];
-          if (olderMsgs.length < 50) pag.hasMore = false;
+          if (olderMsgs.length < 20) pag.hasMore = false;
           if (olderMsgs.length > 0) {
             pag.oldestTimestamp = olderMsgs[0].timestamp;
             prependOlderMessagesToFeed(olderMsgs);
@@ -7636,7 +7636,7 @@ async function loadSupportHistory(senderId, loadMore = false) {
     if (state.socket) {
       state.socket.emit('support_mark_read', { senderId });
     }
-    const res = await fetch(`/api/history/support?senderId=${senderId}&limit=50`);
+    const res = await fetch(`/api/history/support?senderId=${senderId}&limit=20`);
     if (res.ok) {
       const data = await res.json();
       const feed = document.getElementById('messages-feed');
@@ -7644,7 +7644,7 @@ async function loadSupportHistory(senderId, loadMore = false) {
       const msgs = data.messages || [];
       if (msgs.length > 0) {
         pag.oldestTimestamp = msgs[0].timestamp;
-        if (msgs.length < 50) pag.hasMore = false;
+        if (msgs.length < 20) pag.hasMore = false;
       } else {
         pag.hasMore = false;
       }
@@ -8402,11 +8402,11 @@ async function loadSalonHistory(salonId, loadMore = false) {
     pag.isLoading = true;
     pag.lastLoadTime = now;
     try {
-      const res = await authFetch(`/api/salons/${salonId}/messages?limit=50&before=${encodeURIComponent(pag.oldestTimestamp)}`);
+      const res = await authFetch(`/api/salons/${salonId}/messages?limit=20&before=${encodeURIComponent(pag.oldestTimestamp)}`);
       if (res.ok) {
         const data = await res.json();
         const olderMsgs = data.messages || [];
-        if (olderMsgs.length < 50) pag.hasMore = false;
+        if (olderMsgs.length < 20) pag.hasMore = false;
         if (olderMsgs.length > 0) {
           pag.oldestTimestamp = olderMsgs[0].timestamp;
           state.salonMessages[salonId] = [...olderMsgs, ...(state.salonMessages[salonId] || [])];
@@ -8426,7 +8426,7 @@ async function loadSalonHistory(salonId, loadMore = false) {
   feed.innerHTML = '';
 
   try {
-    const res = await authFetch(`/api/salons/${salonId}/messages?limit=50`);
+    const res = await authFetch(`/api/salons/${salonId}/messages?limit=20`);
     if (res.ok) {
       const data = await res.json();
       state.salonMessages[salonId] = data.messages || [];
@@ -8450,7 +8450,7 @@ async function loadSalonHistory(salonId, loadMore = false) {
       }
 
       pag.oldestTimestamp = messages[0].timestamp;
-      if (messages.length < 50) pag.hasMore = false;
+      if (messages.length < 20) pag.hasMore = false;
 
       let lastDateKey = null;
       messages.forEach(msg => {

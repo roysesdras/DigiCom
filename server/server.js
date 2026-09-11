@@ -1212,7 +1212,7 @@ app.get('/api/salons/:id/messages', authenticateToken, async (req, res) => {
       readerId: req.user.id,
       readerName: req.user.displayName || req.user.username
     });
-    const messages = await db.getSalonMessages(id, limit || 50, before || null);
+    const messages = await db.getSalonMessages(id, limit || 20, before || null);
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3062,7 +3062,7 @@ app.get('/api/history/direct/:targetUserId', authenticateToken, async (req, res)
     const { limit, before } = req.query;
     await db.markMessagesAsRead(req.user.id, targetUserId);
     io.to(`user_${targetUserId}`).emit('messages_read_by_recipient', { readerId: req.user.id });
-    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, limit || 50, before || null);
+    const messages = await db.getDirectMessages(req.user.id, targetUserId, req.user.role, limit || 20, before || null);
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3203,7 +3203,7 @@ app.get('/api/history/support', authenticateToken, async (req, res) => {
     io.to('admin_room').emit('support_read_receipt', { senderId });
     const messages = await db.getMessages({
       channelType: 'support',
-      limit: limit || 50,
+      limit: limit || 20,
       before: before || null,
       senderId
     });
