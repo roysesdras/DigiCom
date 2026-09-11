@@ -6918,7 +6918,7 @@ function createMessageRowElement(msg, isSos = false) {
   const isPending = msg.status === 'pending';
 
   const pendingClockHtml = `
-    <span class="msg-status-pending" title="En attente d'envoi (hors-ligne)" style="font-size: 0.75rem; margin-left: 4px; color: #fbbf24; display: inline-flex; align-items: center;">
+    <span class="msg-status-pending" onclick="event.stopPropagation(); if (window.flushOutbox) window.flushOutbox();" title="En attente d'envoi. Touchez pour forcer l'envoi immédiat" style="font-size: 0.75rem; margin-left: 4px; color: #fbbf24; display: inline-flex; align-items: center; cursor: pointer;">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"></circle>
         <polyline points="12 6 12 12 16 14"></polyline>
@@ -7424,13 +7424,32 @@ async function sendMessage(contentPayload) {
     if (isConnected) {
       state.socket.emit('private_message', msgPayload);
     } else {
-      console.warn('[!] Socket offline. Message stored in Outbox queue:', msgId);
+      console.warn('[!] Socket offline. Storing in outbox & attempting Dual-Transport HTTP fallback:', msgId);
       if (window.digiStore) {
         await window.digiStore.addToOutbox(msgPayload).catch(() => {});
       }
       if ('serviceWorker' in navigator && 'SyncManager' in window) {
         navigator.serviceWorker.ready.then(reg => reg.sync.register('digicom-outbox-sync')).catch(() => {});
       }
+
+      // Dual-Transport: Immediate HTTP REST fallback (bypasses mobile carrier WebSocket blocks)
+      authFetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgPayload)
+      }).then(async (res) => {
+        if (res && res.ok) {
+          console.log('[+] Private message delivered via HTTP fallback:', msgId);
+          msgPayload.status = 'sent';
+          if (window.digiStore) {
+            await window.digiStore.saveMessage(msgPayload).catch(() => {});
+            await window.digiStore.removeFromOutbox(msgPayload.id).catch(() => {});
+          }
+          markMessageAsSentInUI(msgPayload.id);
+        }
+      }).catch((err) => {
+        console.warn('[-] HTTP fallback send failed, queued for retry:', err);
+      });
     }
 
     if (!state.directMessages[state.activeContact.id]) {
@@ -7480,13 +7499,32 @@ async function sendMessage(contentPayload) {
     if (isConnected) {
       state.socket.emit('salon_message', msgPayload);
     } else {
-      console.warn('[!] Socket offline in Salon. Message stored in Outbox:', msgId);
+      console.warn('[!] Socket offline in Salon. Storing in outbox & attempting Dual-Transport HTTP fallback:', msgId);
       if (window.digiStore) {
         await window.digiStore.addToOutbox(msgPayload).catch(() => {});
       }
       if ('serviceWorker' in navigator && 'SyncManager' in window) {
         navigator.serviceWorker.ready.then(reg => reg.sync.register('digicom-outbox-sync')).catch(() => {});
       }
+
+      // Dual-Transport: Immediate HTTP REST fallback
+      authFetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgPayload)
+      }).then(async (res) => {
+        if (res && res.ok) {
+          console.log('[+] Salon message delivered via HTTP fallback:', msgId);
+          msgPayload.status = 'sent';
+          if (window.digiStore) {
+            await window.digiStore.saveMessage(msgPayload).catch(() => {});
+            await window.digiStore.removeFromOutbox(msgPayload.id).catch(() => {});
+          }
+          markMessageAsSentInUI(msgPayload.id);
+        }
+      }).catch((err) => {
+        console.warn('[-] Salon HTTP fallback send failed, queued for retry:', err);
+      });
     }
 
     if (!state.salonMessages[salonId]) {
@@ -7506,43 +7544,86 @@ async function sendMessage(contentPayload) {
   }
 }
 
+function markMessageAsSentInUI(msgId) {
+  const el = document.getElementById(msgId);
+  if (el) {
+    const pendingBadge = el.querySelector('.msg-status-pending');
+    if (pendingBadge) {
+      pendingBadge.outerHTML = `
+        <span class="msg-status-eye unread" title="Message distribué (non lu)">
+          <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
+            <path d="M2 4.5C4 7 6.5 8.5 8 8.5C9.5 8.5 12 7 14 4.5" stroke="#8696a0" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M4 6.5L3 8M8 8.5V10M12 6.5L13 8" stroke="#8696a0" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </span>
+      `;
+    }
+  }
+}
+window.markMessageAsSentInUI = markMessageAsSentInUI;
+
 async function flushOutbox() {
-  if (!state.socket || !state.socket.connected || !window.digiStore) return;
+  if (!window.digiStore) return;
 
   try {
     const pendingMsgs = await window.digiStore.getOutbox();
     if (!pendingMsgs || pendingMsgs.length === 0) return;
 
-    console.log(`[+] Flushing ${pendingMsgs.length} offline pending messages...`);
+    console.log(`[+] Flushing ${pendingMsgs.length} offline/pending messages...`);
 
     for (const msg of pendingMsgs) {
-      msg.status = 'sent';
-      if (msg.channelType === 'salon' || msg.channel_type === 'salon') {
-        state.socket.emit('salon_message', msg);
-      } else {
-        state.socket.emit('private_message', msg);
-      }
-      await window.digiStore.saveMessage(msg);
-      await window.digiStore.removeFromOutbox(msg.id);
+      let sentSuccessfully = false;
 
-      const el = document.getElementById(msg.id);
-      if (el) {
-        const pendingBadge = el.querySelector('.msg-status-pending');
-        if (pendingBadge) {
-          pendingBadge.outerHTML = `
-            <span class="msg-status-eye unread" title="Message distribué (non lu)">
-              <svg width="14" height="10" viewBox="0 0 16 12" fill="none">
-                <path d="M2 4.5C4 7 6.5 8.5 8 8.5C9.5 8.5 12 7 14 4.5" stroke="#8696a0" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M4 6.5L3 8M8 8.5V10M12 6.5L13 8" stroke="#8696a0" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-            </span>
-          `;
+      if (state.socket && state.socket.connected) {
+        if (msg.channelType === 'salon' || msg.channel_type === 'salon') {
+          state.socket.emit('salon_message', msg);
+        } else {
+          state.socket.emit('private_message', msg);
         }
+        sentSuccessfully = true;
+      } else {
+        // Dual-Transport HTTP fallback (works on any mobile carrier / transparent proxy)
+        try {
+          const res = await authFetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(msg)
+          });
+          if (res && res.ok) {
+            sentSuccessfully = true;
+          }
+        } catch (e) {
+          console.warn('[-] HTTP flush failed for message', msg.id, e);
+        }
+      }
+
+      if (sentSuccessfully) {
+        msg.status = 'sent';
+        await window.digiStore.saveMessage(msg).catch(() => {});
+        await window.digiStore.removeFromOutbox(msg.id).catch(() => {});
+        markMessageAsSentInUI(msg.id);
       }
     }
   } catch (err) {
     console.error('[-] Error flushing outbox:', err);
   }
+}
+window.flushOutbox = flushOutbox;
+
+// Periodic outbox flusher for resilient mobile network recovery
+if (!window._digiOutboxIntervalBound) {
+  window._digiOutboxIntervalBound = true;
+  setInterval(() => {
+    if (state.user) {
+      flushOutbox();
+    }
+  }, 4000);
+
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.user) {
+      flushOutbox();
+    }
+  });
 }
 
 async function switchTab(tab) {

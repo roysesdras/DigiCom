@@ -3256,6 +3256,44 @@ app.patch('/api/messages/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
+// Dual-Transport: HTTP REST Fallback for sending messages (for mobile networks that block/throttle WebSockets)
+app.post('/api/messages', authenticateToken, async (req, res) => {
+  try {
+    const senderId = req.user.id;
+    const senderName = req.user.displayName || req.user.username;
+    const { receiverId, salonId, content, replyTo, id, contextData } = req.body;
+
+    if (salonId) {
+      const result = await processAndDeliverSalonMessage(senderId, senderName, {
+        salonId,
+        id,
+        content,
+        replyTo,
+        contextData
+      });
+      if (result.error) return res.status(result.status || 400).json({ error: result.error });
+      return res.json({ success: true, message: result.messageRecord });
+    }
+
+    if (!receiverId) {
+      return res.status(400).json({ error: 'receiverId ou salonId manquant' });
+    }
+
+    const result = await processAndDeliverPrivateMessage(senderId, senderName, {
+      receiverId,
+      id,
+      content,
+      replyTo
+    });
+
+    if (result.error) return res.status(result.status || 400).json({ error: result.error });
+    return res.json({ success: true, message: result.messageRecord });
+  } catch (err) {
+    console.error('[-] Error in POST /api/messages:', err);
+    return res.status(500).json({ error: 'Erreur serveur lors de l\'envoi du message' });
+  }
+});
+
 // 10. Direct / Support Message History Routes (Strictly Scoped)
 app.get('/api/history/support', authenticateToken, async (req, res) => {
   try {
@@ -3517,9 +3555,238 @@ app.put('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// ---------------- SOCKET.IO REALTIME ENGINE ----------------
+// ---------------- SOCKET.IO REALTIME ENGINE & DUAL-TRANSPORT HELPERS ----------------
 
 const onlineUsers = new Map(); // userId -> Set of socketIds
+
+async function processAndDeliverPrivateMessage(senderId, senderName, data) {
+  const msgId = data.id || 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  const receiverId = data.receiverId;
+
+  if (!receiverId) {
+    logger.warn('MESSAGE', 'Missing receiverId in private_message', { senderId });
+    return { error: 'receiverId manquant', status: 400 };
+  }
+
+  // Sovereign Rule: Discretion & Zero Distraction - Verify mutual contact relationship
+  const isContact = await db.areUsersContacts(senderId, receiverId);
+  if (!isContact) {
+    const senderUser = await db.getUserById(senderId);
+    const receiverUser = await db.getUserById(receiverId);
+    const isSenderAdmin = senderUser && senderUser.role === 'admin';
+    const isReceiverAdmin = receiverUser && receiverUser.role === 'admin';
+
+    if (!isSenderAdmin && !isReceiverAdmin) {
+      logger.warn('SECURITY', `[REJECTED] Private message blocked: ${senderId} -> ${receiverId} (not in mutual contacts)`);
+      return {
+        error: 'Sécurité DigiCom : Vous ne pouvez pas envoyer de message privé à cet utilisateur sans invitation mutuelle acceptée.',
+        status: 403
+      };
+    }
+  }
+
+  logger.info('MESSAGE', `Private message from ${senderName} (${senderId}) -> ${receiverId}`, { msgId });
+
+  let contentToSave = data.content;
+  if (data.replyTo) {
+    if (typeof contentToSave === 'string') {
+      try {
+        const parsed = JSON.parse(contentToSave);
+        parsed.replyTo = data.replyTo;
+        contentToSave = parsed;
+      } catch (e) {
+        contentToSave = { type: 'text', text: contentToSave, replyTo: data.replyTo };
+      }
+    } else if (typeof contentToSave === 'object' && contentToSave !== null) {
+      contentToSave.replyTo = data.replyTo;
+    }
+  }
+
+  // Check if recipient currently has sender's chat window active
+  const activeRoomName = `active_chat_${receiverId}_${senderId}`;
+  const activeRoom = io.sockets.adapter.rooms.get(activeRoomName);
+  const isRecipientActiveInChat = Boolean(activeRoom && activeRoom.size > 0);
+
+  const messageRecord = {
+    id: msgId,
+    channelType: 'private',
+    senderId: senderId,
+    senderName: senderName || 'Membre',
+    receiverId: receiverId,
+    content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
+    contextData: null,
+    is_read: 0,
+    timestamp: new Date().toISOString()
+  };
+
+  await db.saveMessage(messageRecord);
+
+  // Deliver to target recipient and echo back to sender's devices
+  io.to(`user_${receiverId}`).emit('private_message', messageRecord);
+  io.to(`user_${senderId}`).emit('private_message', messageRecord);
+
+  // Push notification if not actively viewing
+  if (!isRecipientActiveInChat) {
+    let pushBody = 'Nouveau message';
+    if (typeof data.content === 'string') {
+      pushBody = data.content;
+    } else if (data.content && data.content.text) {
+      pushBody = data.content.text;
+    } else if (data.content && data.content.type === 'audio') {
+      pushBody = 'Note vocale';
+    } else if (data.content && data.content.type === 'image') {
+      pushBody = 'Photo';
+    } else if (data.content && data.content.type === 'video') {
+      pushBody = 'Vidéo';
+    } else if (data.content && data.content.type === 'file') {
+      pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
+    }
+
+    pushService.sendNotificationToUser(receiverId, {
+      title: senderName,
+      body: pushBody,
+      icon: '/img/icon-192.webp',
+      badge: '/img/badge-72.webp',
+      tag: `contact-${senderId}`,
+      data: {
+        url: `/?contact=${senderId}&msg=${messageRecord.id}`,
+        channel: 'direct',
+        senderId: senderId,
+        contactId: senderId,
+        senderName: senderName,
+        messageId: messageRecord.id
+      }
+    }).catch(err => console.error('[-] Push error for private message:', err));
+  } else {
+    console.log(`[*] Suppressed push notification to user ${receiverId}: actively viewing chat with ${senderId}`);
+  }
+
+  return { success: true, messageRecord };
+}
+
+async function processAndDeliverSalonMessage(senderId, senderName, data) {
+  const salonId = data.salonId;
+  if (!salonId) return { error: 'salonId manquant', status: 400 };
+
+  const msgId = data.id || 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+  // Check if user is blocked in this salon
+  const isBlocked = await db.isSalonMemberBlocked(salonId, senderId);
+  if (isBlocked) {
+    return {
+      error: 'Vous avez été bloqué dans ce Salon et ne pouvez plus envoyer de messages.',
+      status: 403
+    };
+  }
+
+  // Check if broadcast_only (Annonces) mode is active and user is not admin
+  const salonRecord = await db.getSalonById(salonId);
+  if (salonRecord && salonRecord.broadcast_only) {
+    const isAdmin = await db.isSalonAdmin(salonId, senderId);
+    if (!isAdmin) {
+      return {
+        error: 'Ce Salon est en mode Annonces : seuls les administrateurs peuvent publier.',
+        status: 403
+      };
+    }
+  }
+
+  let contentToSave = data.content;
+  if (data.replyTo) {
+    if (typeof contentToSave === 'string') {
+      try {
+        const parsed = JSON.parse(contentToSave);
+        parsed.replyTo = data.replyTo;
+        contentToSave = parsed;
+      } catch (e) {
+        contentToSave = { type: 'text', text: contentToSave, replyTo: data.replyTo };
+      }
+    } else if (typeof contentToSave === 'object' && contentToSave !== null) {
+      contentToSave.replyTo = data.replyTo;
+    }
+  }
+
+  // Deliver directly to each salon member room & send push if not actively viewing
+  const salonMembers = await db.getSalonMembers(salonId);
+  const activeMemberIds = [];
+  for (const member of salonMembers) {
+    if (member.id !== senderId) {
+      const activeSalonRoom = io.sockets.adapter.rooms.get(`active_chat_${member.id}_${salonId}`);
+      if (activeSalonRoom && activeSalonRoom.size > 0) {
+        activeMemberIds.push(member.id);
+      }
+    }
+  }
+
+  const isReadByActiveMembers = activeMemberIds.length > 0;
+
+  const messageRecord = {
+    id: msgId,
+    channelType: 'salon',
+    senderId: senderId,
+    senderName: senderName || 'Membre',
+    receiverId: salonId,
+    content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
+    contextData: data.contextData || null,
+    is_read: isReadByActiveMembers ? 1 : 0,
+    read_count: activeMemberIds.length,
+    timestamp: new Date().toISOString()
+  };
+
+  await db.saveMessage(messageRecord);
+
+  if (isReadByActiveMembers) {
+    await db.markSalonMessageReadByMembers(salonId, messageRecord.id, activeMemberIds);
+    io.to(`salon_${salonId}`).emit('salon_messages_read', {
+      salonId,
+      readerId: activeMemberIds[0],
+      readerName: 'Membre actif'
+    });
+  }
+
+  // Broadcast message to all members currently in the salon room
+  io.to(`salon_${salonId}`).emit('new_salon_message', messageRecord);
+
+  const rawSalonName = salonRecord ? salonRecord.name : 'Salon';
+  const salonTitle = rawSalonName.replace(/^#+/, '').trim();
+
+  let pushBody = 'Nouveau message de salon';
+  if (typeof data.content === 'string') {
+    pushBody = data.content;
+  } else if (data.content && data.content.text) {
+    pushBody = data.content.text;
+  } else if (data.content && data.content.type === 'audio') {
+    pushBody = 'Note vocale';
+  } else if (data.content && data.content.type === 'image') {
+    pushBody = 'Photo';
+  } else if (data.content && data.content.type === 'video') {
+    pushBody = 'Vidéo';
+  } else if (data.content && data.content.type === 'file') {
+    pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
+  }
+
+  for (const member of salonMembers) {
+    if (member.id !== senderId && !activeMemberIds.includes(member.id)) {
+      pushService.sendNotificationToUser(member.id, {
+        title: `${salonTitle} (${senderName})`,
+        body: pushBody,
+        icon: (salonRecord && salonRecord.avatar_url) ? salonRecord.avatar_url : '/img/icon-192.webp',
+        badge: '/img/badge-72.webp',
+        tag: `salon-${salonId}`,
+        data: {
+          url: `/?salon=${salonId}&msg=${messageRecord.id}`,
+          channel: 'salon',
+          salonId: salonId,
+          senderId: senderId,
+          senderName: senderName,
+          messageId: messageRecord.id
+        }
+      }).catch(err => console.error('[-] Push error for salon message:', err));
+    }
+  }
+
+  return { success: true, messageRecord };
+}
 
 io.on('connection', (socket) => {
   let currentUser = null;
@@ -3599,110 +3866,15 @@ io.on('connection', (socket) => {
   // Direct 1-to-1 Private Message (Hermetic & Private between Sender and Receiver)
   socket.on('private_message', async (data) => {
     try {
-      const msgId = data.id || 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
       const senderId = currentUser ? currentUser.id : data.senderId;
       const senderName = currentUser ? (currentUser.displayName || currentUser.username) : data.senderName;
-      const receiverId = data.receiverId;
-
-      if (!receiverId) {
-        logger.warn('MESSAGE', 'Missing receiverId in private_message', { senderId });
-        return;
-      }
-
-      // Sovereign Rule: Discretion & Zero Distraction - Verify mutual contact relationship
-      const isContact = await db.areUsersContacts(senderId, receiverId);
-      if (!isContact) {
-        const senderUser = await db.getUserById(senderId);
-        const receiverUser = await db.getUserById(receiverId);
-        const isSenderAdmin = senderUser && senderUser.role === 'admin';
-        const isReceiverAdmin = receiverUser && receiverUser.role === 'admin';
-
-        if (!isSenderAdmin && !isReceiverAdmin) {
-          logger.warn('SECURITY', `[REJECTED] Private message blocked: ${senderId} -> ${receiverId} (not in mutual contacts)`);
-          socket.emit('message_rejected', {
-            id: msgId,
-            receiverId: receiverId,
-            error: 'Sécurité DigiCom : Vous ne pouvez pas envoyer de message privé à cet utilisateur sans invitation mutuelle acceptée.'
-          });
-          return;
-        }
-      }
-
-      logger.info('MESSAGE', `Private message from ${senderName} (${senderId}) -> ${receiverId}`, { msgId });
-
-      let contentToSave = data.content;
-      if (data.replyTo) {
-        if (typeof contentToSave === 'string') {
-          try {
-            const parsed = JSON.parse(contentToSave);
-            parsed.replyTo = data.replyTo;
-            contentToSave = parsed;
-          } catch (e) {
-            contentToSave = { type: 'text', text: contentToSave, replyTo: data.replyTo };
-          }
-        } else if (typeof contentToSave === 'object' && contentToSave !== null) {
-          contentToSave.replyTo = data.replyTo;
-        }
-      }
-
-      // Check if recipient currently has sender's chat window active
-      const activeRoomName = `active_chat_${receiverId}_${senderId}`;
-      const activeRoom = io.sockets.adapter.rooms.get(activeRoomName);
-      const isRecipientActiveInChat = Boolean(activeRoom && activeRoom.size > 0);
-
-      const messageRecord = {
-        id: msgId || data.id || uuidv4(),
-        channelType: 'private',
-        senderId: senderId,
-        senderName: senderName || 'Membre',
-        receiverId: receiverId,
-        content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
-        contextData: null,
-        is_read: 0,
-        timestamp: new Date().toISOString()
-      };
-
-      await db.saveMessage(messageRecord);
-
-      // Deliver ONLY to the target recipient room and echo back to sender's devices
-      io.to(`user_${receiverId}`).emit('private_message', messageRecord);
-      io.to(`user_${senderId}`).emit('private_message', messageRecord);
-
-      // Always send Web Push notification so user receives it in background/lockscreen
-      let pushBody = 'Nouveau message';
-      if (typeof data.content === 'string') {
-        pushBody = data.content;
-      } else if (data.content && data.content.text) {
-        pushBody = data.content.text;
-      } else if (data.content && data.content.type === 'audio') {
-        pushBody = 'Note vocale';
-      } else if (data.content && data.content.type === 'image') {
-        pushBody = 'Photo';
-      } else if (data.content && data.content.type === 'video') {
-        pushBody = 'Vidéo';
-      } else if (data.content && data.content.type === 'file') {
-        pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
-      }
-
-      // Do NOT send push notification if recipient is already actively viewing this chat!
-      if (!isRecipientActiveInChat) {
-        pushService.sendNotificationToUser(receiverId, {
-          title: senderName,
-          body: pushBody,
-          icon: '/img/icon-192.webp',
-          badge: '/img/badge-72.webp',
-          tag: `contact-${senderId}`,
-          data: {
-            url: `/?contact=${senderId}&msg=${messageRecord.id}`,
-            channel: 'direct',
-            senderId: senderId,
-            contactId: senderId,
-            senderName: senderName,
-            messageId: messageRecord.id
-          }
-        }).catch(err => console.error('[-] Push error for private message:', err));
-      } else {
-        console.log(`[*] Suppressed push notification to user ${receiverId}: actively viewing chat with ${senderId}`);
+      const res = await processAndDeliverPrivateMessage(senderId, senderName, data);
+      if (res && res.error) {
+        socket.emit('message_rejected', {
+          id: data.id,
+          receiverId: data.receiverId,
+          error: res.error
+        });
       }
     } catch (err) {
       console.error('[-] Error handling private_message:', err);
@@ -3795,150 +3967,15 @@ io.on('connection', (socket) => {
   // Salon Real-Time Message Handler
   socket.on('salon_message', async (data) => {
     try {
-      const salonId = data.salonId;
-      if (!salonId) return;
-
-      const msgId = data.id || 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
       const senderId = currentUser ? currentUser.id : data.senderId;
       const senderName = currentUser ? (currentUser.displayName || currentUser.username) : data.senderName;
-
-      // Check if user is blocked in this salon
-      const isBlocked = await db.isSalonMemberBlocked(salonId, senderId);
-      if (isBlocked) {
+      const res = await processAndDeliverSalonMessage(senderId, senderName, data);
+      if (res && res.error) {
         socket.emit('salon_error', {
-          salonId,
-          message: 'Vous avez été bloqué dans ce Salon et ne pouvez plus envoyer de messages.'
-        });
-        return;
-      }
-
-      // Check if broadcast_only (Annonces) mode is active and user is not admin
-      const salonRecord = await db.getSalonById(salonId);
-      if (salonRecord && salonRecord.broadcast_only) {
-        const isAdmin = await db.isSalonAdmin(salonId, senderId);
-        if (!isAdmin) {
-          socket.emit('salon_error', {
-            salonId,
-            message: 'Ce Salon est en mode Annonces : seuls les administrateurs peuvent publier.'
-          });
-          return;
-        }
-      }
-
-      let contentToSave = data.content;
-      if (data.replyTo) {
-        if (typeof contentToSave === 'string') {
-          try {
-            const parsed = JSON.parse(contentToSave);
-            parsed.replyTo = data.replyTo;
-            contentToSave = parsed;
-          } catch (e) {
-            contentToSave = { type: 'text', text: contentToSave, replyTo: data.replyTo };
-          }
-        } else if (typeof contentToSave === 'object' && contentToSave !== null) {
-          contentToSave.replyTo = data.replyTo;
-        }
-      }
-
-      // Deliver directly to each salon member room & send push if not actively viewing
-      const salonMembers = await db.getSalonMembers(salonId);
-      const activeMemberIds = [];
-      for (const member of salonMembers) {
-        if (member.id !== senderId) {
-          const activeSalonRoom = io.sockets.adapter.rooms.get(`active_chat_${member.id}_${salonId}`);
-          if (activeSalonRoom && activeSalonRoom.size > 0) {
-            activeMemberIds.push(member.id);
-          }
-        }
-      }
-
-      const isReadByActiveMembers = activeMemberIds.length > 0;
-
-      const messageRecord = {
-        id: msgId,
-        channelType: 'salon',
-        senderId: senderId,
-        senderName: senderName || 'Membre',
-        receiverId: salonId,
-        content: typeof contentToSave === 'object' ? JSON.stringify(contentToSave) : contentToSave,
-        contextData: data.contextData || null,
-        is_read: isReadByActiveMembers ? 1 : 0,
-        read_count: activeMemberIds.length,
-        timestamp: new Date().toISOString()
-      };
-
-      await db.saveMessage(messageRecord);
-
-      if (isReadByActiveMembers) {
-        await db.markSalonMessageReadByMembers(salonId, messageRecord.id, activeMemberIds);
-        io.to(`salon_${salonId}`).emit('salon_messages_read', {
-          salonId,
-          readerId: activeMemberIds[0],
-          readerName: 'Membre actif'
+          salonId: data.salonId,
+          message: res.error
         });
       }
-
-      // Broadcast message to all members currently in the salon room
-      io.to(`salon_${salonId}`).emit('new_salon_message', messageRecord);
-
-      const salonData = await db.getSalonById(salonId);
-      const rawSalonName = salonData ? salonData.name : 'Salon';
-      const formattedSalonName = '#' + rawSalonName.replace(/^#+/, '');
-
-      let pushBody = 'Nouveau message dans le salon';
-      try {
-        const parsed = typeof messageRecord.content === 'string' ? JSON.parse(messageRecord.content) : messageRecord.content;
-        if (parsed.type === 'text') pushBody = parsed.text;
-        else if (parsed.type === 'audio') pushBody = 'Note vocale';
-        else if (parsed.type === 'image') pushBody = 'Photo';
-        else if (parsed.type === 'video') pushBody = 'Vidéo';
-        else if (parsed.type === 'file') pushBody = `Fichier: ${parsed.fileName || 'Document'}`;
-      } catch (e) {
-        if (typeof messageRecord.content === 'string') pushBody = messageRecord.content;
-      }
-
-      // Extract mentioned usernames if any
-      let textToCheck = '';
-      try {
-        const parsed = typeof messageRecord.content === 'string' ? JSON.parse(messageRecord.content) : messageRecord.content;
-        if (parsed.type === 'text') textToCheck = parsed.text || '';
-      } catch (e) {
-        if (typeof messageRecord.content === 'string') textToCheck = messageRecord.content;
-      }
-      const mentionMatches = [...textToCheck.matchAll(/@([a-zA-Z0-9_\-]+)/g)].map(m => m[1].toLowerCase());
-      const mentionedUsernames = new Set(mentionMatches);
-
-      for (const member of salonMembers) {
-        if (member.id !== senderId) {
-          const isMemberActiveInSalon = activeMemberIds.includes(member.id);
-          if (isMemberActiveInSalon) {
-            console.log(`[*] Suppressed salon push to user ${member.id}: actively viewing salon ${salonId}`);
-            continue;
-          }
-
-          const isMentioned = member.username && (mentionedUsernames.has(member.username.toLowerCase()) || (member.display_name && mentionedUsernames.has(member.display_name.toLowerCase())));
-          const notificationTitle = isMentioned
-            ? `${formattedSalonName} • ${senderName} vous a mentionné`
-            : `${formattedSalonName} • ${senderName}`;
-
-          pushService.sendNotificationToUser(member.id, {
-            title: notificationTitle,
-            body: pushBody.length > 70 ? pushBody.substring(0, 70) + '...' : pushBody,
-            icon: '/img/icon-192.webp',
-            badge: '/img/badge-72.webp',
-            tag: `salon-${salonId}`,
-            data: {
-              url: `/?salon=${salonId}&msg=${messageRecord.id}`,
-              channel: 'salon',
-              salonId: salonId,
-              salonName: formattedSalonName,
-              senderName: senderName,
-              messageId: messageRecord.id
-            }
-          }).catch(e => console.error('[-] Push error to salon member:', e));
-        }
-      }
-
     } catch (err) {
       console.error('[-] Error handling salon_message:', err);
     }
