@@ -123,8 +123,8 @@ cron.schedule('0 4 * * *', () => {
 
 // Socket.io with permissive CORS for standalone widget integration & strict heartbeat
 const io = new Server(server, {
-  pingInterval: 25000,
-  pingTimeout: 20000,
+  pingInterval: 20000,
+  pingTimeout: 35000,
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -136,6 +136,7 @@ app.use(cors({
   credentials: true
 }));
 const compression = require('compression');
+app.use(compression());
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',

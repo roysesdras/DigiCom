@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1265';
+const CACHE_NAME = 'digicom-pwa-v1266';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -155,22 +155,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Network-First Strategy for Navigation & HTML Entry Points (Always fresh on F5/mobile refresh, offline fallback)
+  // 2. Fast Network-First with 2.5s Timeout for Navigation & HTML Entry Points (Instant mobile start, background update)
   if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
       (async () => {
+        // Fast race: network vs 2.5s timeout to prevent white-screen freeze on weak mobile data
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('SW_NAV_TIMEOUT')), 2500);
+        });
+
         try {
-          const networkResponse = await fetch(event.request);
+          const networkResponse = await Promise.race([fetch(event.request), timeoutPromise]);
           if (networkResponse && networkResponse.status === 200) {
             const cache = await caches.open(CACHE_NAME);
             cache.put('/index.html', networkResponse.clone()).catch(() => {});
           }
           return networkResponse;
         } catch (err) {
-          // Offline fallback
+          // Instant fallback to cached index.html
           const cache = await caches.open(CACHE_NAME);
-          const cachedHTML = await cache.match('/index.html');
-          if (cachedHTML) return cachedHTML;
+          const cachedHTML = (await cache.match('/index.html')) || (await cache.match('/'));
+          if (cachedHTML) {
+            // Background revalidation
+            fetch(event.request).then(async (bgRes) => {
+              if (bgRes && bgRes.status === 200) {
+                const c = await caches.open(CACHE_NAME);
+                await c.put('/index.html', bgRes.clone());
+              }
+            }).catch(() => {});
+            return cachedHTML;
+          }
           return new Response('Application hors-ligne', { status: 503, statusText: 'Offline' });
         }
       })()
@@ -183,8 +197,8 @@ self.addEventListener('fetch', (event) => {
     (async () => {
       try {
         const cache = await caches.open(CACHE_NAME);
-        // Exact match respecting version queries (?v=...)
-        const cachedResponse = await cache.match(event.request);
+        // Exact match respecting version queries (?v=...) with unversioned fallback
+        const cachedResponse = (await cache.match(event.request)) || (await cache.match(url.pathname));
 
         // Fetch in parallel to keep cache fresh
         const fetchPromise = fetch(event.request)

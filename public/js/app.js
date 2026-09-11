@@ -387,11 +387,11 @@ async function initAppInterface() {
   // Initialize Socket.io
   initSocket();
 
-  // Load Contacts List
-  await loadContacts();
-
-  // Load Salons List
-  await loadSalons();
+  // Load Contacts and Salons in parallel for 2x faster startup on mobile
+  await Promise.all([
+    loadContacts().catch(() => {}),
+    loadSalons().catch(() => {})
+  ]);
 
   // Load Pending Contact Requests
   loadPendingContactRequests();
@@ -675,14 +675,32 @@ function initSocket() {
     state.socket = null;
   }
   state.socket = io({
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
     upgrade: true,
     reconnection: true,
     reconnectionDelay: 1000,
-    reconnectionAttempts: 10
+    reconnectionDelayMax: 5000,
+    randomizationFactor: 0.3,
+    reconnectionAttempts: Infinity,
+    timeout: 20000
   });
 
   window.socket = state.socket;
+
+  // Auto-reconnect when device regains connectivity (e.g. mobile data turned back on)
+  if (!window._digiOnlineListenerBound) {
+    window._digiOnlineListenerBound = true;
+    window.addEventListener('online', () => {
+      console.log('[+] Device network online event detected, reconnecting socket...');
+      if (state.socket && !state.socket.connected) {
+        state.socket.connect();
+      }
+      flushOutbox();
+      if (state.user) {
+        Promise.all([loadContacts().catch(() => {}), loadSalons().catch(() => {})]).catch(() => {});
+      }
+    });
+  }
 
   state.socket.on('connect', () => {
     console.log('[+] Socket connected:', state.socket.id);
