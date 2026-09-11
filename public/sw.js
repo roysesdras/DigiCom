@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1246';
+const CACHE_NAME = 'digicom-pwa-v1247';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -469,9 +469,15 @@ self.addEventListener('message', (event) => {
     self.currentActiveChat = { contactId: null, salonId: null, isVisible: false };
   } else if (event.data.type === 'DISMISS_NOTIFICATIONS') {
     const { contactId, salonId, all } = event.data;
-    event.waitUntil(
-      self.registration.getNotifications().then((notifications) => {
-        if (!notifications || notifications.length === 0) return;
+    const sweepNotifications = async () => {
+      try {
+        const notifications = await self.registration.getNotifications();
+        if (!notifications || notifications.length === 0) {
+          if (self.navigator && 'clearAppBadge' in self.navigator) {
+            self.navigator.clearAppBadge().catch(() => {});
+          }
+          return;
+        }
         notifications.forEach((notif) => {
           if (all) {
             notif.close();
@@ -482,15 +488,20 @@ self.addEventListener('message', (event) => {
           let shouldClose = false;
           if (contactId) {
             const cStr = String(contactId);
+            const cClean = cStr.replace(/^admin_/, '');
             if (tag === `contact-${cStr}` || tag.includes(`contact-${cStr}`) ||
-                String(d.contactId) === cStr || String(d.senderId) === cStr ||
-                (d.url && d.url.includes(`contact=${cStr}`))) {
+                tag === `contact-${cClean}` || tag.includes(`contact-${cClean}`) ||
+                (cClean && tag.includes(cClean)) ||
+                String(d.contactId) === cStr || String(d.contactId) === cClean ||
+                String(d.senderId) === cStr || String(d.senderId) === cClean ||
+                (d.url && (d.url.includes(`contact=${cStr}`) || d.url.includes(`contact=${cClean}`)))) {
               shouldClose = true;
             }
           }
           if (salonId) {
             const sStr = String(salonId);
             if (tag === `salon-${sStr}` || tag.includes(`salon-${sStr}`) ||
+                (sStr && tag.includes(sStr)) ||
                 String(d.salonId) === sStr ||
                 (d.url && d.url.includes(`salon=${sStr}`))) {
               shouldClose = true;
@@ -500,16 +511,21 @@ self.addEventListener('message', (event) => {
             notif.close();
           }
         });
-        return self.registration.getNotifications();
-      }).then((remaining) => {
+        const remaining = await self.registration.getNotifications();
         if (!remaining || remaining.length === 0) {
           if (self.navigator && 'clearAppBadge' in self.navigator) {
             self.navigator.clearAppBadge().catch(() => {});
           }
         }
-      }).catch((err) => {
-        console.warn('[-] Error in SW DISMISS_NOTIFICATIONS:', err);
-      })
-    );
+      } catch (err) {
+        console.warn('[-] Error in SW sweepNotifications:', err);
+      }
+    };
+
+    event.waitUntil((async () => {
+      await sweepNotifications();
+      setTimeout(sweepNotifications, 300);
+      setTimeout(sweepNotifications, 800);
+    })());
   }
 });

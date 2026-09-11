@@ -670,9 +670,15 @@ function initSocket() {
     if (state.activeContact && state.activeTab === 'contacts' && !document.hidden && document.visibilityState === 'visible') {
       state.socket.emit('enter_active_chat', { partnerId: state.activeContact.id });
       state.socket.emit('mark_read', { senderId: state.activeContact.id });
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ contactId: state.activeContact.id });
+      }
     }
     if (state.activeSalon && state.activeTab === 'salons') {
       state.socket.emit('join_salon', state.activeSalon.id);
+      if (!document.hidden && document.visibilityState === 'visible' && typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+      }
     }
     if (state.salons && state.salons.length > 0) {
       state.salons.forEach(s => state.socket.emit('join_salon', s.id));
@@ -2209,7 +2215,7 @@ function setupEventListeners() {
   let activeRoomSyncTimeout = null;
 
   function syncActiveChatPresence() {
-    const isVisible = !document.hidden && document.visibilityState === 'visible' && (typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+    const isVisible = !document.hidden && document.visibilityState === 'visible';
 
     if (!isVisible) {
       // 1. Immediately cancel any pending enter room timeout
@@ -2229,11 +2235,27 @@ function setupEventListeners() {
       return;
     }
 
-    // When becoming visible again, debounce slightly (100ms) to ensure viewport / activeTab state has settled
+    // When becoming visible again:
+    // A. Immediate instant notification dismissal & SW sync on resuming visibility (zero delay, socket-independent)
+    if (state.activeContact) {
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ contactId: state.activeContact.id });
+      }
+      if (typeof syncActiveChatToServiceWorker === 'function') {
+        syncActiveChatToServiceWorker({ contactId: state.activeContact.id, isVisible: true });
+      }
+    } else if (state.activeSalon) {
+      if (typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+      }
+      if (typeof syncActiveChatToServiceWorker === 'function') {
+        syncActiveChatToServiceWorker({ salonId: state.activeSalon.id, isVisible: true });
+      }
+    }
+
+    // B. Re-sync room & socket presence (debounced 100ms to ensure layout / tab state has settled)
     if (activeRoomSyncTimeout) clearTimeout(activeRoomSyncTimeout);
     activeRoomSyncTimeout = setTimeout(() => {
-      if (!state.socket || !state.socket.connected) return;
-
       let targetRoomId = null;
       let targetSenderId = null;
 
@@ -2246,20 +2268,14 @@ function setupEventListeners() {
         targetRoomId = 'admin_' + state.activeSupportSession;
       }
 
-      if (currentActiveRoomId && currentActiveRoomId !== targetRoomId) {
-        state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
-      }
-
-      if (targetRoomId && targetRoomId !== currentActiveRoomId) {
-        state.socket.emit('enter_active_chat', { partnerId: targetRoomId });
-        if (targetSenderId) {
-          state.socket.emit('mark_read', { senderId: targetSenderId });
-          if (typeof dismissPushNotificationForChat === 'function') {
-            dismissPushNotificationForChat({ contactId: targetSenderId });
-          }
-        } else if (state.activeSalon) {
-          if (typeof dismissPushNotificationForChat === 'function') {
-            dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+      if (state.socket && state.socket.connected) {
+        if (currentActiveRoomId && currentActiveRoomId !== targetRoomId) {
+          state.socket.emit('leave_active_chat', { partnerId: currentActiveRoomId });
+        }
+        if (targetRoomId) {
+          state.socket.emit('enter_active_chat', { partnerId: targetRoomId });
+          if (targetSenderId) {
+            state.socket.emit('mark_read', { senderId: targetSenderId });
           }
         }
       }
@@ -2537,6 +2553,23 @@ function setupEventListeners() {
     msgInput.addEventListener('click', () => {
       handleMessageInputMention();
     });
+
+    // Dismiss OS push notifications for current conversation immediately upon user interaction
+    const dismissActiveOnInteraction = () => {
+      if (state.activeContact && typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ contactId: state.activeContact.id });
+      } else if (state.activeSalon && typeof dismissPushNotificationForChat === 'function') {
+        dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+      }
+    };
+    msgInput.addEventListener('focus', dismissActiveOnInteraction);
+    msgInput.addEventListener('input', dismissActiveOnInteraction);
+    msgInput.addEventListener('touchstart', dismissActiveOnInteraction, { passive: true });
+    window.addEventListener('pointerdown', () => {
+      if (document.visibilityState === 'visible' && !document.hidden) {
+        dismissActiveOnInteraction();
+      }
+    }, { passive: true });
 
     // Enter key handling (Line break on Mobile, Send on Desktop) + Mentions autocomplete navigation
     const isTouchMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.matchMedia('(max-width: 768px)').matches;
@@ -7123,6 +7156,12 @@ async function sendMessage(contentPayload) {
     cancelEdit();
     return;
   }
+  // Dismiss any existing notification for current active chat upon sending a message
+  if (state.activeContact && typeof dismissPushNotificationForChat === 'function') {
+    dismissPushNotificationForChat({ contactId: state.activeContact.id });
+  } else if (state.activeSalon && typeof dismissPushNotificationForChat === 'function') {
+    dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+  }
 
   if (state.activeTab === 'contacts' && state.activeContact) {
     const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -7389,18 +7428,25 @@ function updateAllTabsBadges() {
   }
 }
 
-function syncActiveChatToServiceWorker({ contactId = null, salonId = null, isVisible = true, clear = false } = {}) {
+async function syncActiveChatToServiceWorker({ contactId = null, salonId = null, isVisible = true, clear = false } = {}) {
   try {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      if (clear) {
-        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ACTIVE_CHAT' });
-      } else {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'SET_ACTIVE_CHAT',
-          contactId: contactId ? String(contactId) : null,
-          salonId: salonId ? String(salonId) : null,
-          isVisible: isVisible !== false
-        });
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      let swTarget = navigator.serviceWorker.controller;
+      if (!swTarget && navigator.serviceWorker.ready) {
+        const reg = await navigator.serviceWorker.ready;
+        swTarget = reg ? reg.active : null;
+      }
+      if (swTarget && typeof swTarget.postMessage === 'function') {
+        if (clear) {
+          swTarget.postMessage({ type: 'CLEAR_ACTIVE_CHAT' });
+        } else {
+          swTarget.postMessage({
+            type: 'SET_ACTIVE_CHAT',
+            contactId: contactId ? String(contactId) : null,
+            salonId: salonId ? String(salonId) : null,
+            isVisible: isVisible !== false
+          });
+        }
       }
     }
   } catch (e) {}
@@ -7410,7 +7456,7 @@ window.syncActiveChatToServiceWorker = syncActiveChatToServiceWorker;
 /**
  * Dismiss OS system push notifications for a conversation when the user views it.
  * Uses both direct ServiceWorkerRegistration.getNotifications().close() and SW postMessage,
- * with multi-pass sweep (immediate, +250ms, +750ms) to catch notifications arriving in-flight from OS.
+ * with multi-pass sweep (immediate, +250ms, +750ms, +1500ms) to catch notifications arriving in-flight from OS.
  */
 async function dismissPushNotificationForChat({ contactId = null, salonId = null, all = false } = {}) {
   const doClose = async () => {
@@ -7430,15 +7476,20 @@ async function dismissPushNotificationForChat({ contactId = null, salonId = null
               let shouldClose = false;
               if (contactId) {
                 const cStr = String(contactId);
+                const cClean = cStr.replace(/^admin_/, '');
                 if (tag === `contact-${cStr}` || tag.includes(`contact-${cStr}`) ||
-                    String(d.contactId) === cStr || String(d.senderId) === cStr ||
-                    (d.url && d.url.includes(`contact=${cStr}`))) {
+                    tag === `contact-${cClean}` || tag.includes(`contact-${cClean}`) ||
+                    (cClean && tag.includes(cClean)) ||
+                    String(d.contactId) === cStr || String(d.contactId) === cClean ||
+                    String(d.senderId) === cStr || String(d.senderId) === cClean ||
+                    (d.url && (d.url.includes(`contact=${cStr}`) || d.url.includes(`contact=${cClean}`)))) {
                   shouldClose = true;
                 }
               }
               if (salonId) {
                 const sStr = String(salonId);
                 if (tag === `salon-${sStr}` || tag.includes(`salon-${sStr}`) ||
+                    (sStr && tag.includes(sStr)) ||
                     String(d.salonId) === sStr ||
                     (d.url && d.url.includes(`salon=${sStr}`))) {
                   shouldClose = true;
@@ -7451,8 +7502,9 @@ async function dismissPushNotificationForChat({ contactId = null, salonId = null
           }
         }
 
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
+        const swTarget = navigator.serviceWorker.controller || (reg && reg.active);
+        if (swTarget && typeof swTarget.postMessage === 'function') {
+          swTarget.postMessage({
             type: 'DISMISS_NOTIFICATIONS',
             contactId: contactId ? String(contactId) : null,
             salonId: salonId ? String(salonId) : null,
@@ -7470,6 +7522,7 @@ async function dismissPushNotificationForChat({ contactId = null, salonId = null
   await doClose();
   setTimeout(doClose, 250);
   setTimeout(doClose, 750);
+  setTimeout(doClose, 1500);
 }
 window.dismissPushNotificationForChat = dismissPushNotificationForChat;
 
