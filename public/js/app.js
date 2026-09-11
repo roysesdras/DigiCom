@@ -3122,8 +3122,8 @@ function setupEventListeners() {
         if (res.ok) {
           if (typeof showToast === 'function') {
             showToast(isChecked
-              ? 'Mode discret activé (contenu masqué sur l\'écran verrouillé) 🔒'
-              : 'Mode standard rétabli (aperçu affiché) 👁️',
+              ? 'Mode discret activé (contenu masqué sur l\'écran verrouillé)'
+              : 'Mode standard rétabli (aperçu affiché)',
               'success'
             );
           }

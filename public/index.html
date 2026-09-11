@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1237" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1237">
+    <link rel="preload" href="/css/style.min.css?v=1239" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1239">
   </head>
 
   <body>
@@ -84,12 +84,6 @@
             </button>
             <button type="button" class="action-btn btn-admin-dashboard" id="btn-superadmin-dashboard" title="SuperAdmin Control Center"
               style="display: none;" aria-label="SuperAdmin Dashboard">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-              </svg>
-            </button>
-            <button type="button" class="action-btn" id="btn-push-privacy" title="Confidentialité des notifications" aria-label="Confidentialité des notifications">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -312,8 +306,9 @@
 
                 <button type="button" class="dropdown-item" id="menu-item-push-privacy">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
                   </svg>
                   <span>Confidentialité notifications</span>
                 </button>
@@ -2052,59 +2047,49 @@
 
     <!-- Modal: Confidentialité des Notifications Push (Mode Discret) -->
     <div class="modal-backdrop" id="modal-push-privacy" style="display: none;">
-      <div class="modal-card" style="max-width: 440px;">
-        <div class="modal-header">
-          <div class="modal-title-group">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-            <h3>Confidentialité des Notifications</h3>
+      <div class="glass-modal" style="max-width: 420px;">
+        <div class="modal-top">
+          <div class="brand">
+            <div class="brand-logo-glow" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </div>
+            <h2>Confidentialité des notifications</h2>
           </div>
-          <button type="button" class="btn-close-modal" id="btn-close-push-privacy-modal" onclick="window.closeModal('modal-push-privacy')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <button type="button" class="btn-close" id="btn-close-push-privacy-modal" aria-label="Fermer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
         </div>
-        <div class="modal-body" style="padding: 1.15rem 1.25rem 1.35rem;">
-          <div class="privacy-shield-card" style="margin-bottom: 1.1rem;">
-            <div class="privacy-shield-info">
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--emerald);">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                </svg>
-                <strong style="color: #f8fafc; font-size: 0.95rem;">Mode Discret (Écran verrouillé)</strong>
-              </div>
-              <p style="margin: 0.35rem 0 0 0; color: #94a3b8; font-size: 0.78rem; line-height: 1.4;">
-                Masque le nom de l'expéditeur et le contenu du message dans les notifications push sur votre téléphone.
-              </p>
-            </div>
-            <label class="switch-control">
-              <input type="checkbox" id="toggle-push-privacy">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
 
-          <div id="push-privacy-status-box" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 0.9rem; font-size: 0.82rem; line-height: 1.45; color: #cbd5e1; margin-bottom: 1.1rem;">
-            <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-              <span>Aperçu sur l'écran verrouillé :</span>
-            </div>
-            <div id="push-privacy-preview" style="font-style: italic; color: #94a3b8; padding: 0.4rem 0.6rem; background: rgba(0,0,0,0.25); border-radius: 8px;">
-              Mode Standard : Expéditeur et texte affichés normalement.
-            </div>
-          </div>
+        <p style="margin-bottom: 1rem; color: var(--text-dim); font-size: 0.88rem; line-height: 1.5;">
+          Contrôlez l'affichage de vos messages sur votre écran de verrouillage.
+        </p>
 
-          <div style="font-size: 0.76rem; color: #64748b; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.45rem;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px; color: #3b82f6;">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            <span>Les alertes d'appels vocaux et vidéo continueront d'afficher l'identité de l'appelant pour vous permettre de décrocher.</span>
+        <div style="background: rgba(255, 255, 255, 0.04); border-radius: 12px; padding: 0.9rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;">
+          <div>
+            <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-main, #f8fafc);">Mode discret</div>
+            <div style="font-size: 0.78rem; color: var(--text-dim, #94a3b8); margin-top: 0.2rem;">Masquer l'expéditeur et le texte sur l'écran verrouillé</div>
           </div>
+          <label class="switch-control">
+            <input type="checkbox" id="toggle-push-privacy">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 0.75rem 0.9rem; margin-bottom: 1rem;">
+          <div style="font-size: 0.76rem; color: var(--text-dim, #94a3b8); margin-bottom: 0.25rem;">Aperçu de la notification :</div>
+          <div id="push-privacy-preview" style="font-size: 0.84rem; color: var(--text-main, #e2e8f0); font-style: italic;">
+            Mode standard : Nom et aperçu affichés
+          </div>
+        </div>
+
+        <div style="font-size: 0.76rem; color: var(--text-dim, #94a3b8); line-height: 1.4;">
+          Note : Les appels vocaux et vidéo continuent d'afficher l'identité de l'appelant pour vous permettre de décrocher.
         </div>
       </div>
     </div>
@@ -2277,11 +2262,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1237" defer></script>
-    <script src="/js/idb-store.min.js?v=1237" defer></script>
-    <script src="/js/push-client.min.js?v=1237" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1237" defer></script>
-    <script src="/js/app.min.js?v=1237" defer></script>
+    <script src="/socket.io/socket.io.js?v=1239" defer></script>
+    <script src="/js/idb-store.min.js?v=1239" defer></script>
+    <script src="/js/push-client.min.js?v=1239" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1239" defer></script>
+    <script src="/js/app.min.js?v=1239" defer></script>
   </body>
 
 </html>
