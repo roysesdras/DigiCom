@@ -312,7 +312,12 @@ function updateCurrentUserUI() {
 
   const btnAdminManage = document.getElementById('btn-admin-manage');
   if (btnAdminManage) {
-    btnAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+    btnAdminManage.style.display = 'none';
+  }
+
+  const sidebarAdminManage = document.getElementById('sidebar-menu-item-admin-manage');
+  if (sidebarAdminManage) {
+    sidebarAdminManage.style.display = (state.user && state.user.role === 'admin') ? 'flex' : 'none';
   }
 
   const btnChatAdminManage = document.getElementById('btn-chat-admin-manage');
@@ -322,7 +327,7 @@ function updateCurrentUserUI() {
 
   const btnSuperAdmin = document.getElementById('btn-superadmin-dashboard');
   if (btnSuperAdmin) {
-    btnSuperAdmin.style.display = (state.user && state.user.role === 'admin') ? 'inline-flex' : 'none';
+    btnSuperAdmin.style.display = 'none';
   }
 
   const menuSuperAdmin = document.getElementById('menu-item-superadmin');
@@ -3299,6 +3304,16 @@ function setupEventListeners() {
     });
   }
 
+  const sidebarBtnAddContact = document.getElementById('sidebar-menu-item-contacts');
+  if (sidebarBtnAddContact && addContactModal) {
+    sidebarBtnAddContact.addEventListener('click', () => {
+      showModal('add-contact-modal');
+      switchAddContactModalTab('qr');
+      loadPendingContactRequests();
+      if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
+    });
+  }
+
   if (btnCloseAddContactModal && addContactModal) {
     btnCloseAddContactModal.addEventListener('click', () => {
       hideModal('add-contact-modal');
@@ -3460,12 +3475,21 @@ function setupEventListeners() {
     });
   }
 
-  // Admin modal trigger
   const btnAdmin = document.getElementById('btn-admin-manage');
   if (btnAdmin) {
     btnAdmin.addEventListener('click', () => {
       document.getElementById('admin-modal').style.display = 'flex';
       loadAdminUsers();
+    });
+  }
+
+  const sidebarBtnAdmin = document.getElementById('sidebar-menu-item-admin-manage');
+  if (sidebarBtnAdmin) {
+    sidebarBtnAdmin.addEventListener('click', () => {
+      const adminModal = document.getElementById('admin-modal');
+      if (adminModal) adminModal.style.display = 'flex';
+      loadAdminUsers();
+      if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
     });
   }
 
@@ -4336,6 +4360,8 @@ async function loadPendingContactRequests() {
 function updateContactRequestsBadge() {
   const modalBadge = document.getElementById('modal-requests-badge');
   const headerBadge = document.getElementById('btn-add-contact-badge');
+  const sidebarMenuBadge = document.getElementById('sidebar-menu-item-contacts-badge');
+  const sidebarMoreBtnBadge = document.getElementById('sidebar-more-menu-badge');
   const count = (state.pendingContactRequests || []).length;
 
   if (modalBadge) {
@@ -4358,6 +4384,20 @@ function updateContactRequestsBadge() {
       headerBadge.classList.add('action-btn-badge-hidden');
       headerBadge.style.display = 'none';
     }
+  }
+
+  if (sidebarMenuBadge) {
+    if (count > 0) {
+      sidebarMenuBadge.textContent = count > 99 ? '99+' : count;
+      sidebarMenuBadge.style.display = 'inline-block';
+    } else {
+      sidebarMenuBadge.textContent = '0';
+      sidebarMenuBadge.style.display = 'none';
+    }
+  }
+
+  if (sidebarMoreBtnBadge) {
+    sidebarMoreBtnBadge.style.display = count > 0 ? 'block' : 'none';
   }
 
   if (state.activeTab === 'contacts') {
@@ -9216,6 +9256,22 @@ window.closeSidebarMoreMenu = function() {
   const dropdown = document.getElementById('sidebar-more-dropdown-menu');
   if (dropdown) dropdown.style.display = 'none';
 };
+
+const sidebarPushPrivacy = document.getElementById('sidebar-menu-item-push-privacy');
+if (sidebarPushPrivacy) {
+  sidebarPushPrivacy.addEventListener('click', () => {
+    if (typeof window.openPushPrivacyModal === 'function') window.openPushPrivacyModal();
+    if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
+  });
+}
+
+const sidebarSetPin = document.getElementById('sidebar-menu-item-set-pin');
+if (sidebarSetPin) {
+  sidebarSetPin.addEventListener('click', () => {
+    if (typeof window.openSetPinModal === 'function') window.openSetPinModal();
+    if (typeof window.closeSidebarMoreMenu === 'function') window.closeSidebarMoreMenu();
+  });
+}
 
 document.addEventListener('click', (e) => {
   const chatDropdown = document.getElementById('chat-more-dropdown-menu');
