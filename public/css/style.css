@@ -3689,12 +3689,18 @@ body {
   background: rgba(244, 63, 94, 0.25);
 }
 
-/* WebRTC Call Styles */
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
 .chat-header-call-actions {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  margin-right: 0.35rem;
+  gap: 0.3rem;
+  margin-right: 0;
 }
 
 .chat-header .action-btn {

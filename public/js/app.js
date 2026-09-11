@@ -9818,16 +9818,68 @@ window.jumpToPinnedMessage = async function(messageId) {
 
   let msgEl = findElement();
 
-  // 2. If not in DOM, load older history progressively until found (up to 15 batches)
+  // 2. If not in DOM, check if already cached in memory (state.directMessages or state.salonMessages)
+  if (!msgEl) {
+    if (state.activeContact) {
+      const allDirect = state.directMessages[state.activeContact.id] || [];
+      const inMemory = allDirect.some(m => String(m.id) === targetId);
+      if (inMemory) {
+        const feed = document.getElementById('messages-feed');
+        if (feed) {
+          feed.innerHTML = '';
+          let lastDateKey = null;
+          allDirect.forEach(msg => {
+            const dateKey = formatMessageDateGroup(msg.timestamp);
+            if (dateKey && dateKey !== lastDateKey) {
+              const sep = document.createElement('div');
+              sep.className = 'chat-date-separator';
+              sep.dataset.dateKey = dateKey;
+              sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
+              feed.appendChild(sep);
+              lastDateKey = dateKey;
+            }
+            appendMessageToFeed(msg, false, false, false);
+          });
+          msgEl = findElement();
+        }
+      }
+    } else if (state.activeSalon) {
+      const allSalon = state.salonMessages[state.activeSalon.id] || [];
+      const inMemory = allSalon.some(m => String(m.id) === targetId);
+      if (inMemory) {
+        const feed = document.getElementById('messages-feed');
+        if (feed) {
+          feed.innerHTML = '';
+          let lastDateKey = null;
+          allSalon.forEach(msg => {
+            const dateKey = formatMessageDateGroup(msg.timestamp);
+            if (dateKey && dateKey !== lastDateKey) {
+              const sep = document.createElement('div');
+              sep.className = 'chat-date-separator';
+              sep.dataset.dateKey = dateKey;
+              sep.innerHTML = `<span>${escapeHtml(dateKey)}</span>`;
+              feed.appendChild(sep);
+              lastDateKey = dateKey;
+            }
+            appendMessageToFeed(msg, false, false, false);
+          });
+          msgEl = findElement();
+        }
+      }
+    }
+  }
+
+  // 3. If still not in DOM, fetch older history progressively (bypassing user scroll 800ms cooldown)
   if (!msgEl) {
     let attempts = 0;
-    while (!findElement() && attempts < 15) {
+    while (!findElement() && attempts < 10) {
       attempts++;
       let loadedMore = false;
       if (state.activeTab === 'salons' && state.activeSalon) {
         if (typeof loadSalonHistory === 'function') {
           const pag = state.salonPagination && state.salonPagination[state.activeSalon.id];
           if (pag && !pag.hasMore) break;
+          if (pag) pag.lastLoadTime = 0;
           await loadSalonHistory(state.activeSalon.id, true);
           loadedMore = true;
         }
@@ -9835,6 +9887,7 @@ window.jumpToPinnedMessage = async function(messageId) {
         if (typeof loadDirectHistory === 'function') {
           const pag = state.feedPagination && state.feedPagination[state.activeContact.id];
           if (pag && !pag.hasMore) break;
+          if (pag) pag.lastLoadTime = 0;
           await loadDirectHistory(state.activeContact.id, true);
           loadedMore = true;
         }
@@ -9844,16 +9897,22 @@ window.jumpToPinnedMessage = async function(messageId) {
       if (!loadedMore) break;
       msgEl = findElement();
       if (msgEl) break;
+      await new Promise(r => setTimeout(r, 60));
     }
   }
 
   msgEl = findElement();
   if (msgEl) {
-    // 3. Ultra-fluid native compositor smooth scroll directly into vertical center of stream
+    // 4. Reliable smooth scroll: scroll container directly + compositor scrollIntoView
+    const feed = document.getElementById('messages-feed');
+    if (feed) {
+      const targetScrollTop = msgEl.offsetTop - (feed.clientHeight / 2) + (msgEl.clientHeight / 2);
+      feed.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    }
     requestAnimationFrame(() => {
       msgEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
-      // 4. Trigger signature WhatsApp emerald bubble flash as it glides into view
+      // 5. Trigger signature WhatsApp emerald bubble flash as it glides into view
       const bubble = msgEl.querySelector('.msg-bubble') || msgEl;
       setTimeout(() => {
         bubble.classList.remove('whatsapp-flash-highlight');
@@ -12086,15 +12145,28 @@ function highlightSearchMatches(query) {
   if (!container) return [];
 
   const textNodes = [];
-  const textElements = container.querySelectorAll('.message-text, .quote-content, .msg-bubble > p, .task-card-title, .contract-compact-header');
+  const bubbles = container.querySelectorAll('.msg-bubble');
 
-  textElements.forEach(el => {
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+  bubbles.forEach(bubble => {
+    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('.msg-meta') || 
+            parent.closest('.msg-actions') || 
+            parent.closest('.media-download-overlay') ||
+            parent.closest('.voice-main-content') ||
+            parent.closest('.msg-deleted-badge')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }, false);
+
     let n;
     while ((n = walker.nextNode())) {
-      if (n.nodeValue && n.nodeValue.trim().length > 0) {
-        textNodes.push(n);
-      }
+      textNodes.push(n);
     }
   });
 
@@ -12195,6 +12267,12 @@ window.navigateInChatSearch = function(direction = 1) {
   const currentMatch = matches[nextIdx];
   if (currentMatch) {
     currentMatch.classList.add('current-active');
+    const feed = document.getElementById('messages-feed');
+    if (feed) {
+      const row = currentMatch.closest('.message-row') || currentMatch;
+      const targetTop = row.offsetTop - (feed.clientHeight / 2) + (row.clientHeight / 2);
+      feed.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    }
     currentMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
@@ -12228,6 +12306,12 @@ function performInChatSearch(query) {
   if (matches.length > 0) {
     inChatSearchState.currentIndex = 0;
     matches[0].classList.add('current-active');
+    const feed = document.getElementById('messages-feed');
+    if (feed) {
+      const row = matches[0].closest('.message-row') || matches[0];
+      const targetTop = row.offsetTop - (feed.clientHeight / 2) + (row.clientHeight / 2);
+      feed.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    }
     matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (counter) counter.textContent = `1/${matches.length}`;
   } else {
@@ -12251,7 +12335,7 @@ async function triggerDeepServerSearch(query) {
   let contactId = null;
   let salonId = null;
 
-  if (state.activeTab === 'salons' && state.activeSalon) {
+  if (state.activeSalon) {
     salonId = state.activeSalon.id;
   } else if (state.activeContact) {
     contactId = state.activeContact.id;

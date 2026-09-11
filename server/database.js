@@ -787,19 +787,32 @@ async function searchInChatMessages(userId, contactId, salonId, query, userRole 
       [String(salonId), searchTerm, safeLimit]
     );
   } else if (contactId) {
-    const uA = String(userId);
-    const uB = String(contactId);
+    const aStr = String(userId);
+    const aClean = aStr.replace(/^admin_/, '');
+    const bStr = String(contactId);
+    const bClean = bStr.replace(/^admin_/, '');
     return await all(
       `SELECT m.*, u.display_name as sender_name
        FROM messages m
        LEFT JOIN users u ON u.id = m.sender_id
        WHERE m.channel_type = 'private'
-         AND ((m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?))
+         AND (
+           ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+           OR
+           ((m.sender_id IN (?, ?, ?)) AND (m.receiver_id IN (?, ?, ?)))
+         )
          AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
          AND m.content LIKE ?
        ORDER BY m.timestamp DESC
        LIMIT ?`,
-      [uA, uB, uB, uA, searchTerm, safeLimit]
+      [
+        aStr, aClean, `admin_${aClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        bStr, bClean, `admin_${bClean}`,
+        aStr, aClean, `admin_${aClean}`,
+        searchTerm,
+        safeLimit
+      ]
     );
   }
   return [];
