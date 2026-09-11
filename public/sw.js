@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1242';
+const CACHE_NAME = 'digicom-pwa-v1243';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -288,14 +288,47 @@ self.addEventListener('push', (event) => {
     }).catch(() => {});
   } catch (e) {}
 
-  // App Badging API for PWA app icon on mobile / desktop
-  if (self.navigator && 'setAppBadge' in self.navigator) {
-    self.navigator.setAppBadge().catch(() => {});
-  }
+  event.waitUntil((async () => {
+    // Check if the user is ALREADY actively viewing this chat in an open visible window
+    if (!isCall) {
+      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const targetContactId = payloadData.contactId || payloadData.senderId || data.contactId;
+      const targetSalonId = payloadData.salonId || data.salonId;
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'DigiCom', options)
-  );
+      for (const client of windowClients) {
+        if (client.visibilityState === 'visible') {
+          // If active chat state in SW matches this conversation
+          if (self.currentActiveChat && self.currentActiveChat.isVisible) {
+            const isMatchingContact = targetContactId && String(self.currentActiveChat.contactId) === String(targetContactId);
+            const isMatchingSalon = targetSalonId && String(self.currentActiveChat.salonId) === String(targetSalonId);
+            if (isMatchingContact || isMatchingSalon) {
+              console.log('[SW_PUSH] Suppressed push notification: user is actively viewing this chat.');
+              return;
+            }
+          }
+
+          // Fallback check on client URL
+          if (client.url) {
+            if (targetContactId && client.url.includes(`contact=${encodeURIComponent(targetContactId)}`)) {
+              console.log('[SW_PUSH] Suppressed push notification via client URL match.');
+              return;
+            }
+            if (targetSalonId && client.url.includes(`salon=${encodeURIComponent(targetSalonId)}`)) {
+              console.log('[SW_PUSH] Suppressed push notification via client URL salon match.');
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // App Badging API for PWA app icon on mobile / desktop
+    if (self.navigator && 'setAppBadge' in self.navigator) {
+      self.navigator.setAppBadge().catch(() => {});
+    }
+
+    return self.registration.showNotification(data.title || 'DigiCom', options);
+  })());
 });
 
 // Notification Click Handler (v1201 - Targeted foreground focus + Android openWindow fallback)
@@ -387,11 +420,54 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Real-time Push Notification Dismissal Handler
-// Closes OS/system notifications when user views or reads a conversation in foreground
+// Track current active chat in SW for instant foreground suppression
+self.currentActiveChat = { contactId: null, salonId: null, isVisible: false };
+
+// Real-time Push Notification Dismissal & Active Chat Presence Handler
 self.addEventListener('message', (event) => {
   if (!event.data) return;
-  if (event.data.type === 'DISMISS_NOTIFICATIONS') {
+
+  if (event.data.type === 'SET_ACTIVE_CHAT') {
+    self.currentActiveChat = {
+      contactId: event.data.contactId ? String(event.data.contactId) : null,
+      salonId: event.data.salonId ? String(event.data.salonId) : null,
+      isVisible: event.data.isVisible !== false
+    };
+
+    // When a chat is made active, immediately dismiss any lingering notifications for it!
+    const { contactId, salonId } = self.currentActiveChat;
+    event.waitUntil(
+      self.registration.getNotifications().then((notifications) => {
+        if (!notifications || notifications.length === 0) return;
+        notifications.forEach((notif) => {
+          const d = notif.data || {};
+          const tag = notif.tag || '';
+          let shouldClose = false;
+          if (contactId) {
+            const cStr = String(contactId);
+            if (tag === `contact-${cStr}` || tag.includes(`contact-${cStr}`) ||
+                String(d.contactId) === cStr || String(d.senderId) === cStr ||
+                (d.url && d.url.includes(`contact=${cStr}`))) {
+              shouldClose = true;
+            }
+          }
+          if (salonId) {
+            const sStr = String(salonId);
+            if (tag === `salon-${sStr}` || tag.includes(`salon-${sStr}`) ||
+                String(d.salonId) === sStr ||
+                (d.url && d.url.includes(`salon=${sStr}`))) {
+              shouldClose = true;
+            }
+          }
+          if (shouldClose) {
+            notif.close();
+          }
+        });
+      }).catch(() => {})
+    );
+  } else if (event.data.type === 'CLEAR_ACTIVE_CHAT') {
+    self.currentActiveChat = { contactId: null, salonId: null, isVisible: false };
+  } else if (event.data.type === 'DISMISS_NOTIFICATIONS') {
     const { contactId, salonId, all } = event.data;
     event.waitUntil(
       self.registration.getNotifications().then((notifications) => {
@@ -406,13 +482,17 @@ self.addEventListener('message', (event) => {
           let shouldClose = false;
           if (contactId) {
             const cStr = String(contactId);
-            if (tag === `contact-${cStr}` || String(d.contactId) === cStr || String(d.senderId) === cStr) {
+            if (tag === `contact-${cStr}` || tag.includes(`contact-${cStr}`) ||
+                String(d.contactId) === cStr || String(d.senderId) === cStr ||
+                (d.url && d.url.includes(`contact=${cStr}`))) {
               shouldClose = true;
             }
           }
           if (salonId) {
             const sStr = String(salonId);
-            if (tag === `salon-${sStr}` || String(d.salonId) === sStr) {
+            if (tag === `salon-${sStr}` || tag.includes(`salon-${sStr}`) ||
+                String(d.salonId) === sStr ||
+                (d.url && d.url.includes(`salon=${sStr}`))) {
               shouldClose = true;
             }
           }

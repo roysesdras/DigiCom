@@ -1721,6 +1721,9 @@ function setupEventListeners() {
   if (btnBack) {
     btnBack.addEventListener('click', () => {
       document.body.classList.remove('mobile-chat-open');
+      if (typeof syncActiveChatToServiceWorker === 'function') {
+        syncActiveChatToServiceWorker({ clear: true });
+      }
       if (state.socket) {
         if (state.activeContact) {
           state.socket.emit('leave_active_chat', { partnerId: state.activeContact.id });
@@ -2248,10 +2251,24 @@ function setupEventListeners() {
       }
 
       if (document.visibilityState === 'visible') {
-        if (state.activeContact && typeof dismissPushNotificationForChat === 'function') {
-          dismissPushNotificationForChat({ contactId: state.activeContact.id });
-        } else if (state.activeSalon && typeof dismissPushNotificationForChat === 'function') {
-          dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+        if (state.activeContact) {
+          if (typeof syncActiveChatToServiceWorker === 'function') {
+            syncActiveChatToServiceWorker({ contactId: state.activeContact.id, isVisible: true });
+          }
+          if (typeof dismissPushNotificationForChat === 'function') {
+            dismissPushNotificationForChat({ contactId: state.activeContact.id });
+          }
+        } else if (state.activeSalon) {
+          if (typeof syncActiveChatToServiceWorker === 'function') {
+            syncActiveChatToServiceWorker({ salonId: state.activeSalon.id, isVisible: true });
+          }
+          if (typeof dismissPushNotificationForChat === 'function') {
+            dismissPushNotificationForChat({ salonId: state.activeSalon.id });
+          }
+        }
+      } else {
+        if (typeof syncActiveChatToServiceWorker === 'function') {
+          syncActiveChatToServiceWorker({ isVisible: false });
         }
       }
 
@@ -5524,6 +5541,9 @@ function selectContact(contact) {
   state.activeSupportSession = null;
   state.activeTab = 'contacts';
   state.unreadCounts[contact.id] = 0;
+  if (typeof syncActiveChatToServiceWorker === 'function') {
+    syncActiveChatToServiceWorker({ contactId: contact.id, isVisible: true });
+  }
   if (typeof dismissPushNotificationForChat === 'function') {
     dismissPushNotificationForChat({ contactId: contact.id });
   }
@@ -7354,61 +7374,87 @@ function updateAllTabsBadges() {
   }
 }
 
+function syncActiveChatToServiceWorker({ contactId = null, salonId = null, isVisible = true, clear = false } = {}) {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      if (clear) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ACTIVE_CHAT' });
+      } else {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SET_ACTIVE_CHAT',
+          contactId: contactId ? String(contactId) : null,
+          salonId: salonId ? String(salonId) : null,
+          isVisible: isVisible !== false
+        });
+      }
+    }
+  } catch (e) {}
+}
+window.syncActiveChatToServiceWorker = syncActiveChatToServiceWorker;
+
 /**
  * Dismiss OS system push notifications for a conversation when the user views it.
- * Uses both direct ServiceWorkerRegistration.getNotifications().close() and SW postMessage.
+ * Uses both direct ServiceWorkerRegistration.getNotifications().close() and SW postMessage,
+ * with multi-pass sweep (immediate, +250ms, +750ms) to catch notifications arriving in-flight from OS.
  */
 async function dismissPushNotificationForChat({ contactId = null, salonId = null, all = false } = {}) {
-  try {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && typeof reg.getNotifications === 'function') {
-        const notifs = await reg.getNotifications();
-        if (notifs && notifs.length > 0) {
-          notifs.forEach(notif => {
-            if (all) {
-              notif.close();
-              return;
-            }
-            const d = notif.data || {};
-            const tag = notif.tag || '';
-            let shouldClose = false;
-            if (contactId) {
-              const cStr = String(contactId);
-              if (tag === `contact-${cStr}` || String(d.contactId) === cStr || String(d.senderId) === cStr) {
-                shouldClose = true;
+  const doClose = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && typeof reg.getNotifications === 'function') {
+          const notifs = await reg.getNotifications();
+          if (notifs && notifs.length > 0) {
+            notifs.forEach(notif => {
+              if (all) {
+                notif.close();
+                return;
               }
-            }
-            if (salonId) {
-              const sStr = String(salonId);
-              if (tag === `salon-${sStr}` || String(d.salonId) === sStr) {
-                shouldClose = true;
+              const d = notif.data || {};
+              const tag = notif.tag || '';
+              let shouldClose = false;
+              if (contactId) {
+                const cStr = String(contactId);
+                if (tag === `contact-${cStr}` || tag.includes(`contact-${cStr}`) ||
+                    String(d.contactId) === cStr || String(d.senderId) === cStr ||
+                    (d.url && d.url.includes(`contact=${cStr}`))) {
+                  shouldClose = true;
+                }
               }
-            }
-            if (shouldClose) {
-              notif.close();
-            }
+              if (salonId) {
+                const sStr = String(salonId);
+                if (tag === `salon-${sStr}` || tag.includes(`salon-${sStr}`) ||
+                    String(d.salonId) === sStr ||
+                    (d.url && d.url.includes(`salon=${sStr}`))) {
+                  shouldClose = true;
+                }
+              }
+              if (shouldClose) {
+                notif.close();
+              }
+            });
+          }
+        }
+
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'DISMISS_NOTIFICATIONS',
+            contactId: contactId ? String(contactId) : null,
+            salonId: salonId ? String(salonId) : null,
+            all: !!all
           });
         }
       }
 
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'DISMISS_NOTIFICATIONS',
-          contactId: contactId ? String(contactId) : null,
-          salonId: salonId ? String(salonId) : null,
-          all: !!all
-        });
+      if (typeof updateAllTabsBadges === 'function') {
+        updateAllTabsBadges();
       }
-    }
+    } catch (err) {}
+  };
 
-    // Refresh remaining badge count
-    if (typeof updateAllTabsBadges === 'function') {
-      updateAllTabsBadges();
-    }
-  } catch (err) {
-    console.warn('[-] dismissPushNotificationForChat warning:', err);
-  }
+  await doClose();
+  setTimeout(doClose, 250);
+  setTimeout(doClose, 750);
 }
 window.dismissPushNotificationForChat = dismissPushNotificationForChat;
 
@@ -8225,6 +8271,9 @@ async function selectSalon(salon) {
   state.activeSupportSession = null;
   state.activeTab = 'salons';
   state.unreadSalonCounts[salon.id] = 0;
+  if (typeof syncActiveChatToServiceWorker === 'function') {
+    syncActiveChatToServiceWorker({ salonId: salon.id, isVisible: true });
+  }
   if (typeof dismissPushNotificationForChat === 'function') {
     dismissPushNotificationForChat({ salonId: salon.id });
   }

@@ -3465,21 +3465,26 @@ io.on('connection', (socket) => {
         pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
       }
 
-      pushService.sendNotificationToUser(receiverId, {
-        title: senderName,
-        body: pushBody,
-        icon: '/img/icon-192.webp',
-        badge: '/img/badge-72.webp',
-        tag: `contact-${senderId}`,
-        data: {
-          url: `/?contact=${senderId}&msg=${messageRecord.id}`,
-          channel: 'direct',
-          senderId: senderId,
-          contactId: senderId,
-          senderName: senderName,
-          messageId: messageRecord.id
-        }
-      }).catch(err => console.error('[-] Push error for private message:', err));
+      // Do NOT send push notification if recipient is already actively viewing this chat!
+      if (!isRecipientActiveInChat) {
+        pushService.sendNotificationToUser(receiverId, {
+          title: senderName,
+          body: pushBody,
+          icon: '/img/icon-192.webp',
+          badge: '/img/badge-72.webp',
+          tag: `contact-${senderId}`,
+          data: {
+            url: `/?contact=${senderId}&msg=${messageRecord.id}`,
+            channel: 'direct',
+            senderId: senderId,
+            contactId: senderId,
+            senderName: senderName,
+            messageId: messageRecord.id
+          }
+        }).catch(err => console.error('[-] Push error for private message:', err));
+      } else {
+        console.log(`[*] Suppressed push notification to user ${receiverId}: actively viewing chat with ${senderId}`);
+      }
     } catch (err) {
       console.error('[-] Error handling private_message:', err);
     }
@@ -3687,6 +3692,10 @@ io.on('connection', (socket) => {
       for (const member of salonMembers) {
         if (member.id !== senderId) {
           const isMemberActiveInSalon = activeMemberIds.includes(member.id);
+          if (isMemberActiveInSalon) {
+            console.log(`[*] Suppressed salon push to user ${member.id}: actively viewing salon ${salonId}`);
+            continue;
+          }
 
           const isMentioned = member.username && (mentionedUsernames.has(member.username.toLowerCase()) || (member.display_name && mentionedUsernames.has(member.display_name.toLowerCase())));
           const notificationTitle = isMentioned
