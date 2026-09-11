@@ -1852,14 +1852,14 @@ function setupEventListeners() {
         }
 
         // Infinite scroll upward to load older messages
-        // STRICT SAFEGUARDS:
+        // SAFEGUARDS:
         // 1. Never trigger during initial chat loading / rendering
-        // 2. Feed must have real scrollable overflow (scrollHeight > clientHeight + 200)
-        // 3. User must be scrolling near the top (scrollTop <= 80) and NOT at the bottom (distFromBottom > 200)
-        // 4. Cooldown throttle of at least 800ms between page fetches
-        if (!state.isInitialFeedLoading && feed.scrollTop <= 80 && distFromBottom > 200 && (feed.scrollHeight > feed.clientHeight + 200)) {
+        // 2. Feed must have real scrollable overflow (scrollHeight > clientHeight + 15)
+        // 3. User must be scrolling near the top (scrollTop <= 120) and not resting at the absolute bottom
+        // 4. Cooldown throttle of 600ms between page fetches
+        if (!state.isInitialFeedLoading && feed.scrollTop <= 120 && (feed.scrollHeight > feed.clientHeight + 15)) {
           const now = Date.now();
-          if (now - (state.lastPaginationScrollTime || 0) > 800) {
+          if (now - (state.lastPaginationScrollTime || 0) > 600) {
             state.lastPaginationScrollTime = now;
             if (state.activeTab === 'contacts' && state.activeContact) {
               const pag = state.feedPagination && state.feedPagination[state.activeContact.id];
@@ -5984,12 +5984,24 @@ function scrollToBottom(smooth = false) {
   }
 }
 
-// Adapt to mobile virtual keyboard height changes
+// Adapt to mobile virtual keyboard height changes (only when keyboard genuinely opens and user is already at bottom)
 if (window.visualViewport) {
+  let prevViewportHeight = window.visualViewport.height;
   window.visualViewport.addEventListener('resize', () => {
+    const currentHeight = window.visualViewport.height;
+    const heightDiff = prevViewportHeight - currentHeight;
+    prevViewportHeight = currentHeight;
+
     const feed = document.getElementById('messages-feed');
-    if (feed && (document.body.classList.contains('mobile-chat-open') || state.activeContact)) {
-      feed.scrollTop = feed.scrollHeight;
+    const msgInput = document.getElementById('message-input');
+    const isInputFocused = msgInput && document.activeElement === msgInput;
+
+    // Only scroll to bottom if keyboard opened (height shrank significantly > 120px) AND user was already reading at the bottom
+    if (feed && heightDiff > 120 && isInputFocused) {
+      const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+      if (distFromBottom < 120) {
+        feed.scrollTop = feed.scrollHeight;
+      }
     }
   });
 }
@@ -6180,8 +6192,11 @@ async function attachLinkPreviews(rowEl) {
     if (card) {
       bubble.appendChild(card);
       const feed = document.getElementById('messages-feed');
-      if (feed && (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 400)) {
-        scrollToBottom(false);
+      if (feed) {
+        const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+        if (distFromBottom < 60) {
+          scrollToBottom(false);
+        }
       }
     }
   }
@@ -6804,6 +6819,8 @@ function prependOlderMessagesToFeed(olderMsgs) {
 
   const previousScrollHeight = feed.scrollHeight;
   const previousScrollTop = feed.scrollTop;
+  const prevBehavior = feed.style.scrollBehavior;
+  feed.style.scrollBehavior = 'auto';
 
   const fragment = document.createDocumentFragment();
   let lastDateKey = null;
@@ -6827,9 +6844,14 @@ function prependOlderMessagesToFeed(olderMsgs) {
 
   feed.insertBefore(fragment, feed.firstChild);
 
-  // Maintain precise scroll position
+  // Maintain precise scroll position immediately
   const newScrollHeight = feed.scrollHeight;
-  feed.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
+  const heightDifference = newScrollHeight - previousScrollHeight;
+  feed.scrollTop = previousScrollTop + heightDifference;
+
+  requestAnimationFrame(() => {
+    feed.style.scrollBehavior = prevBehavior || '';
+  });
 }
 
 // RAM & VRAM Pruning Engine (Guarantees stability on 4GB / Older phones like Samsung Galaxy S9)
@@ -6917,7 +6939,8 @@ function appendMessageToFeed(msg, isSos = false, autoScroll = true, insertDateSe
     const imgEl = row.querySelector('.chat-image-card img');
     if (imgEl) {
       imgEl.addEventListener('load', () => {
-        if (autoScroll || (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 500)) {
+        const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+        if (autoScroll || distFromBottom < 60) {
           scrollToBottom(false);
         }
       }, { once: true });
