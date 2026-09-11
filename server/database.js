@@ -859,7 +859,7 @@ async function getMessageContext(messageId, userId, userRole = 'family', beforeC
            AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
          ORDER BY m.timestamp DESC
          LIMIT ?
-       ) ORDER BY m.timestamp ASC`,
+       ) ORDER BY timestamp ASC`,
       [
         aStr, aClean, `admin_${aClean}`,
         bStr, bClean, `admin_${bClean}`,
@@ -921,7 +921,7 @@ async function getMessageContext(messageId, userId, userRole = 'family', beforeC
            AND (m.deleted_scope IS NULL OR m.deleted_scope != 'all')
          ORDER BY m.timestamp DESC
          LIMIT ?
-       ) ORDER BY m.timestamp ASC`,
+       ) ORDER BY timestamp ASC`,
       [salonId, msg.timestamp, beforeCount]
     );
 

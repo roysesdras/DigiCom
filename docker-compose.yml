@@ -20,6 +20,9 @@ services:
       - NODE_ENV=production
     volumes:
       - ./server/data:/app/server/data
+      - ./server/server.js:/app/server/server.js
+      - ./server/database.js:/app/server/database.js
+      - ./server/build-minify.js:/app/server/build-minify.js
       - ./public:/app/public
       - ./widget:/app/widget
       - /root/.ssh/id_ed25519_digicom:/root/.ssh/id_ed25519_digicom:ro

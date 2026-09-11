@@ -9862,7 +9862,9 @@ window.jumpToPinnedMessage = async function(messageId) {
         const feed = document.getElementById('messages-feed');
         if (feed) {
           feed.innerHTML = '';
-          const targetKey = context.targetId;
+          const targetKey = (context.channelType === 'salon' 
+            ? ((state.activeSalon && state.activeSalon.id) || context.targetId)
+            : ((state.activeContact && state.activeContact.id) || context.targetId));
 
           if (context.channelType === 'private') {
             state.directMessages[targetKey] = context.messages;
@@ -9898,7 +9900,13 @@ window.jumpToPinnedMessage = async function(messageId) {
 
           msgEl = findElement();
           if (msgEl) {
-            smoothScrollToElement(msgEl);
+            const feedEl = document.getElementById('messages-feed');
+            if (feedEl) {
+              const targetScrollTop = msgEl.offsetTop - (feedEl.clientHeight / 2) + (msgEl.clientHeight / 2);
+              feedEl.scrollTop = Math.max(0, targetScrollTop);
+            }
+            msgEl.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+            flashBubble(msgEl);
             return;
           }
         }

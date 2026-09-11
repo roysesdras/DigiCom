@@ -3116,12 +3116,16 @@ app.get('/api/messages/search', authenticateToken, async (req, res) => {
 app.get('/api/messages/:messageId/context', authenticateToken, async (req, res) => {
   try {
     const { messageId } = req.params;
+    console.log(`[+] [CONTEXT-TELEPORT] Fetching context for ${messageId} (User: ${req.user.id}, Role: ${req.user.role})`);
     const context = await db.getMessageContext(messageId, req.user.id, req.user.role, 10, 10);
     if (!context) {
+      console.warn(`[-] [CONTEXT-TELEPORT] Message ${messageId} not found or unauthorized for ${req.user.id}`);
       return res.status(404).json({ error: 'Message non trouvé ou accès non autorisé' });
     }
+    console.log(`[+] [CONTEXT-TELEPORT] Context found: ${context.messages.length} messages returned`);
     res.json(context);
   } catch (err) {
+    console.error('[-] [CONTEXT-TELEPORT] Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
