@@ -37,6 +37,7 @@ const JWT_SECRET = process.env.JWT_SECRET || (() => {
 const PORT = process.env.PORT || 3000;
 
 const app = express();
+app.disable('x-powered-by');
 const server = http.createServer(app);
 
 // Uploads directory in persistent storage
@@ -138,6 +139,16 @@ app.use(cors({
 const compression = require('compression');
 app.use(compression());
 app.use((req, res, next) => {
+  // 1. HTTP Strict Transport Security (HSTS) - Enforce HTTPS for 1 year
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+  // 2. Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // 3. Anti-Clickjacking: Disallow external domains from framing DigiCom
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+
+  // 4. Content Security Policy
   res.setHeader(
     'Content-Security-Policy',
     "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-elem * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-attr * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' data: blob:; img-src * data: blob:; media-src * data: blob:; connect-src * 'unsafe-inline' blob:; frame-src *;"
