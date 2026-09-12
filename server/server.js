@@ -148,12 +148,32 @@ app.use((req, res, next) => {
   // 3. Anti-Clickjacking: Disallow external domains from framing DigiCom
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
 
-  // 4. Content Security Policy
+  // 4. Referrer Policy: Protect user privacy on external links
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // 5. Permissions Policy: Grant camera, mic, display-capture, fullscreen for WebRTC; disallow payment & geolocation
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(self), microphone=(self), display-capture=(self), fullscreen=(self), geolocation=(), payment=()'
+  );
+
+  // 6. Cross-Origin Isolation (Safe for Jitsi WebRTC)
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  // 7. Content Security Policy
   res.setHeader(
     'Content-Security-Policy',
     "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-elem * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src-attr * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' data: blob:; img-src * data: blob:; media-src * data: blob:; connect-src * 'unsafe-inline' blob:; frame-src *;"
   );
   next();
+});
+
+// RFC 9116 security.txt Endpoint
+app.get('/.well-known/security.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=UTF-8');
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  res.sendFile(path.join(__dirname, '..', 'public', '.well-known', 'security.txt'));
 });
 
 app.use(express.json());

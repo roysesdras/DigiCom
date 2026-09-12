@@ -1,0 +1,6 @@
+Contact: mailto:contact@digiroys.com
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: fr, en
+Canonical: https://chat.digiroys.com/.well-known/security.txt
+Policy: https://chat.digiroys.com/
+Acknowledgments: https://chat.digiroys.com/
