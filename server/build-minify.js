@@ -127,6 +127,14 @@ async function buildMinifiedAssets() {
     console.log(`  [WIDGET] rebonly-widget.js pre-compressed (${widgetCode.length} bytes)`);
   }
 
+  // 3.2 Pre-compress public/js/eruda.min.js (On-Demand Mobile DevTools)
+  const erudaPath = path.join(PUBLIC_DIR, 'js/eruda.min.js');
+  if (fs.existsSync(erudaPath)) {
+    const erudaCode = fs.readFileSync(erudaPath);
+    precompressFile(erudaPath, erudaCode);
+    console.log(`  [DEBUGGER] eruda.min.js pre-compressed (${erudaCode.length} bytes)`);
+  }
+
   // 4. WebP Image Optimization
   if (fs.existsSync(IMG_DIR)) {
     try {

@@ -12927,7 +12927,26 @@ window.openUserProfileModal = function() {
     if (removeBtn) removeBtn.style.display = 'none';
   }
 
+  const debugBtn = document.getElementById('btn-toggle-debug-profile');
+  if (debugBtn) {
+    const isDebugActive = localStorage.getItem('digicom_debug') === 'true';
+    debugBtn.textContent = isDebugActive ? '❌ Désactiver la console diagnostic' : '🛠️ Activer la console de diagnostic';
+    debugBtn.style.color = isDebugActive ? '#ef4444' : '#64748b';
+  }
+
   modal.style.display = 'flex';
+};
+
+let _profileHeaderClicks = 0;
+let _profileHeaderTimer = null;
+window.handleProfileHeaderClick = function() {
+  _profileHeaderClicks++;
+  clearTimeout(_profileHeaderTimer);
+  _profileHeaderTimer = setTimeout(() => { _profileHeaderClicks = 0; }, 1500);
+  if (_profileHeaderClicks >= 5) {
+    _profileHeaderClicks = 0;
+    window.toggleDebugMode();
+  }
 };
 
 window.closeUserProfileModal = function() {
@@ -13113,6 +13132,88 @@ if (document.readyState !== 'loading') {
   }
 }
 
+// ---------------- MOBILE DEVTOOLS & DIAGNOSTIC CONSOLE (ERUDA) ----------------
+function loadErudaDebugger(autoOpen = false) {
+  if (window.eruda) {
+    if (autoOpen && typeof window.eruda.show === 'function') {
+      window.eruda.show();
+    }
+    return;
+  }
+  const script = document.createElement('script');
+  script.src = '/js/eruda.min.js';
+  script.onload = () => {
+    if (window.eruda && typeof window.eruda.init === 'function') {
+      window.eruda.init({
+        tool: ['console', 'elements', 'network', 'resources', 'info'],
+        defaults: {
+          theme: 'Dark'
+        }
+      });
+      console.log('%c[*] DigiCom Console de Diagnostic Active', 'color: #10b981; font-weight: bold; font-size: 13px;');
+      console.log('App: DigiCom (Mode Diagnostic)');
+      console.log('User-Agent:', navigator.userAgent);
+      console.log('Résolution Viewport:', window.innerWidth + 'x' + window.innerHeight, '| Ratio Pixels:', window.devicePixelRatio);
+      console.log('Réseau en ligne:', navigator.onLine);
+      console.log('Statut WebSocket:', Boolean(state.socket && state.socket.connected));
+      console.log('Utilisateur Actif:', state.user ? (state.user.username + ' (ID: ' + state.user.id + ')') : 'Non connecté');
 
+      const debugBtn = document.getElementById('btn-toggle-debug-profile');
+      if (debugBtn) {
+        debugBtn.textContent = '❌ Désactiver la console diagnostic';
+        debugBtn.style.color = '#ef4444';
+      }
 
+      if (autoOpen && typeof window.eruda.show === 'function') {
+        setTimeout(() => window.eruda.show(), 350);
+      }
+    }
+  };
+  script.onerror = () => {
+    console.error('[-] Impossible de charger la console Eruda.');
+  };
+  document.head.appendChild(script);
+}
 
+function toggleDebugMode() {
+  const isDebugActive = localStorage.getItem('digicom_debug') === 'true';
+  if (isDebugActive) {
+    localStorage.removeItem('digicom_debug');
+    if (window.eruda && typeof window.eruda.destroy === 'function') {
+      window.eruda.destroy();
+      window.eruda = null;
+    }
+    const debugBtn = document.getElementById('btn-toggle-debug-profile');
+    if (debugBtn) {
+      debugBtn.textContent = '🛠️ Activer la console de diagnostic';
+      debugBtn.style.color = '#64748b';
+    }
+    alert('Mode Diagnostic désactivé.');
+  } else {
+    localStorage.setItem('digicom_debug', 'true');
+    loadErudaDebugger(true);
+    alert('Console de diagnostic activée !\n\nTouchez la bulle d\'outils flottante en bas à droite pour ouvrir la console et inspecter les erreurs.');
+  }
+}
+window.toggleDebugMode = toggleDebugMode;
+window.loadErudaDebugger = loadErudaDebugger;
+
+// Auto-check at startup for ?debug=true or persistent debug flag
+(function checkDebugParam() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const debug = params.get('debug');
+    if (debug === 'false' || debug === '0' || debug === 'off') {
+      localStorage.removeItem('digicom_debug');
+      return;
+    }
+    if (debug === 'true' || debug === '1' || debug === 'on' || localStorage.getItem('digicom_debug') === 'true') {
+      localStorage.setItem('digicom_debug', 'true');
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => loadErudaDebugger(false));
+      } else {
+        loadErudaDebugger(false);
+      }
+    }
+  } catch (e) {}
+})();

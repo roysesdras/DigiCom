@@ -30,8 +30,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1267" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1267">
+    <link rel="preload" href="/css/style.min.css?v=1268" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1268">
   </head>
 
   <body>
@@ -2367,7 +2367,7 @@
     <div class="modal-backdrop" id="modal-user-profile" style="display: none;">
       <div class="modal-card profile-modal-card">
         <div class="modal-header">
-          <h3>Mon Profil</h3>
+          <h3 onclick="window.handleProfileHeaderClick ? window.handleProfileHeaderClick() : null" style="cursor: pointer; user-select: none;" title="Touchez 5 fois pour ouvrir la console diagnostic">Mon Profil</h3>
           <button type="button" class="btn-close-modal" onclick="window.closeUserProfileModal()" title="Fermer">✕</button>
         </div>
         <div class="profile-modal-body">
@@ -2420,6 +2420,12 @@
               <span>Enregistrer</span>
             </button>
           </div>
+
+          <div class="profile-diagnostic-section" style="margin-top: 1.25rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.06); text-align: center;">
+            <button type="button" id="btn-toggle-debug-profile" class="btn-clean" onclick="window.toggleDebugMode()" style="background: none; border: none; color: #64748b; font-size: 0.78rem; cursor: pointer; text-decoration: underline; padding: 4px 8px;">
+              🛠️ Activer la console de diagnostic
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2457,11 +2463,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1267" defer></script>
-    <script src="/js/idb-store.min.js?v=1267" defer></script>
-    <script src="/js/push-client.min.js?v=1267" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1267" defer></script>
-    <script src="/js/app.min.js?v=1267" defer></script>
+    <script src="/socket.io/socket.io.js?v=1268" defer></script>
+    <script src="/js/idb-store.min.js?v=1268" defer></script>
+    <script src="/js/push-client.min.js?v=1268" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1268" defer></script>
+    <script src="/js/app.min.js?v=1268" defer></script>
   </body>
 
 </html>
