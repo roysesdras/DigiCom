@@ -315,6 +315,7 @@
       display: flex;
       flex-direction: column;
       max-width: 86%;
+      position: relative;
       border: none;
     }
     .rebonly-bubble-row.other { align-self: flex-start; }
@@ -326,7 +327,34 @@
       font-size: 12.5px;
       line-height: 1.4;
       word-break: break-word;
+      position: relative;
+      z-index: 2;
+      will-change: transform;
       border: none;
+    }
+    .rebonly-swipe-indicator {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%) scale(0.3);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(0, 168, 132, 0.2);
+      border: 1px solid rgba(0, 168, 132, 0.45);
+      color: #00a884;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .rebonly-swipe-indicator.swipe-active {
+      background: #00a884;
+      border-color: #00a884;
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(0, 168, 132, 0.6);
     }
     .rebonly-bubble-row.other .rebonly-bubble {
       background: #1e293b;
@@ -534,6 +562,13 @@
 
         <div class="rebonly-typing-bar" id="rebonly-typing-bar" style="display: none; padding: 4px 12px; font-size: 10.5px; color: #10b981; font-style: italic; background: rgba(16, 185, 129, 0.08); border: none;">Support DigiCom est en train d'écrire...</div>
 
+        <div class="rebonly-reply-bar" id="rebonly-reply-bar" style="display: none; padding: 4px 10px; background: rgba(0, 168, 132, 0.12); border-left: 3px solid #00a884; font-size: 11px; align-items: center; justify-content: space-between; flex-shrink: 0;">
+          <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; font-size: 11px;">
+            <strong style="color: #00a884;">Réponse :</strong> <span id="rebonly-reply-text"></span>
+          </div>
+          <button type="button" id="rebonly-cancel-reply" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0 4px; font-size: 13px;">✕</button>
+        </div>
+
         <form class="rebonly-input-bar" id="rebonly-form">
           <input type="file" id="rebonly-file-input" accept="image/*,application/pdf" style="display: none;">
           <button type="button" class="rebonly-action-btn" id="rebonly-attach-btn" title="Joindre une photo ou un PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></button>
@@ -647,12 +682,51 @@
       }
     });
 
+    let activeReply = null;
+    function setWidgetReply(msgId, senderName, snippet) {
+      activeReply = { id: msgId, senderName: senderName || 'Support', snippet: snippet || 'Message' };
+      const bar = document.getElementById('rebonly-reply-bar');
+      const textEl = document.getElementById('rebonly-reply-text');
+      if (bar && textEl) {
+        textEl.textContent = (activeReply.senderName ? activeReply.senderName + ': ' : '') + activeReply.snippet;
+        bar.style.display = 'flex';
+      }
+      if (textarea) textarea.focus();
+    }
+
+    function clearWidgetReply() {
+      activeReply = null;
+      const bar = document.getElementById('rebonly-reply-bar');
+      if (bar) bar.style.display = 'none';
+    }
+
+    const cancelReplyBtn = document.getElementById('rebonly-cancel-reply');
+    if (cancelReplyBtn) {
+      cancelReplyBtn.addEventListener('click', clearWidgetReply);
+    }
+
     function submitCurrentText() {
       const text = textarea.value.trim();
       if (!text) return;
       textarea.value = '';
       textarea.style.height = '34px';
-      sendSOS(text);
+
+      if (activeReply) {
+        const payload = {
+          type: 'text',
+          text: text,
+          replyTo: {
+            id: activeReply.id,
+            senderName: activeReply.senderName,
+            previewText: activeReply.snippet,
+            text: activeReply.snippet
+          }
+        };
+        sendSOS(JSON.stringify(payload));
+        clearWidgetReply();
+      } else {
+        sendSOS(text);
+      }
     }
 
     textarea.addEventListener('keydown', (e) => {
@@ -687,6 +761,160 @@
       isOpen = false;
       win.style.display = 'none';
     });
+
+    // Swipe-to-Reply on widget bubbles
+    let widgetActiveRow = null;
+    let widgetActiveBubble = null;
+    let widgetStartX = 0;
+    let widgetStartY = 0;
+    let widgetIsSwiping = false;
+    let widgetDirLocked = null;
+    let widgetIndicatorEl = null;
+    let widgetHasVibrated = false;
+
+    const onWidgetGestureStart = (target, clientX, clientY) => {
+      if (!target) return;
+      if (target.closest('button') || target.closest('a') || target.closest('audio') || target.closest('input')) return;
+      const row = target.closest('.rebonly-bubble-row');
+      if (!row) return;
+      const bubble = row.querySelector('.rebonly-bubble') || row;
+
+      widgetActiveRow = row;
+      widgetActiveBubble = bubble;
+      widgetStartX = clientX;
+      widgetStartY = clientY;
+      widgetIsSwiping = false;
+      widgetDirLocked = null;
+      widgetHasVibrated = false;
+      widgetActiveBubble.style.transition = 'none';
+
+      widgetIndicatorEl = widgetActiveRow.querySelector('.rebonly-swipe-indicator');
+      if (!widgetIndicatorEl) {
+        widgetIndicatorEl = document.createElement('div');
+        widgetIndicatorEl.className = 'rebonly-swipe-indicator';
+        widgetIndicatorEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>`;
+        widgetActiveRow.appendChild(widgetIndicatorEl);
+      }
+      widgetIndicatorEl.style.transition = 'none';
+      widgetIndicatorEl.style.opacity = '0';
+      widgetIndicatorEl.style.transform = 'translateY(-50%) scale(0.3)';
+    };
+
+    const onWidgetGestureMove = (clientX, clientY) => {
+      if (!widgetActiveRow || !widgetActiveBubble) return;
+      const deltaX = clientX - widgetStartX;
+      const deltaY = clientY - widgetStartY;
+
+      if (widgetDirLocked === null) {
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          widgetDirLocked = true;
+        } else if (Math.abs(deltaX) > 6 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          widgetDirLocked = false;
+          widgetIsSwiping = true;
+        }
+      }
+
+      if (widgetDirLocked === true) return;
+
+      if (widgetIsSwiping) {
+        const isSwipeRight = deltaX >= 0;
+        const dampedX = Math.sign(deltaX) * Math.min(Math.abs(deltaX) * 0.58, 60);
+        widgetActiveBubble.style.transform = `translateX(${dampedX}px)`;
+
+        if (widgetIndicatorEl) {
+          const bubbleLeft = widgetActiveBubble.offsetLeft;
+          const bubbleTop = widgetActiveBubble.offsetTop + (widgetActiveBubble.offsetHeight / 2);
+
+          if (isSwipeRight) {
+            widgetIndicatorEl.style.left = `${Math.max(2, bubbleLeft - 4)}px`;
+            widgetIndicatorEl.style.right = 'auto';
+          } else {
+            widgetIndicatorEl.style.left = 'auto';
+            widgetIndicatorEl.style.right = `${Math.max(2, widgetActiveRow.offsetWidth - (bubbleLeft + widgetActiveBubble.offsetWidth) - 4)}px`;
+          }
+          widgetIndicatorEl.style.top = `${bubbleTop}px`;
+
+          const absDamped = Math.abs(dampedX);
+          const progress = Math.min(absDamped / 36, 1);
+          widgetIndicatorEl.style.opacity = progress;
+          widgetIndicatorEl.style.transform = `translateY(-50%) scale(${0.4 + (progress * 0.6)})`;
+
+          if (absDamped >= 36) {
+            widgetIndicatorEl.classList.add('swipe-active');
+            if (!widgetHasVibrated) {
+              widgetHasVibrated = true;
+              if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
+            }
+          } else {
+            widgetIndicatorEl.classList.remove('swipe-active');
+            widgetHasVibrated = false;
+          }
+        }
+      }
+    };
+
+    const onWidgetGestureEnd = () => {
+      if (!widgetActiveRow || !widgetActiveBubble) return;
+      const currentRow = widgetActiveRow;
+      const currentBubble = widgetActiveBubble;
+      const currentIndicator = widgetIndicatorEl;
+      const shouldReply = widgetHasVibrated;
+
+      if (widgetIsSwiping) {
+        currentBubble.style.transition = 'transform 0.26s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+        currentBubble.style.transform = 'translateX(0px)';
+
+        if (currentIndicator) {
+          currentIndicator.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+          currentIndicator.style.opacity = '0';
+          currentIndicator.style.transform = 'translateY(-50%) scale(0.3)';
+          currentIndicator.classList.remove('swipe-active');
+        }
+
+        if (shouldReply) {
+          const text = currentRow._msgText || currentBubble.textContent || 'Message';
+          const author = currentRow._msgAuthor || (currentRow.classList.contains('me') ? config.trainerName : 'Support DigiCom');
+          setWidgetReply(currentRow._msgId || null, author, text);
+        }
+
+        setTimeout(() => {
+          if (currentBubble) {
+            currentBubble.style.transition = '';
+            currentBubble.style.transform = '';
+          }
+          if (currentIndicator && currentIndicator.parentNode) {
+            currentIndicator.remove();
+          }
+        }, 280);
+      }
+
+      widgetActiveRow = null;
+      widgetActiveBubble = null;
+      widgetIsSwiping = false;
+      widgetDirLocked = null;
+      widgetHasVibrated = false;
+      widgetIndicatorEl = null;
+    };
+
+    const widgetFeed = document.getElementById('rebonly-feed');
+    if (widgetFeed) {
+      widgetFeed.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches[0]) onWidgetGestureStart(e.target, e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      widgetFeed.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches[0]) onWidgetGestureMove(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      widgetFeed.addEventListener('touchend', onWidgetGestureEnd, { passive: true });
+      widgetFeed.addEventListener('touchcancel', onWidgetGestureEnd, { passive: true });
+      widgetFeed.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        onWidgetGestureStart(e.target, e.clientX, e.clientY);
+      });
+      window.addEventListener('mousemove', (e) => {
+        onWidgetGestureMove(e.clientX, e.clientY);
+      });
+      window.addEventListener('mouseup', onWidgetGestureEnd);
+    }
 
     // File Upload Handler
     attachBtn.addEventListener('click', () => fileInput.click());
@@ -1015,7 +1243,7 @@
           parsedText = data.text || '';
         } else if (data.type === 'pdf' && data.url) {
           const fullUrl = data.url.startsWith('http') ? data.url : config.serverUrl + data.url;
-          mediaHtml = `<a href="${fullUrl}" target="_blank" class="rebonly-file-card">📄 ${escapeText(data.fileName || 'Document PDF')} ↗</a>`;
+          mediaHtml = `<a href="${fullUrl}" target="_blank" class="rebonly-file-card">${escapeText(data.fileName || 'Document PDF')} ↗</a>`;
           parsedText = '';
         } else if (data.type === 'audio' && data.url) {
           const fullUrl = data.url.startsWith('http') ? data.url : config.serverUrl + data.url;
@@ -1027,7 +1255,20 @@
       }
     } catch (e) { }
 
-    bubble.innerHTML = (parsedText ? escapeText(parsedText) : '') + mediaHtml;
+    let quotedReplyHtml = '';
+    if (typeof rawContent === 'string' && rawContent.startsWith('{')) {
+      try {
+        const d = JSON.parse(rawContent);
+        if (d.replyTo) {
+          quotedReplyHtml = `<div style="background:rgba(0,0,0,0.2);border-left:2.5px solid #00a884;padding:3px 6px;margin-bottom:5px;border-radius:3px;font-size:11px;opacity:0.95;"><strong style="color:#00a884;">${escapeText(d.replyTo.senderName || 'Réponse')}</strong>: ${escapeText(d.replyTo.previewText || d.replyTo.text || '')}</div>`;
+        }
+      } catch (e) {}
+    }
+
+    bubble.innerHTML = quotedReplyHtml + (parsedText ? escapeText(parsedText) : '') + mediaHtml;
+    row._msgId = msgId;
+    row._msgAuthor = (type === 'me') ? config.trainerName : 'Support DigiCom';
+    row._msgText = parsedText || (mediaHtml ? 'Média' : 'Message');
     row.appendChild(bubble);
 
     // Metadata line (Time + Read receipt status for sent messages)

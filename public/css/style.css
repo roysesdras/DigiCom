@@ -975,29 +975,27 @@ body {
 /* Swipe to Reply Gesture Indicator */
 .swipe-reply-indicator {
   position: absolute;
-  left: -36px;
-  top: 50%;
-  transform: translateY(-50%) scale(0.5);
-  width: 30px;
-  height: 30px;
+  transform: translateY(-50%) scale(0.3);
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #10b981;
+  background: rgba(0, 168, 132, 0.18);
+  border: 1px solid rgba(0, 168, 132, 0.4);
+  color: #00a884;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  z-index: 5;
+  z-index: 1;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .swipe-reply-indicator.swipe-active {
-  background: #10b981;
-  border-color: #10b981;
+  background: #00a884;
+  border-color: #00a884;
   color: #ffffff;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 12px rgba(0, 168, 132, 0.7);
 }
 
 .message-row.me {
@@ -1038,6 +1036,8 @@ body {
   -webkit-user-select: text;
   box-shadow: 0 1.5px 3px rgba(0, 0, 0, 0.4);
   position: relative;
+  z-index: 2;
+  will-change: transform;
 }
 
 .message-row.me .msg-bubble {

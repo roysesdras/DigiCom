@@ -2288,6 +2288,7 @@ function setupEventListeners() {
 
     // 3. Global single gesture delegator for Swipe-to-Reply & Long-Press (Touch & Mouse)
     let activeGestureRow = null;
+    let activeGestureBubble = null;
     let gestureStartX = 0;
     let gestureStartY = 0;
     let isGestureSwiping = false;
@@ -2302,21 +2303,27 @@ function setupEventListeners() {
       const row = target.closest('.message-row');
       if (!row) return;
 
+      const bubble = row.querySelector('.msg-bubble') || row;
+
       activeGestureRow = row;
+      activeGestureBubble = bubble;
       gestureStartX = clientX;
       gestureStartY = clientY;
       isGestureSwiping = false;
       gestureDirLocked = null;
       hasGestureVibrated = false;
-      activeGestureRow.style.transition = 'none';
+      activeGestureBubble.style.transition = 'none';
 
       gestureIndicatorEl = activeGestureRow.querySelector('.swipe-reply-indicator');
       if (!gestureIndicatorEl) {
         gestureIndicatorEl = document.createElement('div');
         gestureIndicatorEl.className = 'swipe-reply-indicator';
         gestureIndicatorEl.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>`;
-        activeGestureRow.insertBefore(gestureIndicatorEl, activeGestureRow.firstChild);
+        activeGestureRow.appendChild(gestureIndicatorEl);
       }
+      gestureIndicatorEl.style.transition = 'none';
+      gestureIndicatorEl.style.opacity = '0';
+      gestureIndicatorEl.style.transform = 'translateY(-50%) scale(0.3)';
 
       clearTimeout(gestureLongPressTimer);
       gestureLongPressTimer = setTimeout(() => {
@@ -2332,12 +2339,13 @@ function setupEventListeners() {
             activeGestureRow.dataset.timestamp
           );
           activeGestureRow = null;
+          activeGestureBubble = null;
         }
       }, 520);
     };
 
     const onGlobalGestureMove = (clientX, clientY) => {
-      if (!activeGestureRow) return;
+      if (!activeGestureRow || !activeGestureBubble) return;
       const deltaX = clientX - gestureStartX;
       const deltaY = clientY - gestureStartY;
 
@@ -2346,9 +2354,9 @@ function setupEventListeners() {
       }
 
       if (gestureDirLocked === null) {
-        if (Math.abs(deltaY) > Math.abs(deltaX) || deltaX < -5) {
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
           gestureDirLocked = true;
-        } else if (deltaX > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        } else if (Math.abs(deltaX) > 7 && Math.abs(deltaX) > Math.abs(deltaY)) {
           clearTimeout(gestureLongPressTimer);
           gestureDirLocked = false;
           isGestureSwiping = true;
@@ -2357,18 +2365,32 @@ function setupEventListeners() {
 
       if (gestureDirLocked === true) return;
 
-      if (isGestureSwiping && deltaX > 0) {
+      if (isGestureSwiping) {
         clearTimeout(gestureLongPressTimer);
-        const dampedX = Math.min(deltaX * 0.55, 75);
-        activeGestureRow.style.transform = `translateX(${dampedX}px)`;
+        const isSwipeRight = deltaX >= 0;
+        const dampedX = Math.sign(deltaX) * Math.min(Math.abs(deltaX) * 0.58, 65);
+        activeGestureBubble.style.transform = `translateX(${dampedX}px)`;
 
         if (gestureIndicatorEl) {
-          const opacity = Math.min(dampedX / 30, 1);
-          const scale = Math.min(0.5 + (dampedX / 75), 1.0);
-          gestureIndicatorEl.style.opacity = opacity;
+          const bubbleLeft = activeGestureBubble.offsetLeft;
+          const bubbleTop = activeGestureBubble.offsetTop + (activeGestureBubble.offsetHeight / 2);
+
+          if (isSwipeRight) {
+            gestureIndicatorEl.style.left = `${Math.max(2, bubbleLeft - 4)}px`;
+            gestureIndicatorEl.style.right = 'auto';
+          } else {
+            gestureIndicatorEl.style.left = 'auto';
+            gestureIndicatorEl.style.right = `${Math.max(2, activeGestureRow.offsetWidth - (bubbleLeft + activeGestureBubble.offsetWidth) - 4)}px`;
+          }
+          gestureIndicatorEl.style.top = `${bubbleTop}px`;
+
+          const absDamped = Math.abs(dampedX);
+          const progress = Math.min(absDamped / 38, 1);
+          const scale = 0.4 + (progress * 0.6);
+          gestureIndicatorEl.style.opacity = progress;
           gestureIndicatorEl.style.transform = `translateY(-50%) scale(${scale})`;
 
-          if (dampedX >= 48) {
+          if (absDamped >= 40) {
             gestureIndicatorEl.classList.add('swipe-active');
             if (!hasGestureVibrated) {
               hasGestureVibrated = true;
@@ -2386,23 +2408,25 @@ function setupEventListeners() {
 
     const onGlobalGestureEnd = () => {
       clearTimeout(gestureLongPressTimer);
-      if (!activeGestureRow) return;
+      if (!activeGestureRow || !activeGestureBubble) return;
 
       const currentRow = activeGestureRow;
+      const currentBubble = activeGestureBubble;
+      const currentIndicator = gestureIndicatorEl;
       const shouldReply = hasGestureVibrated;
       const msgId = currentRow.dataset.msgId || currentRow.id;
       const sender = currentRow.dataset.sender;
       const content = currentRow._msgContent;
 
       if (isGestureSwiping) {
-        currentRow.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.25)';
-        currentRow.style.transform = 'translateX(0px)';
+        currentBubble.style.transition = 'transform 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+        currentBubble.style.transform = 'translateX(0px)';
 
-        if (gestureIndicatorEl) {
-          gestureIndicatorEl.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-          gestureIndicatorEl.style.opacity = '0';
-          gestureIndicatorEl.style.transform = 'translateY(-50%) scale(0.5)';
-          gestureIndicatorEl.classList.remove('swipe-active');
+        if (currentIndicator) {
+          currentIndicator.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+          currentIndicator.style.opacity = '0';
+          currentIndicator.style.transform = 'translateY(-50%) scale(0.3)';
+          currentIndicator.classList.remove('swipe-active');
         }
 
         if (shouldReply) {
@@ -2410,12 +2434,18 @@ function setupEventListeners() {
         }
 
         setTimeout(() => {
-          currentRow.style.transition = '';
-          currentRow.style.transform = '';
-        }, 260);
+          if (currentBubble) {
+            currentBubble.style.transition = '';
+            currentBubble.style.transform = '';
+          }
+          if (currentIndicator && currentIndicator.parentNode) {
+            currentIndicator.remove();
+          }
+        }, 300);
       }
 
       activeGestureRow = null;
+      activeGestureBubble = null;
       isGestureSwiping = false;
       gestureDirLocked = null;
       hasGestureVibrated = false;

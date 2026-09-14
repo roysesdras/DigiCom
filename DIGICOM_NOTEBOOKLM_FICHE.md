@@ -68,7 +68,7 @@ DigiCom repose sur quatre piliers fondamentaux :
 - **Accusés de réception complets** : Horodatage précis avec triple état visuel (envoi en cours, distribué sur l'appareil, lu par le destinataire avec doubles coches émeraude).
 - **Indicateur de frappe & statut de présence** : Affichage en direct du correspondant qui écrit (« En train d'écrire... ») et pastille de statut en ligne sans divulgation indiscrète d'horaires d'absence.
 - **Épinglage de messages ultra-rapide** : Possibilité d'épingler des messages clés dans chaque conversation avec saut direct côté serveur vers le message ciblé.
-- **Messages éphémères** : Programmation d'une durée de disparition automatique (ex: 24h, 7 jours) pour les échanges hautement confidentiels.
+- **Rappel et suppression en temps réel** : Possibilité de supprimer et rappeler un message pour tous avec synchronisation immédiate sur tous les appareils connectés.
 - **Réactions et réponses ciblées (Quotes)** : Répondre spécifiquement à un message avec aperçu visuel du message d'origine.
 
 ### 3.2 Notes vocales & Fichiers multimédias
