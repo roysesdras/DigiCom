@@ -1569,11 +1569,13 @@ app.post('/api/salons/:id/tasks', authenticateToken, requireSalonMember, async (
           isTaskAnnouncement: true,
           action: 'created',
           taskId: taskId,
+          status: 'todo',
+          statusLabel: 'À faire',
           title: title.trim(),
           creatorName: creatorName,
           assignedName: assignedName,
           dueDate: dueDate || null,
-          text: `📌 Nouvelle Tâche : ${title.trim()} (Assignée à : ${assignedName})`
+          text: `Nouvelle Tâche : ${title.trim()} (Assignée à : ${assignedName})`
         }),
         contextData: null,
         is_read: 0,
@@ -1592,7 +1594,7 @@ app.post('/api/salons/:id/tasks', authenticateToken, requireSalonMember, async (
         if (m.id !== req.user.id) {
           const isAssigned = (m.id === assignedTo);
           pushService.sendNotificationToUser(m.id, {
-            title: isAssigned ? `🎯 Tâche assignée dans #${salonName}` : `📋 Nouvelle Tâche dans #${salonName}`,
+            title: isAssigned ? `Tâche assignée dans #${salonName}` : `Nouvelle Tâche dans #${salonName}`,
             body: isAssigned ? `${creatorName} vous a assigné la tâche : "${title.trim()}"` : `${creatorName} a créé la tâche : "${title.trim()}" (Assignée à: ${assignedName})`,
             icon: '/img/icon-192.png',
             data: { url: `/?salon=${id}`, channel: 'salon', salonId: id }
@@ -1635,10 +1637,11 @@ app.put('/api/salons/:id/tasks/:taskId', authenticateToken, requireSalonMember, 
           isTaskAnnouncement: true,
           action: 'updated',
           taskId: taskId,
-          title: task.title,
+          status: status,
           statusLabel: statusLabels[status] || status,
+          title: task.title,
           changerName: changerName,
-          text: `📋 Statut de la tâche "${task.title}" changé à ${statusLabels[status] || status} par ${changerName}`
+          text: `Statut de la tâche "${task.title}" changé à ${statusLabels[status] || status} par ${changerName}`
         }),
         contextData: null,
         is_read: 0,
@@ -1654,7 +1657,7 @@ app.put('/api/salons/:id/tasks/:taskId', authenticateToken, requireSalonMember, 
       members.forEach(m => {
         if (m.id !== req.user.id) {
           pushService.sendNotificationToUser(m.id, {
-            title: `📋 Tâche mise à jour dans #${salonName}`,
+            title: `Tâche mise à jour dans #${salonName}`,
             body: `${changerName} a passé "${task.title}" à ${statusLabels[status] || status}`,
             icon: '/img/icon-192.png',
             data: { url: `/?salon=${id}`, channel: 'salon', salonId: id }
