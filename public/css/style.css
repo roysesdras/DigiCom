@@ -126,6 +126,77 @@ body {
   overflow: hidden;
 }
 
+/* Top App Title Bar (WhatsApp Style Header) */
+.sidebar-top-bar {
+  height: 52px;
+  padding: 0.75rem 1rem 0.25rem;
+  background: #111b21;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  border-bottom: none;
+}
+
+.sidebar-app-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #e9edef;
+  letter-spacing: -0.25px;
+  user-select: none;
+}
+
+/* Bottom User Bar (WhatsApp Style Footer) */
+.sidebar-bottom-bar {
+  height: 60px;
+  min-height: 60px;
+  padding: 0 0.85rem;
+  background: #111b21;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  margin-top: auto;
+}
+
+.sidebar-bottom-bar .brand-box {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 145px;
+  cursor: pointer;
+}
+
+.sidebar-bottom-bar .brand-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e9edef;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: none;
+  -webkit-text-fill-color: initial;
+}
+
+.sidebar-bottom-bar .chat-more-dropdown {
+  top: auto !important;
+  bottom: calc(100% + 8px) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .sidebar-bottom-bar {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+    height: calc(60px + env(safe-area-inset-bottom));
+  }
+}
+
 .sidebar-header {
   height: 60px;
   padding: 0 1rem;

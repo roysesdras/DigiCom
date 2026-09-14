@@ -30,8 +30,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1274" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1274">
+    <link rel="preload" href="/css/style.min.css?v=1275" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1275">
   </head>
 
   <body>
@@ -40,8 +40,100 @@
     <div class="bento-app">
       <!-- Left Panel: Navigation & Contacts (Bento Card 1) -->
       <aside class="bento-sidebar" id="sidebar-panel">
-        <!-- Header / Brand -->
-        <div class="sidebar-header">
+        <!-- Top App Title Bar (WhatsApp Style Header) -->
+        <div class="sidebar-top-bar">
+          <span class="sidebar-app-title">DigiCom</span>
+        </div>
+
+        <!-- Sidebar Quick Search Bar -->
+        <div class="sidebar-search-box">
+          <div class="search-input-wrapper">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="search-contacts-input" class="search-input"
+              placeholder="Rechercher une discussion..." autocomplete="off">
+            <button type="button" class="search-clear-btn" id="btn-clear-search" style="display: none;" title="Effacer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs (Horizontally Scrollable Pill Filters) -->
+        <div class="sidebar-tabs-container">
+          <div class="sidebar-tabs-scroll" id="sidebar-tabs-row">
+            <button type="button" class="tab-btn active" id="tab-btn-all" data-tab="all">
+              <span>Toutes</span>
+              <span class="tab-badge" id="all-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-unread" data-tab="unread">
+              <span>Non lus</span>
+              <span class="tab-badge" id="unread-filter-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-contacts" data-tab="contacts">
+              <span>Discussions</span>
+              <span class="tab-badge" id="contacts-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-salons" data-tab="salons">
+              <span>Salons</span>
+              <span class="tab-badge" id="salons-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-archived" data-tab="archived">
+              <span>Archivées</span>
+              <span class="tab-badge" id="archived-badge" style="display: none;">0</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-support" data-tab="support" style="display: none;">
+              <span>Supp SOS</span>
+              <span class="tab-badge" id="support-badge" style="display: none;">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Feeds Containers -->
+        <div class="contacts-feed" id="all-list-container">
+          <!-- All conversations combined dynamically -->
+        </div>
+
+        <div class="contacts-feed" id="unread-list-container" style="display: none;">
+          <!-- Unread conversations only -->
+        </div>
+
+        <div class="contacts-feed" id="contacts-list-container" style="display: none;">
+          <!-- Contacts rendered dynamically -->
+        </div>
+
+        <div class="contacts-feed" id="salons-list-container" style="display: none;">
+          <div class="salons-header-bar">
+            <span class="salons-section-title">Vos Salons</span>
+            <button type="button" class="btn-create-salon-action" id="btn-open-create-salon-modal"
+              title="Créer un nouveau Salon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Nouveau Salon
+            </button>
+          </div>
+          <div id="salons-cards-list"></div>
+        </div>
+
+        <div class="contacts-feed" id="archived-list-container" style="display: none;">
+          <!-- Archived conversations rendered dynamically -->
+        </div>
+
+        <div class="contacts-feed" id="support-list-container" style="display: none;">
+          <!-- Support SOS tickets rendered dynamically -->
+        </div>
+
+        <!-- Bottom User Footer Bar (WhatsApp Style Footer) -->
+        <footer class="sidebar-bottom-bar sidebar-header" id="sidebar-bottom-bar">
           <div class="brand-box" id="btn-open-user-profile" onclick="window.openUserProfileModal()" title="Mon Profil &amp; Photo" style="cursor: pointer;">
             <div class="sidebar-user-avatar" id="sidebar-user-avatar">
               <span id="sidebar-user-avatar-initial">?</span>
@@ -194,94 +286,7 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Sidebar Quick Search Bar -->
-        <div class="sidebar-search-box">
-          <div class="search-input-wrapper">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" class="search-icon">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" id="search-contacts-input" class="search-input"
-              placeholder="Rechercher une discussion..." autocomplete="off">
-            <button type="button" class="search-clear-btn" id="btn-clear-search" style="display: none;" title="Effacer">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Navigation Tabs (Horizontally Scrollable Pill Filters) -->
-        <div class="sidebar-tabs-container">
-          <div class="sidebar-tabs-scroll" id="sidebar-tabs-row">
-            <button type="button" class="tab-btn active" id="tab-btn-all" data-tab="all">
-              <span>Toutes</span>
-              <span class="tab-badge" id="all-badge" style="display: none;">0</span>
-            </button>
-            <button type="button" class="tab-btn" id="tab-btn-unread" data-tab="unread">
-              <span>Non lus</span>
-              <span class="tab-badge" id="unread-filter-badge" style="display: none;">0</span>
-            </button>
-            <button type="button" class="tab-btn" id="tab-btn-contacts" data-tab="contacts">
-              <span>Discussions</span>
-              <span class="tab-badge" id="contacts-badge" style="display: none;">0</span>
-            </button>
-            <button type="button" class="tab-btn" id="tab-btn-salons" data-tab="salons">
-              <span>Salons</span>
-              <span class="tab-badge" id="salons-badge" style="display: none;">0</span>
-            </button>
-            <button type="button" class="tab-btn" id="tab-btn-archived" data-tab="archived">
-              <span>Archivées</span>
-              <span class="tab-badge" id="archived-badge" style="display: none;">0</span>
-            </button>
-            <button type="button" class="tab-btn" id="tab-btn-support" data-tab="support" style="display: none;">
-              <span>Supp SOS</span>
-              <span class="tab-badge" id="support-badge" style="display: none;">0</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Feeds Containers -->
-        <div class="contacts-feed" id="all-list-container">
-          <!-- All conversations combined dynamically -->
-        </div>
-
-        <div class="contacts-feed" id="unread-list-container" style="display: none;">
-          <!-- Unread conversations only -->
-        </div>
-
-        <div class="contacts-feed" id="contacts-list-container" style="display: none;">
-          <!-- Contacts rendered dynamically -->
-        </div>
-
-        <div class="contacts-feed" id="salons-list-container" style="display: none;">
-          <div class="salons-header-bar">
-            <span class="salons-section-title">Vos Salons</span>
-            <button type="button" class="btn-create-salon-action" id="btn-open-create-salon-modal"
-              title="Créer un nouveau Salon">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Nouveau Salon
-            </button>
-          </div>
-          <div id="salons-cards-list"></div>
-        </div>
-
-        <div class="contacts-feed" id="archived-list-container" style="display: none;">
-          <!-- Archived conversations rendered dynamically -->
-        </div>
-
-        <div class="contacts-feed" id="support-list-container" style="display: none;">
-          <!-- Support SOS tickets rendered dynamically -->
-        </div>
+        </footer>
       </aside>
 
       <!-- Right Panel: Active Conversation (Bento Card 2) -->
@@ -2463,11 +2468,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1274" defer></script>
-    <script src="/js/idb-store.min.js?v=1274" defer></script>
-    <script src="/js/push-client.min.js?v=1274" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1274" defer></script>
-    <script src="/js/app.min.js?v=1274" defer></script>
+    <script src="/socket.io/socket.io.js?v=1275" defer></script>
+    <script src="/js/idb-store.min.js?v=1275" defer></script>
+    <script src="/js/push-client.min.js?v=1275" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1275" defer></script>
+    <script src="/js/app.min.js?v=1275" defer></script>
   </body>
 
 </html>
