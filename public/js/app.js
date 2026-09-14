@@ -4208,6 +4208,30 @@ async function uploadFile(file) {
 
 // ---------------- COMPRESSED OPUS/WEBM VOICE RECORDER (24 kbps Ultra-Lightweight) ----------------
 
+let voiceWakeLock = null;
+
+async function acquireVoiceWakeLock() {
+  try {
+    if ('wakeLock' in navigator && navigator.wakeLock.request) {
+      voiceWakeLock = await navigator.wakeLock.request('screen');
+      voiceWakeLock.addEventListener('release', () => {
+        voiceWakeLock = null;
+      });
+    }
+  } catch (err) {
+    console.warn('[-] WakeLock request failed:', err);
+  }
+}
+
+function releaseVoiceWakeLock() {
+  if (voiceWakeLock) {
+    try {
+      voiceWakeLock.release();
+    } catch (e) {}
+    voiceWakeLock = null;
+  }
+}
+
 let mediaRecorder = null;
 let recordedAudioChunks = [];
 
@@ -4229,6 +4253,7 @@ function getSupportedAudioMimeType() {
 
 async function startVoiceRecording() {
   try {
+    await acquireVoiceWakeLock();
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -4283,6 +4308,7 @@ async function startVoiceRecording() {
 }
 
 function cancelVoiceRecording() {
+  releaseVoiceWakeLock();
   if (voiceRecorder.isRecording) {
     clearInterval(voiceRecorder.timerInterval);
     voiceRecorder.isRecording = false;
@@ -4406,6 +4432,7 @@ async function stopAndSendVoiceRecording() {
     }
     alert('Erreur lors de l\'envoi de la note vocale : ' + err.message);
   } finally {
+    releaseVoiceWakeLock();
     recordedAudioChunks = [];
     mediaRecorder = null;
     if (panel) {
@@ -6560,11 +6587,12 @@ function createMessageRowElement(msg, isSos = false) {
     `;
   } else if (parsedContent && parsedContent.type === 'audio') {
     const audioId = 'audio_' + Math.random().toString(36).substr(2, 9);
-    const durationFormatted = parsedContent.duration ? formatDuration(parsedContent.duration) : '0:00';
+    const audioDur = parseFloat(parsedContent.duration || 0);
+    const durationFormatted = audioDur > 0 ? formatDuration(audioDur) : '0:00';
     bodyHtml = `
       <div class="chat-voice-note" id="box_${audioId}">
-        <audio id="${audioId}" src="${parsedContent.url}" preload="none" playsinline webkit-playsinline
-          onloadedmetadata="if(this.duration){ var el=document.getElementById('time_${audioId}'); if(el) el.textContent = '0:00 / ' + formatDuration(this.duration); }"
+        <audio id="${audioId}" src="${parsedContent.url}" data-duration="${audioDur}" preload="metadata" playsinline webkit-playsinline
+          onloadedmetadata="var d = (isFinite(this.duration) && this.duration > 0) ? this.duration : parseFloat(this.dataset.duration || 0); if(d > 0){ var el=document.getElementById('time_${audioId}'); if(el) el.textContent = '0:00 / ' + formatDuration(d); }"
           ontimeupdate="updateAudioProgress('${audioId}')"
           onended="resetAudioPlayback('${audioId}')">
         </audio>
@@ -7249,7 +7277,8 @@ window.toggleAudioPlay = async function(audioId) {
 
   if (audio.paused) {
     // Reset currentTime if audio ended or reached near end to allow seamless replay on mobile WebKit/Chrome
-    if (audio.ended || (audio.duration && audio.currentTime >= audio.duration - 0.1)) {
+    const dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : parseFloat(audio.dataset.duration || 0);
+    if (audio.ended || (dur > 0 && audio.currentTime >= dur - 0.1)) {
       try { audio.currentTime = 0; } catch (e) {}
     }
 
@@ -7257,6 +7286,7 @@ window.toggleAudioPlay = async function(audioId) {
     document.querySelectorAll('audio').forEach(a => {
       if (a !== audio && !a.paused) {
         a.pause();
+        clearInterval(a._progressInterval);
         const otherId = a.id;
         const otherPlay = document.getElementById('icon_play_' + otherId);
         const otherPause = document.getElementById('icon_pause_' + otherId);
@@ -7269,11 +7299,22 @@ window.toggleAudioPlay = async function(audioId) {
       await audio.play();
       if (playIcon) playIcon.style.display = 'none';
       if (pauseIcon) pauseIcon.style.display = 'block';
+
+      // Start high-frequency smooth progress update
+      clearInterval(audio._progressInterval);
+      audio._progressInterval = setInterval(() => {
+        if (audio.paused || audio.ended) {
+          clearInterval(audio._progressInterval);
+          return;
+        }
+        updateAudioProgress(audioId);
+      }, 80);
     } catch (err) {
       console.warn('Native HTML5 audio playback error:', err);
     }
   } else {
     audio.pause();
+    clearInterval(audio._progressInterval);
     if (playIcon) playIcon.style.display = 'block';
     if (pauseIcon) pauseIcon.style.display = 'none';
   }
@@ -7284,14 +7325,25 @@ window.updateAudioProgress = function(audioId) {
   const fill = document.getElementById('fill_' + audioId);
   const thumb = document.getElementById('thumb_' + audioId);
   const timeEl = document.getElementById('time_' + audioId);
-  if (!audio || !audio.duration) return;
+  if (!audio) return;
 
-  const pct = Math.min(100, Math.max(0, (audio.currentTime / audio.duration) * 100));
+  // Resolve duration handling Android / Chromium WebM Infinity issue
+  let dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : parseFloat(audio.dataset.duration || 0);
+  if (!dur || !isFinite(dur) || dur <= 0) {
+    if (audio.currentTime > 0) {
+      dur = Math.max(audio.currentTime, 1);
+    } else {
+      return;
+    }
+  }
+
+  const curTime = audio.currentTime || 0;
+  const pct = Math.min(100, Math.max(0, (curTime / dur) * 100));
   if (fill) fill.style.width = pct + '%';
   if (thumb) thumb.style.left = pct + '%';
   if (timeEl) {
-    const curStr = formatDuration(audio.currentTime);
-    const totStr = formatDuration(audio.duration);
+    const curStr = formatDuration(curTime);
+    const totStr = formatDuration(dur);
     timeEl.textContent = `${curStr} / ${totStr}`;
   }
 };
@@ -7305,6 +7357,7 @@ window.resetAudioPlayback = function(audioId) {
   const timeEl = document.getElementById('time_' + audioId);
 
   if (audio) {
+    clearInterval(audio._progressInterval);
     try { audio.currentTime = 0; } catch (e) {}
     if (audio.src && audio.src.startsWith('blob:')) {
       try {
@@ -7317,8 +7370,11 @@ window.resetAudioPlayback = function(audioId) {
   if (pauseIcon) pauseIcon.style.display = 'none';
   if (fill) fill.style.width = '0%';
   if (thumb) thumb.style.left = '0%';
-  if (audio && timeEl && audio.duration) {
-    timeEl.textContent = `0:00 / ${formatDuration(audio.duration)}`;
+  if (audio && timeEl) {
+    const dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : parseFloat(audio.dataset.duration || 0);
+    if (dur > 0) {
+      timeEl.textContent = `0:00 / ${formatDuration(dur)}`;
+    }
   }
 };
 
@@ -7345,12 +7401,15 @@ window.cycleAudioSpeed = function(audioId) {
 window.seekAudio = function(event, audioId) {
   const audio = document.getElementById(audioId);
   const bar = event.currentTarget.querySelector('.voice-progress-bar');
-  if (!audio || !bar || !audio.duration) return;
+  if (!audio || !bar) return;
+
+  const dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : parseFloat(audio.dataset.duration || 0);
+  if (!dur || !isFinite(dur) || dur <= 0) return;
 
   const rect = bar.getBoundingClientRect();
   const clickX = event.clientX - rect.left;
   const pct = Math.max(0, Math.min(1, clickX / rect.width));
-  audio.currentTime = pct * audio.duration;
+  audio.currentTime = pct * dur;
   updateAudioProgress(audioId);
 };
 
