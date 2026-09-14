@@ -32,8 +32,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="dns-prefetch" href="https://meet.digiroys.com">
     <link rel="preconnect" href="https://meet.digiroys.com" crossorigin>
-    <link rel="preload" href="/css/style.min.css?v=1276" as="style">
-    <link rel="stylesheet" href="/css/style.min.css?v=1276">
+    <link rel="preload" href="/css/style.min.css?v=1277" as="style">
+    <link rel="stylesheet" href="/css/style.min.css?v=1277">
   </head>
 
   <body>
@@ -45,6 +45,12 @@
         <!-- Top App Title Bar (WhatsApp Style Header) -->
         <div class="sidebar-top-bar">
           <span class="sidebar-app-title">DigiCom</span>
+          <button type="button" class="action-btn" id="btn-open-about-modal" onclick="window.openAboutModal()" title="Présentation de DigiCom" aria-label="Présentation de DigiCom">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+          </button>
         </div>
 
         <!-- Sidebar Quick Search Bar -->
@@ -2922,6 +2928,94 @@
       </div>
     </div>
 
+    <!-- About DigiCom Modal (Fiche de Présentation) -->
+    <div class="modal-backdrop" id="modal-about-digicom" style="display: none;" onclick="if(event.target===this)window.closeAboutModal();">
+      <div class="modal-card about-modal-card">
+        <div class="modal-header">
+          <div class="about-modal-header-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            <h3>À propos de DigiCom</h3>
+          </div>
+          <button type="button" class="btn-close-modal" onclick="window.closeAboutModal()" title="Fermer">✕</button>
+        </div>
+
+        <div class="about-modal-body">
+          <div class="about-section">
+            <div class="about-badge-tag">Plateforme Souveraine</div>
+            <p class="about-lead">
+              <strong>DigiCom</strong> (Digital Communication) est une plateforme souveraine de communication privée et collaborative, pensée pour offrir une expérience fluide, confidentielle et avec <strong>zéro distraction</strong>. Conçue comme une alternative indépendante et éthique aux messageries grand public, DigiCom garantit la protection intégrale de vos échanges en s'affranchissant des serveurs tiers et des géants du web.
+            </p>
+            <p class="about-sublead">
+              Installable comme une <strong>application moderne et légère</strong>, DigiCom fonctionne sur ordinateur, tablette et smartphone sans dépendre d'un magasin d'applications centralisé.
+            </p>
+          </div>
+
+          <div class="about-section">
+            <h4 class="about-section-title">Les Piliers de la Souveraineté</h4>
+            <div class="about-grid">
+              <div class="about-item">
+                <span class="about-item-title">Données sous contrôle exclusif</span>
+                <p>Tous les messages, fichiers multimédias et flux vocaux sont stockés et hébergés sur un serveur privé dédié.</p>
+              </div>
+              <div class="about-item">
+                <span class="about-item-title">Confidentialité par défaut</span>
+                <p>Aucun algorithme de pistage, aucune publicité, aucun profilage commercial de vos échanges.</p>
+              </div>
+              <div class="about-item">
+                <span class="about-item-title">Fonctionnement hors-ligne</span>
+                <p>Vos discussions et répertoires restent accessibles sans connexion Internet grâce au stockage local sécurisé.</p>
+              </div>
+              <div class="about-item">
+                <span class="about-item-title">Sobriété et rapidité</span>
+                <p>Interface ultra-légère assurant un chargement instantané tout en préservant la mémoire de votre appareil.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="about-section">
+            <h4 class="about-section-title">Discussions Privées (1-à-1)</h4>
+            <ul class="about-features-list">
+              <li><strong>Messagerie instantanée directe :</strong> Envoi instantané avec horodatage et accusés précis (envoyé, distribué, lu).</li>
+              <li><strong>Notes vocales haute définition :</strong> Enregistrement avec pré-écoute, contrôle de vitesse de lecture et onde dynamique.</li>
+              <li><strong>Appels audio et vidéo chiffrés :</strong> Communications en direct de haute qualité propulsées par le protocole WebRTC.</li>
+              <li><strong>Partage de médias optimisé :</strong> Photos, vidéos et documents avec compression automatique locale pour préserver la bande passante.</li>
+              <li><strong>Discrétion renforcée :</strong> Messages éphémères programmables et masquage d'écran en cas de besoin.</li>
+            </ul>
+          </div>
+
+          <div class="about-section">
+            <h4 class="about-section-title">Salons Collaboratifs de Groupe</h4>
+            <ul class="about-features-list">
+              <li><strong>Espaces d'équipe ou familiaux :</strong> Salons thématiques fermés avec gouvernance claire (créateur, administrateurs et membres).</li>
+              <li><strong>Délégation du rôle d'administrateur :</strong> Le créateur ou l'administrateur du salon peut aussi déléguer le rôle d'administrateur à un membre pour l'aider à modérer et gérer le salon.</li>
+              <li><strong>Gestion des tâches (Kanban) :</strong> Attribution de tâches, suivi des étapes (À faire, En cours, Terminé) avec alertes automatiques.</li>
+              <li><strong>Visioconférences collectives :</strong> Réunions vidéo de groupe d'un seul clic, sans lien externe ni inscription tierce.</li>
+              <li><strong>Registre des Décisions :</strong> Mémorisation officielle des accords et validations prises par le groupe.</li>
+              <li><strong>Caisse & Trésorerie :</strong> Journal de transparence financière pour suivre cotisations et dépenses collectives.</li>
+              <li><strong>Coffre-fort documentaire :</strong> Répertoire centralisé de tous les fichiers et pièces jointes échangés.</li>
+            </ul>
+          </div>
+
+          <div class="about-section">
+            <h4 class="about-section-title">Connexions & Sécurité</h4>
+            <ul class="about-features-list">
+              <li><strong>Connexion simplifiée :</strong> Ajout par QR Code, par pseudonyme ou par partage de lien d'invitation direct.</li>
+              <li><strong>Code PIN de secours :</strong> Verrouillage supplémentaire sur l'appareil pour protéger l'accès à vos discussions.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="modal-footer about-modal-footer">
+          <button type="button" class="btn-contract-btn btn-contract-accept-lg" onclick="window.closeAboutModal()" style="width: 100%;">
+            <span>Fermer la présentation</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Floating PWA Install Mini-Banner (Google Chrome Style) -->
     <div id="pwa-floating-banner" class="pwa-floating-banner" role="dialog" aria-label="Installer DigiCom">
       <div class="pwa-banner-left">
@@ -2932,11 +3026,11 @@
     </div>
 
     <!-- Scripts (Deferred for non-blocking fast render, Jitsi/QR/Tour loaded on-demand) -->
-    <script src="/socket.io/socket.io.js?v=1276" defer></script>
-    <script src="/js/idb-store.min.js?v=1276" defer></script>
-    <script src="/js/push-client.min.js?v=1276" defer></script>
-    <script src="/js/webrtc-call.min.js?v=1276" defer></script>
-    <script src="/js/app.min.js?v=1276" defer></script>
+    <script src="/socket.io/socket.io.js?v=1277" defer></script>
+    <script src="/js/idb-store.min.js?v=1277" defer></script>
+    <script src="/js/push-client.min.js?v=1277" defer></script>
+    <script src="/js/webrtc-call.min.js?v=1277" defer></script>
+    <script src="/js/app.min.js?v=1277" defer></script>
   </body>
 
 </html>

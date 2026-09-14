@@ -13056,6 +13056,25 @@ window.closeUserProfileModal = function() {
   if (fileInput) fileInput.value = '';
 };
 
+window.openAboutModal = function() {
+  const modal = document.getElementById('modal-about-digicom');
+  if (modal) modal.style.display = 'flex';
+};
+
+window.closeAboutModal = function() {
+  const modal = document.getElementById('modal-about-digicom');
+  if (modal) modal.style.display = 'none';
+};
+
+window.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const aboutModal = document.getElementById('modal-about-digicom');
+    if (aboutModal && aboutModal.style.display === 'flex') {
+      window.closeAboutModal();
+    }
+  }
+});
+
 // Client-side lightweight image crop & compression for mobile efficiency
 window.handleProfileAvatarSelect = function(file) {
   if (!file) return;
