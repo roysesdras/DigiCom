@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1269';
+const CACHE_NAME = 'digicom-pwa-v1270';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -364,7 +364,7 @@ self.addEventListener('push', (event) => {
         { action: 'answer', title: 'Répondre' },
         { action: 'reject', title: 'Refuser' }
       ] : [
-        { action: 'reply', type: 'text', title: 'Répondre', placeholder: 'Message...' },
+        { action: 'reply', title: 'Répondre' },
         { action: 'mark_read', title: 'Marquer lu' }
       ]
     };
@@ -390,39 +390,37 @@ self.addEventListener('notificationclick', (event) => {
   const notifData = (event.notification && event.notification.data) || {};
   const action = event.action;
 
-  // 1. Inline Quick Reply directly from Android notification shade
-  if (action === 'reply') {
+  // 1. Inline Quick Reply directly if platform provided reply text
+  if (action === 'reply' && event.reply && event.reply.trim()) {
     const targetTag = event.notification.tag;
-    const replyText = event.reply ? event.reply.trim() : '';
-    if (replyText) {
-      const payload = {
-        receiverId: notifData.contactId || notifData.senderId,
-        salonId: notifData.salonId,
-        content: { type: 'text', text: replyText }
-      };
-      event.waitUntil((async () => {
-        try {
-          if (targetTag) {
-            const matching = await self.registration.getNotifications({ tag: targetTag });
-            if (matching && matching.length > 0) {
-              matching.forEach(n => n.close());
-            }
+    const replyText = event.reply.trim();
+    const payload = {
+      receiverId: notifData.contactId || notifData.senderId,
+      salonId: notifData.salonId,
+      content: { type: 'text', text: replyText }
+    };
+    event.waitUntil((async () => {
+      try {
+        if (targetTag) {
+          const matching = await self.registration.getNotifications({ tag: targetTag });
+          if (matching && matching.length > 0) {
+            matching.forEach(n => n.close());
           }
-          await fetch('/api/messages', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        } catch (err) {
-          console.error('[-] SW Inline reply error:', err);
         }
-      })());
-    }
+        await fetch('/api/messages', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.error('[-] SW Inline reply error:', err);
+      }
+    })());
     return;
   }
 
-  // 2. Mark Read directly from notification button (disappears automatically)
+  // 2. Mark Read directly from notification button (disappears automatically in background)
   if (action === 'mark_read') {
     const targetTag = event.notification.tag;
     const payload = {
@@ -456,20 +454,21 @@ self.addEventListener('notificationclick', (event) => {
 
   let targetPath = notifData.url || '/';
   const msgParam = notifData.messageId ? `&msg=${encodeURIComponent(notifData.messageId)}` : '';
+  const focusParam = (action === 'reply') ? '&focus=1' : '';
 
   if (notifData.url) {
-    targetPath = notifData.url;
+    targetPath = notifData.url + focusParam;
   } else if (notifData.type === 'call_incoming' || notifData.callerId) {
     targetPath = `/?openCall=true&callerId=${encodeURIComponent(notifData.callerId)}&callerName=${encodeURIComponent(notifData.callerName || '')}&callType=${encodeURIComponent(notifData.callType || 'audio')}&action=${encodeURIComponent(action || '')}`;
   } else if (notifData.openRequests || notifData.type === 'contact_request') {
     targetPath = '/?openRequests=true';
   } else if (notifData.salonId) {
-    targetPath = `/?salon=${encodeURIComponent(notifData.salonId)}${msgParam}`;
+    targetPath = `/?salon=${encodeURIComponent(notifData.salonId)}${msgParam}${focusParam}`;
   } else if (notifData.senderId && (notifData.channel === 'support' || notifData.channel === 'sos')) {
-    targetPath = `/?channel=support&sender=${encodeURIComponent(notifData.senderId)}${msgParam}`;
+    targetPath = `/?channel=support&sender=${encodeURIComponent(notifData.senderId)}${msgParam}${focusParam}`;
   } else if (notifData.senderId || notifData.contactId) {
     const cid = notifData.contactId || notifData.senderId;
-    targetPath = `/?contact=${encodeURIComponent(cid)}${msgParam}`;
+    targetPath = `/?contact=${encodeURIComponent(cid)}${msgParam}${focusParam}`;
   }
 
   const targetUrl = new URL(targetPath, self.location.origin).href;
@@ -502,6 +501,7 @@ self.addEventListener('notificationclick', (event) => {
             senderId: notifData.senderId,
             messageId: notifData.messageId,
             channel: notifData.channel,
+            focusInput: (action === 'reply'),
             url: targetUrl,
             data: notifData
           });

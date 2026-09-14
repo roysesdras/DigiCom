@@ -554,6 +554,13 @@ async function navigateToTarget(targetData) {
     if (messageId) {
       highlightAndScrollMessage(messageId);
     }
+    setTimeout(() => {
+      const inp = document.getElementById('message-input');
+      if (inp) {
+        inp.focus();
+        inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 200);
     // Background async refresh without blocking UI
     if (!state.salons || !Array.isArray(state.salons) || state.salons.length === 0) {
       authFetch('/api/salons').then(r => r.ok && r.json()).then(sData => {
@@ -576,8 +583,11 @@ async function navigateToTarget(targetData) {
     }
     setTimeout(() => {
       const inp = document.getElementById('message-input');
-      if (inp) inp.focus();
-    }, 150);
+      if (inp) {
+        inp.focus();
+        inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 200);
 
     // Background async refresh without blocking UI
     if (!state.contacts || !Array.isArray(state.contacts) || state.contacts.length === 0) {
@@ -2351,6 +2361,10 @@ function setupEventListeners() {
           window.showAdminAnnouncementModal(notifData);
         }
         return;
+      }
+
+      if (eventData.focusInput) {
+        notifData.focusInput = true;
       }
 
       await navigateToTarget(notifData);
@@ -9078,6 +9092,11 @@ async function openSalonInfoModal(salonId) {
               canvas.width = maxDim;
               canvas.height = maxDim;
               const ctx = canvas.getContext('2d');
+              // Circular clipping for circular avatar badge
+              ctx.beginPath();
+              ctx.arc(maxDim / 2, maxDim / 2, maxDim / 2, 0, Math.PI * 2);
+              ctx.closePath();
+              ctx.clip();
               ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim);
 
               canvas.toBlob(async (blob) => {
@@ -12980,6 +12999,11 @@ window.handleProfileAvatarSelect = function(file) {
       canvas.width = maxDim;
       canvas.height = maxDim;
       const ctx = canvas.getContext('2d');
+      // Circular clipping for circular avatar badge
+      ctx.beginPath();
+      ctx.arc(maxDim / 2, maxDim / 2, maxDim / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
       ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim);
 
       canvas.toBlob((blob) => {
