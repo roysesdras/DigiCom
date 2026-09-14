@@ -10,59 +10,56 @@
   const TOUR_STORAGE_KEY = 'digicom_tour_done_v1';
 
   const ICONS = {
-    connections: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>`,
     filters: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>`,
     search: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`,
     chatList: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
-    calls: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
-    media: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`,
-    close: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-    arrowRight: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`,
-    arrowLeft: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`,
-    check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+    profile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`,
+    notifications: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`,
+    menu: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>`,
+    close: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
   };
 
   const TOUR_STEPS = [
     {
-      targetId: 'btn-add-contact',
-      icon: ICONS.connections,
-      title: 'Connexions & Partage QR',
-      description: 'Partagez votre QR Code personnel, votre lien direct ou ajoutez un ami par son @pseudo souverain.',
-      placement: 'bottom'
-    },
-    {
       targetId: 'sidebar-tabs-row',
       icon: ICONS.filters,
-      title: 'Filtres & Organisation',
-      description: 'Basculez facilement entre Toutes vos discussions, vos messages Privés et vos Salons de groupe.',
+      title: 'Filtres & Salons',
+      description: 'Basculez facilement entre Toutes vos discussions, vos messages Non lus, vos Salons de groupe et vos archives.',
       placement: 'bottom'
     },
     {
       targetId: 'search-contacts-input',
       icon: ICONS.search,
-      title: 'Recherche Instantanée',
-      description: 'Trouvez rapidement un contact, un salon ou un extrait de message dans tout votre historique.',
+      title: 'Recherche Rapide',
+      description: 'Trouvez rapidement un correspondant, un salon ou un extrait de message dans tout votre historique.',
       placement: 'bottom'
     },
     {
       targetId: 'all-list-container',
       icon: ICONS.chatList,
-      title: 'Répertoire des Discussions',
-      description: 'Visualisez vos conversations avec l\'aperçu du dernier message, l\'heure et l\'œil d\'accusé de lecture.',
-      placement: 'right'
+      title: 'Discussions & Salons',
+      description: 'Accédez à toutes vos discussions actives avec le dernier message, l\'heure et les accusés de lecture.',
+      placement: 'top'
     },
     {
-      targetId: 'chat-header-bar',
-      icon: ICONS.calls,
-      title: 'Statut & Appels Chiffrés',
-      description: 'Voyez si votre interlocuteur est en ligne et lancez des appels audio ou vidéo chiffrés de bout en bout.',
-      placement: 'bottom'
+      targetId: 'btn-open-user-profile',
+      icon: ICONS.profile,
+      title: 'Profil & Identité',
+      description: 'Touchez votre avatar ou nom en bas pour modifier votre photo de profil, nom d\'affichage et statut.',
+      placement: 'top'
     },
     {
-      targetId: 'chat-input-area',
-      icon: ICONS.media,
-      title: 'Messages & Médias',
-      description: 'Envoyez des messages instantanés, des notes vocales HD, des photos, vidéos et pièces jointes chiffrées.',
+      targetId: 'btn-push-toggle',
+      icon: ICONS.notifications,
+      title: 'Notifications Instantanées',
+      description: 'Activez la cloche en bas pour recevoir vos alertes de messages et appels même lorsque l\'application est fermée.',
+      placement: 'top'
+    },
+    {
+      targetId: 'btn-sidebar-more-menu',
+      icon: ICONS.menu,
+      title: 'Menu & Confidentialité',
+      description: 'Accédez aux options générales : Connexions & Contacts, QR Code de partage, code PIN de secours et sécurité.',
       placement: 'top'
     }
   ];
@@ -98,9 +95,9 @@
             <div id="tour-step-dots" class="tour-step-dots"></div>
           </div>
           <div class="tour-actions-row">
-            <button type="button" id="btn-tour-skip" class="tour-btn-secondary">Pass</button>
-            <button type="button" id="btn-tour-prev" class="tour-btn-secondary" style="display: none;">Previous</button>
-            <button type="button" id="btn-tour-next" class="tour-btn-primary">Next</button>
+            <button type="button" id="btn-tour-skip" class="tour-btn-secondary">Passer</button>
+            <button type="button" id="btn-tour-prev" class="tour-btn-secondary" style="display: none;">Précédent</button>
+            <button type="button" id="btn-tour-next" class="tour-btn-primary">Suivant</button>
           </div>
         </div>
       </div>
@@ -155,11 +152,11 @@
     // Fallbacks if target element is hidden (e.g. mobile responsive view or feeds)
     if (!targetEl || targetEl.offsetParent === null) {
       if (step.targetId === 'all-list-container') {
-        targetEl = document.getElementById('contacts-list-container') || document.querySelector('.contacts-feed');
-      } else if (step.targetId === 'chat-header-bar') {
-        targetEl = document.getElementById('chat-panel');
-      } else if (step.targetId === 'chat-input-area') {
-        targetEl = document.getElementById('chat-input-area') || document.getElementById('message-input');
+        targetEl = document.querySelector('.contacts-feed:not([style*="display: none"])') || document.querySelector('.contacts-feed');
+      } else if (step.targetId === 'btn-open-user-profile') {
+        targetEl = document.getElementById('sidebar-bottom-bar');
+      } else if (step.targetId === 'btn-push-toggle' || step.targetId === 'btn-sidebar-more-menu') {
+        targetEl = document.querySelector('.header-actions') || document.getElementById('sidebar-bottom-bar');
       }
     }
 
@@ -184,16 +181,16 @@
       ).join('');
     }
 
-    // Buttons
+    // Buttons in French
     if (prevBtn) {
       prevBtn.style.display = currentStepIndex > 0 ? 'inline-flex' : 'none';
-      prevBtn.innerHTML = `<span>Previous</span>`;
+      prevBtn.innerHTML = `<span>Précédent</span>`;
     }
     if (nextBtn) {
       if (currentStepIndex === TOUR_STEPS.length - 1) {
-        nextBtn.innerHTML = `<span>Finish</span>`;
+        nextBtn.innerHTML = `<span>Terminer</span>`;
       } else {
-        nextBtn.innerHTML = `<span>Next</span>`;
+        nextBtn.innerHTML = `<span>Suivant</span>`;
       }
     }
 
@@ -248,7 +245,9 @@
 
     if (isMobile) {
       left = Math.max(12, (window.innerWidth - popWidth) / 2);
-      if (rect.bottom + popoverHeight + margin < window.innerHeight) {
+      if (preferredPlacement === 'top' && rect.top - popoverHeight - margin > 0) {
+        top = rect.top - popoverHeight - margin;
+      } else if (rect.bottom + popoverHeight + margin < window.innerHeight) {
         top = rect.bottom + margin;
       } else if (rect.top - popoverHeight - margin > 0) {
         top = rect.top - popoverHeight - margin;
@@ -266,11 +265,11 @@
         top = Math.max(16, Math.min(rect.top, window.innerHeight - popoverHeight - 16));
         left = rect.right + margin;
       } else {
-        if (rect.bottom + popoverHeight + margin < window.innerHeight) {
-          top = rect.bottom + margin;
+        if (rect.top - popoverHeight - margin > 0) {
+          top = rect.top - popoverHeight - margin;
           left = Math.max(16, Math.min(rect.left, window.innerWidth - popWidth - 16));
         } else {
-          top = Math.max(16, rect.top - popoverHeight - margin);
+          top = rect.bottom + margin;
           left = Math.max(16, Math.min(rect.left, window.innerWidth - popWidth - 16));
         }
       }
