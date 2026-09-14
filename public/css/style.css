@@ -4865,6 +4865,8 @@ body {
   transition: background 0.12s ease;
   user-select: none;
   gap: 8px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mention-item:hover,
@@ -4892,6 +4894,13 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.mention-avatar-all {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #60a5fa;
 }
 
 .mention-name {
@@ -4918,6 +4927,12 @@ body {
   flex-shrink: 0;
 }
 
+.mention-role-tag.mention-role-all {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
 /* Mention Pill in Chat Messages */
 .chat-mention-pill {
   display: inline-block;
@@ -4941,6 +4956,13 @@ body {
   border-color: rgba(245, 158, 11, 0.5);
   color: #fbbf24;
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
+}
+
+.chat-mention-pill.mention-all {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #93c5fd;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.25);
 }
 
 /* ==========================================================================
@@ -5996,64 +6018,6 @@ body {
   padding: 40px 20px;
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.4);
-}
-
-/* 3. Mention Autocomplete Popup */
-.mention-autocomplete-popup {
-  position: absolute;
-  bottom: 100%;
-  left: 20px;
-  right: 20px;
-  max-width: 320px;
-  background: rgba(20, 22, 32, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-  z-index: 100;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.mention-list-header {
-  padding: 8px 12px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.4);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.mention-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.mention-item:hover, .mention-item.selected {
-  background: rgba(16, 185, 129, 0.15);
-}
-
-.mention-item-name {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #fff;
-}
-
-.mention-item-user {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.chat-mention-tag {
-  color: #10b981;
-  font-weight: 700;
-  background: rgba(16, 185, 129, 0.12);
-  padding: 1px 5px;
-  border-radius: 4px;
 }
 
 /* 4. Poll Cards & Modal */

@@ -303,8 +303,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 function hideMentionsPopover() {
   const popover = document.getElementById('mentions-popover');
   if (popover) popover.style.display = 'none';
+  const listEl = document.getElementById('mentions-list-scroll');
+  if (listEl) listEl.innerHTML = '';
   state.currentMentionList = [];
   state.mentionSelectedIndex = 0;
+  state.currentMentionAtIndex = -1;
 }
 window.hideMentionsPopover = hideMentionsPopover;
 
@@ -2721,6 +2724,11 @@ function setupEventListeners() {
 
   // ---------------- MENTIONS & TAGGING AUTOCOMPLETE ----------------
   function handleMessageInputMention() {
+    if (state.justSelectedMention) {
+      hideMentionsPopover();
+      return;
+    }
+
     const input = document.getElementById('message-input');
     const popover = document.getElementById('mentions-popover');
     const listEl = document.getElementById('mentions-list-scroll');
@@ -2740,19 +2748,34 @@ function setupEventListeners() {
     const atIndex = textBefore.lastIndexOf('@');
 
     let candidates = [];
-    if (state.activeSalon && state.activeSalonMembers && state.activeSalonMembers.length > 0) {
+    const isSalon = !!(state.activeSalon && state.activeSalonMembers && state.activeSalonMembers.length > 0);
+    if (isSalon) {
       candidates = state.activeSalonMembers;
     } else if (state.contacts && state.contacts.length > 0) {
       candidates = state.contacts;
     }
 
     const currentUserId = state.user ? String(state.user.id) : '';
-    const matched = candidates.filter(u => {
+    let matched = candidates.filter(u => {
       if (String(u.id) === currentUserId) return false;
       const uname = (u.username || '').toLowerCase();
       const dname = (u.display_name || '').toLowerCase();
       return !query || uname.includes(query) || dname.includes(query);
     });
+
+    // In a salon, offer "@tous" at the top of candidate list
+    if (isSalon) {
+      const matchTous = !query || 'tous'.startsWith(query) || 'tout le monde'.includes(query) || 'all'.startsWith(query);
+      if (matchTous) {
+        matched.unshift({
+          id: 'mention_all_users',
+          username: 'tous',
+          display_name: 'Tout le monde',
+          isAll: true,
+          salon_role: 'tous'
+        });
+      }
+    }
 
     if (matched.length === 0) {
       hideMentionsPopover();
@@ -2777,28 +2800,73 @@ function setupEventListeners() {
       item.className = `mention-item ${idx === 0 ? 'selected' : ''}`;
       item.dataset.index = idx;
       const initial = (m.display_name || m.username || '?').charAt(0).toUpperCase();
-      const isOnline = state.onlineUserIds.includes(m.id);
+      const isAll = Boolean(m.isAll);
+      const isOnline = isAll ? true : state.onlineUserIds.includes(m.id);
       const isCreator = m.salon_role === 'creator' || (state.activeSalon && m.id === state.activeSalon.created_by);
+      const avatarUrl = m.avatar_url || m.avatarUrl || m.avatar;
+
+      let avatarMarkup = '';
+      if (isAll) {
+        avatarMarkup = `
+          <div class="mention-avatar mention-avatar-all" title="Tout le monde">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+        `;
+      } else if (avatarUrl) {
+        avatarMarkup = `
+          <div class="mention-avatar">
+            <img src="${escapeHtml(avatarUrl)}" class="mention-avatar-img" alt="${escapeHtml(m.display_name || m.username)}" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+            <span style="display:none;">${initial}</span>
+          </div>
+        `;
+      } else {
+        avatarMarkup = `
+          <div class="mention-avatar">
+            <span>${initial}</span>
+          </div>
+        `;
+      }
+
+      let roleMarkup = '';
+      if (isAll) {
+        roleMarkup = '<span class="mention-role-tag mention-role-all">Salon</span>';
+      } else if (isCreator) {
+        roleMarkup = '<span class="mention-role-tag">Admin</span>';
+      }
 
       item.innerHTML = `
         <div class="mention-item-left">
-          <div style="position: relative;">
-            <div class="mention-avatar">${initial}</div>
-            <div class="micro-dot ${isOnline ? 'online' : ''}" style="width: 8px; height: 8px;"></div>
+          <div style="position: relative; flex-shrink: 0;">
+            ${avatarMarkup}
+            ${!isAll ? `<div class="micro-dot ${isOnline ? 'online' : ''}" style="width: 8px; height: 8px;"></div>` : ''}
           </div>
           <div style="min-width: 0; overflow: hidden;">
             <div class="mention-name">${escapeHtml(m.display_name || m.username)}</div>
             <div class="mention-username">@${escapeHtml(m.username)}</div>
           </div>
         </div>
-        ${isCreator ? '<span class="mention-role-tag">Admin</span>' : ''}
+        ${roleMarkup}
       `;
 
-      item.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+      let selectedFired = false;
+      const triggerSelect = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        if (selectedFired) return;
+        selectedFired = true;
         selectMentionUser(m, atIndex);
-      });
+      };
+
+      item.addEventListener('pointerdown', triggerSelect);
+      item.addEventListener('touchstart', triggerSelect, { passive: false });
+      item.addEventListener('mousedown', triggerSelect);
 
       listEl.appendChild(item);
     });
@@ -2821,6 +2889,11 @@ function setupEventListeners() {
   }
 
   function selectMentionUser(user, atIndex) {
+    state.justSelectedMention = true;
+    setTimeout(() => {
+      state.justSelectedMention = false;
+    }, 450);
+
     const input = document.getElementById('message-input');
     if (!input) return;
 
@@ -2845,8 +2918,11 @@ function setupEventListeners() {
   function hideMentionsPopover() {
     const popover = document.getElementById('mentions-popover');
     if (popover) popover.style.display = 'none';
+    const listEl = document.getElementById('mentions-list-scroll');
+    if (listEl) listEl.innerHTML = '';
     state.currentMentionList = [];
     state.mentionSelectedIndex = 0;
+    state.currentMentionAtIndex = -1;
   }
 
   // Message Send Logic
@@ -6572,8 +6648,10 @@ function linkifyText(text) {
   const currentDisplayName = (state.user && state.user.displayName) ? state.user.displayName.toLowerCase() : '';
   const mentionRegex = /@([a-zA-Z0-9_\-]+)/g;
   escaped = escaped.replace(mentionRegex, (match, username) => {
-    const isSelf = username.toLowerCase() === currentUsername || (currentDisplayName && username.toLowerCase() === currentDisplayName);
-    return `<span class="chat-mention-pill ${isSelf ? 'self-mention' : ''}" data-mention="${escapeHtml(username)}">@${escapeHtml(username)}</span>`;
+    const lowerUser = username.toLowerCase();
+    const isTous = lowerUser === 'tous' || lowerUser === 'all';
+    const isSelf = isTous || lowerUser === currentUsername || (currentDisplayName && lowerUser === currentDisplayName);
+    return `<span class="chat-mention-pill ${isSelf ? 'self-mention' : ''} ${isTous ? 'mention-all' : ''}" data-mention="${escapeHtml(username)}">@${escapeHtml(username)}</span>`;
   });
 
   return escaped.replace(/\n/g, '<br>');
@@ -10114,78 +10192,6 @@ function renderSalonFilesList(filterTab = 'all') {
   }).join('');
 }
 
-// 3. Mentions Autocomplete Popup
-function handleMentionInput(e) {
-  if (!state.activeSalon || state.activeTab !== 'salons') {
-    hideMentionsPopover();
-    return;
-  }
-  const input = e.target;
-  const val = input.value;
-  const cursorPos = input.selectionStart;
-  const textBefore = val.slice(0, cursorPos);
-  const match = textBefore.match(/@([a-zA-Z0-9_\-]*)$/);
-
-  if (match) {
-    const query = match[1].toLowerCase();
-    const members = state.activeSalonMembers || [];
-    const filtered = members.filter(m => {
-      const uname = (m.username || '').toLowerCase();
-      const dname = (m.display_name || '').toLowerCase();
-      return uname.includes(query) || dname.includes(query);
-    });
-
-    if (filtered.length > 0) {
-      showMentionsPopover(filtered, match.index, cursorPos);
-    } else {
-      hideMentionsPopover();
-    }
-  } else {
-    hideMentionsPopover();
-  }
-}
-
-function showMentionsPopover(members, matchIndex, cursorPos) {
-  const popup = document.getElementById('mention-autocomplete-popup');
-  const itemsContainer = document.getElementById('mention-list-items');
-  if (!popup || !itemsContainer) return;
-
-  itemsContainer.innerHTML = members.map((m, idx) => `
-    <div class="mention-item ${idx === 0 ? 'selected' : ''}" data-username="${escapeHtml(m.display_name || m.username)}">
-      <div class="mention-item-name">${escapeHtml(m.display_name || m.username)}</div>
-      <div class="mention-item-user">@${escapeHtml(m.username)}</div>
-    </div>
-  `).join('');
-
-  popup.style.display = 'block';
-
-  itemsContainer.querySelectorAll('.mention-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const username = item.dataset.username;
-      insertMention(username);
-      hideMentionsPopover();
-    });
-  });
-}
-
-function insertMention(username) {
-  const input = document.getElementById('message-input');
-  if (!input) return;
-  const val = input.value;
-  const cursorPos = input.selectionStart;
-  const textBefore = val.slice(0, cursorPos);
-  const textAfter = val.slice(cursorPos);
-  const newBefore = textBefore.replace(/@([a-zA-Z0-9_\-]*)$/, `@${username} `);
-  input.value = newBefore + textAfter;
-  input.focus();
-  input.setSelectionRange(newBefore.length, newBefore.length);
-}
-
-function hideMentionsPopover() {
-  const popup = document.getElementById('mention-autocomplete-popup');
-  if (popup) popup.style.display = 'none';
-}
-
 // 4. Polls Handling
 async function loadAndRenderPollCard(pollId) {
   const container = document.getElementById(`poll-container-${pollId}`);
@@ -10371,14 +10377,6 @@ document.querySelectorAll('.drawer-tab').forEach(tab => {
     renderSalonFilesList(tab.dataset.tab);
   });
 });
-
-const msgInput = document.getElementById('message-input');
-if (msgInput) {
-  msgInput.addEventListener('input', handleMentionInput);
-  msgInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hideMentionsPopover();
-  });
-}
 
 const btnCreatePoll = document.getElementById('btn-create-poll');
 const modalCreatePoll = document.getElementById('modal-create-poll');
