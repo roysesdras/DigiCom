@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1268';
+const CACHE_NAME = 'digicom-pwa-v1269';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -266,28 +266,6 @@ self.addEventListener('push', (event) => {
     notifTag = 'contact-' + (payloadData.contactId || payloadData.senderId || data.contactId);
   }
 
-  const options = {
-    body: data.body,
-    icon: data.icon || '/img/icon-192.webp',
-    badge: data.badge || '/img/badge-72.webp',
-    vibrate: isCall ? [800, 400, 800, 400, 800, 400, 800, 400, 1000] : (isAnnouncement ? [400, 200, 400, 200, 500] : [250, 100, 250]),
-    data: {
-      url: payloadData.url || data.url || '/',
-      salonId: payloadData.salonId || data.salonId || null,
-      contactId: payloadData.contactId || payloadData.senderId || data.contactId || null,
-      messageId: payloadData.messageId || data.messageId || null,
-      channel: payloadData.channel || data.channel || null,
-      ...payloadData
-    },
-    tag: notifTag,
-    renotify: true,
-    requireInteraction: isCall ? true : false,
-    actions: isCall ? [
-      { action: 'answer', title: 'Répondre' },
-      { action: 'reject', title: 'Refuser' }
-    ] : []
-  };
-
   // Log incoming push notification to server
   try {
     fetch('/api/client-log', {
@@ -336,16 +314,71 @@ self.addEventListener('push', (event) => {
       }
     }
 
+    // Stacking / Grouping for multiple consecutive messages from same contact or salon
+    let finalTitle = data.title || 'DigiCom';
+    let finalBody = data.body || '';
+    let messageHistory = [finalBody];
+    let messageCount = 1;
+
+    if (!isCall && !isAnnouncement && notifTag) {
+      try {
+        const existingNotifs = await self.registration.getNotifications({ tag: notifTag });
+        if (existingNotifs && existingNotifs.length > 0) {
+          const oldNotif = existingNotifs[0];
+          const oldData = (oldNotif && oldNotif.data) || {};
+          const oldHistory = Array.isArray(oldData.messages) ? oldData.messages : (oldNotif.body ? [oldNotif.body] : []);
+          messageCount = (oldData.count || 1) + 1;
+          messageHistory = [...oldHistory, finalBody].slice(-3); // Keep up to 3 most recent lines
+
+          // Clean base title without count
+          const baseTitle = (data.title || 'DigiCom').replace(/\s*\(\d+\s*messages?\)$/i, '');
+          finalTitle = `${baseTitle} (${messageCount} messages)`;
+          finalBody = messageHistory.join('\n');
+        }
+      } catch (err) {
+        console.warn('[-] Notification grouping error:', err);
+      }
+    }
+
+    const options = {
+      body: finalBody,
+      icon: data.icon || '/img/icon-192.webp',
+      badge: data.badge || '/img/badge-72.webp',
+      vibrate: isCall
+        ? [800, 400, 800, 400, 800, 400, 800, 400, 1000]
+        : (isAnnouncement ? [300, 150, 300] : [100, 50, 100]), // Modern double haptic tap
+      data: {
+        url: payloadData.url || data.url || '/',
+        salonId: payloadData.salonId || data.salonId || null,
+        contactId: payloadData.contactId || payloadData.senderId || data.contactId || null,
+        messageId: payloadData.messageId || data.messageId || null,
+        channel: payloadData.channel || data.channel || null,
+        count: messageCount,
+        messages: messageHistory,
+        ...payloadData
+      },
+      tag: notifTag,
+      renotify: true,
+      requireInteraction: isCall ? true : false,
+      actions: isCall ? [
+        { action: 'answer', title: 'Répondre' },
+        { action: 'reject', title: 'Refuser' }
+      ] : [
+        { action: 'reply', type: 'text', title: 'Répondre', placeholder: 'Message...' },
+        { action: 'mark_read', title: 'Marquer lu' }
+      ]
+    };
+
     // App Badging API for PWA app icon on mobile / desktop
     if (self.navigator && 'setAppBadge' in self.navigator) {
       self.navigator.setAppBadge().catch(() => {});
     }
 
-    return self.registration.showNotification(data.title || 'DigiCom', options);
+    return self.registration.showNotification(finalTitle, options);
   })());
 });
 
-// Notification Click Handler (v1201 - Targeted foreground focus + Android openWindow fallback)
+// Notification Click Handler (Targeted foreground focus + Quick Reply & Mark Read actions)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -356,8 +389,72 @@ self.addEventListener('notificationclick', (event) => {
 
   const notifData = (event.notification && event.notification.data) || {};
   const action = event.action;
-  let targetPath = notifData.url || '/';
 
+  // 1. Inline Quick Reply directly from Android notification shade
+  if (action === 'reply') {
+    const targetTag = event.notification.tag;
+    const replyText = event.reply ? event.reply.trim() : '';
+    if (replyText) {
+      const payload = {
+        receiverId: notifData.contactId || notifData.senderId,
+        salonId: notifData.salonId,
+        content: { type: 'text', text: replyText }
+      };
+      event.waitUntil((async () => {
+        try {
+          if (targetTag) {
+            const matching = await self.registration.getNotifications({ tag: targetTag });
+            if (matching && matching.length > 0) {
+              matching.forEach(n => n.close());
+            }
+          }
+          await fetch('/api/messages', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch (err) {
+          console.error('[-] SW Inline reply error:', err);
+        }
+      })());
+    }
+    return;
+  }
+
+  // 2. Mark Read directly from notification button (disappears automatically)
+  if (action === 'mark_read') {
+    const targetTag = event.notification.tag;
+    const payload = {
+      contactId: notifData.contactId || notifData.senderId,
+      salonId: notifData.salonId
+    };
+    event.waitUntil((async () => {
+      try {
+        if (targetTag) {
+          const matching = await self.registration.getNotifications({ tag: targetTag });
+          if (matching && matching.length > 0) {
+            matching.forEach(n => n.close());
+          }
+        }
+        await fetch('/api/messages/mark-read', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const remaining = await self.registration.getNotifications();
+        if ((!remaining || remaining.length === 0) && self.navigator && 'clearAppBadge' in self.navigator) {
+          self.navigator.clearAppBadge().catch(() => {});
+        }
+      } catch (err) {
+        console.error('[-] SW Mark read error:', err);
+      }
+    })());
+    return;
+  }
+
+  let targetPath = notifData.url || '/';
   const msgParam = notifData.messageId ? `&msg=${encodeURIComponent(notifData.messageId)}` : '';
 
   if (notifData.url) {

@@ -3325,6 +3325,30 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
   }
 });
 
+// HTTP Endpoint for marking messages as read (used by Notification actions and offline sync)
+app.post('/api/messages/mark-read', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const { contactId, salonId } = req.body || {};
+    if (contactId) {
+      await db.markMessagesAsRead(currentUserId, contactId);
+      io.to(`user_${contactId}`).emit('messages_read_by_recipient', { readerId: currentUserId });
+    } else if (salonId) {
+      await db.markSalonMessagesAsRead(salonId, currentUserId);
+      const currentUserName = req.user.displayName || req.user.username || 'Membre';
+      io.to(`salon_${salonId}`).emit('salon_messages_read', {
+        salonId,
+        readerId: currentUserId,
+        readerName: currentUserName
+      });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[-] Error in POST /api/messages/mark-read:', err);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // 10. Direct / Support Message History Routes (Strictly Scoped)
 app.get('/api/history/support', authenticateToken, async (req, res) => {
   try {
@@ -3673,10 +3697,13 @@ async function processAndDeliverPrivateMessage(senderId, senderName, data) {
       pushBody = `Fichier: ${data.content.fileName || 'Document'}`;
     }
 
+    const senderUser = await db.getUserById(senderId);
+    const senderAvatar = (senderUser && senderUser.avatar_url) ? senderUser.avatar_url : '/img/icon-192.webp';
+
     pushService.sendNotificationToUser(receiverId, {
       title: senderName,
       body: pushBody,
-      icon: '/img/icon-192.webp',
+      icon: senderAvatar,
       badge: '/img/badge-72.webp',
       tag: `contact-${senderId}`,
       data: {
@@ -3779,9 +3806,9 @@ async function processAndDeliverSalonMessage(senderId, senderName, data) {
   io.to(`salon_${salonId}`).emit('new_salon_message', messageRecord);
 
   const rawSalonName = salonRecord ? salonRecord.name : 'Salon';
-  const salonTitle = rawSalonName.replace(/^#+/, '').trim();
+  const salonTitle = '#' + rawSalonName.replace(/^#+/, '').trim();
 
-  let pushBody = 'Nouveau message de salon';
+  let pushBody = 'Nouveau message';
   if (typeof data.content === 'string') {
     pushBody = data.content;
   } else if (data.content && data.content.text) {
@@ -3799,8 +3826,8 @@ async function processAndDeliverSalonMessage(senderId, senderName, data) {
   for (const member of salonMembers) {
     if (member.id !== senderId && !activeMemberIds.includes(member.id)) {
       pushService.sendNotificationToUser(member.id, {
-        title: `${salonTitle} (${senderName})`,
-        body: pushBody,
+        title: salonTitle,
+        body: `${senderName}: ${pushBody}`,
         icon: (salonRecord && salonRecord.avatar_url) ? salonRecord.avatar_url : '/img/icon-192.webp',
         badge: '/img/badge-72.webp',
         tag: `salon-${salonId}`,
