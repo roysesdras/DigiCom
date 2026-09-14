@@ -2,7 +2,7 @@
  * DigiCom Service Worker - PWA Offline Support & Background Web Push Dispatcher
  */
 
-const CACHE_NAME = 'digicom-pwa-v1270';
+const CACHE_NAME = 'digicom-pwa-v1271';
 const MEDIA_CACHE_NAME = 'digicom-media-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -487,30 +487,51 @@ self.addEventListener('notificationclick', (event) => {
     }).catch(() => {});
   } catch (e) {}
 
+  const navPayload = {
+    action: 'NAVIGATE_TO_SALON',
+    type: 'NOTIFICATION_CLICK',
+    salonId: notifData.salonId,
+    contactId: notifData.contactId || notifData.senderId,
+    senderId: notifData.senderId,
+    messageId: notifData.messageId,
+    channel: notifData.channel,
+    focusInput: (action === 'reply'),
+    url: targetUrl,
+    data: notifData,
+    timestamp: Date.now()
+  };
+
+  // Keep in memory for instant pickup when window resumes or becomes visible
+  self.pendingNotificationNav = navPayload;
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 1. Cherche si une fenêtre est DÉJÀ affichée à l'écran au premier plan
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && client.visibilityState === 'visible') {
-          // L'app est déjà sous les yeux de l'utilisateur : on change de salon immédiatement
-          client.postMessage({
-            action: 'NAVIGATE_TO_SALON',
-            type: 'NOTIFICATION_CLICK',
-            salonId: notifData.salonId,
-            contactId: notifData.contactId || notifData.senderId,
-            senderId: notifData.senderId,
-            messageId: notifData.messageId,
-            channel: notifData.channel,
-            focusInput: (action === 'reply'),
-            url: targetUrl,
-            data: notifData
-          });
-          return client.focus();
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      const matchingClients = clientList.filter(c => c.url && c.url.includes(self.location.origin));
+
+      if (matchingClients.length > 0) {
+        // 1. Send navigation instruction to ALL open DigiCom tabs (visible or hidden)
+        for (const client of matchingClients) {
+          client.postMessage(navPayload);
         }
+
+        // 2. Broadcast across BroadcastChannel as guaranteed redundancy
+        if (typeof BroadcastChannel !== 'undefined') {
+          try {
+            const bc = new BroadcastChannel('digicom_nav_channel');
+            bc.postMessage(navPayload);
+            bc.close();
+          } catch (e) {}
+        }
+
+        // 3. Focus the existing client to bring it to foreground
+        const targetClient = matchingClients.find(c => c.focused) || matchingClients[0];
+        if (targetClient && 'focus' in targetClient) {
+          return targetClient.focus();
+        }
+        return;
       }
 
-      // 2. Si l'app est en arrière-plan, minimisée ou fermée (ex: sur Facebook) :
-      // On force l'ouverture via openWindow pour obliger Android à hisser l'écran
+      // 2. Si aucune fenêtre n'est ouverte du tout, on ouvre l'app
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
@@ -537,6 +558,19 @@ self.currentActiveChat = { contactId: null, salonId: null, isVisible: false };
 // Real-time Push Notification Dismissal & Active Chat Presence Handler
 self.addEventListener('message', (event) => {
   if (!event.data) return;
+
+  if (event.data.type === 'GET_PENDING_NAV') {
+    if (self.pendingNotificationNav && (Date.now() - self.pendingNotificationNav.timestamp < 20000)) {
+      if (event.source && event.source.postMessage) {
+        event.source.postMessage({
+          ...self.pendingNotificationNav,
+          type: 'NOTIFICATION_CLICK'
+        });
+      }
+      self.pendingNotificationNav = null;
+    }
+    return;
+  }
 
   if (event.data.type === 'SET_ACTIVE_CHAT') {
     self.currentActiveChat = {

@@ -2415,6 +2415,11 @@ function setupEventListeners() {
       return;
     }
 
+    // Check if a notification was clicked while the app was in background or under notification drawer
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'GET_PENDING_NAV' });
+    }
+
     // When becoming visible again:
     // A. Immediate instant notification dismissal & SW sync on resuming visibility (zero delay, socket-independent)
     if (state.activeContact) {
