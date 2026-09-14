@@ -276,7 +276,11 @@ app.get('/uploads/:filename', async (req, res) => {
 
   if (fs.existsSync(localFile)) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (fileName.toLowerCase().includes('avatar')) {
+      res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
     if (!safeInlineExts.includes(ext)) {
       res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/["\r\n]/g, '')}"`);
     }
@@ -3698,13 +3702,22 @@ async function processAndDeliverPrivateMessage(senderId, senderName, data) {
     }
 
     const senderUser = await db.getUserById(senderId);
-    const senderAvatar = (senderUser && senderUser.avatar_url) ? senderUser.avatar_url : '/img/icon-192.webp';
+    let senderAvatar = (senderUser && senderUser.avatar_url) ? senderUser.avatar_url : '/img/icon-192.webp';
+    if (senderAvatar.endsWith('.webp')) {
+      const candidatePng = senderAvatar.replace(/\.webp$/, '.png');
+      const localCandidate = path.join(uploadsDir, path.basename(candidatePng));
+      if (fs.existsSync(localCandidate)) {
+        senderAvatar = candidatePng;
+      }
+    }
+    const origin = process.env.APP_URL || 'https://chat.digiroys.com';
+    const absoluteSenderIcon = new URL(senderAvatar, origin).href + '?v=' + Date.now();
 
     pushService.sendNotificationToUser(receiverId, {
       title: senderName,
       body: pushBody,
-      icon: senderAvatar,
-      badge: '/img/badge-72.webp',
+      icon: absoluteSenderIcon,
+      badge: `${origin}/img/badge-72.webp`,
       tag: `contact-${senderId}`,
       data: {
         url: `/?contact=${senderId}&msg=${messageRecord.id}`,
@@ -3825,11 +3838,22 @@ async function processAndDeliverSalonMessage(senderId, senderName, data) {
 
   for (const member of salonMembers) {
     if (member.id !== senderId && !activeMemberIds.includes(member.id)) {
+      let salonAvatar = (salonRecord && salonRecord.avatar_url) ? salonRecord.avatar_url : '/img/icon-192.webp';
+      if (salonAvatar.endsWith('.webp')) {
+        const candidatePng = salonAvatar.replace(/\.webp$/, '.png');
+        const localCandidate = path.join(uploadsDir, path.basename(candidatePng));
+        if (fs.existsSync(localCandidate)) {
+          salonAvatar = candidatePng;
+        }
+      }
+      const origin = process.env.APP_URL || 'https://chat.digiroys.com';
+      const absoluteSalonIcon = new URL(salonAvatar, origin).href + '?v=' + Date.now();
+
       pushService.sendNotificationToUser(member.id, {
         title: salonTitle,
         body: `${senderName}: ${pushBody}`,
-        icon: (salonRecord && salonRecord.avatar_url) ? salonRecord.avatar_url : '/img/icon-192.webp',
-        badge: '/img/badge-72.webp',
+        icon: absoluteSalonIcon,
+        badge: `${origin}/img/badge-72.webp`,
         tag: `salon-${salonId}`,
         data: {
           url: `/?salon=${salonId}&msg=${messageRecord.id}`,

@@ -342,8 +342,8 @@ self.addEventListener('push', (event) => {
 
     const options = {
       body: finalBody,
-      icon: data.icon || '/img/icon-192.webp',
-      badge: data.badge || '/img/badge-72.webp',
+      icon: new URL(data.icon || '/img/icon-192.webp', self.location.origin).href,
+      badge: new URL(data.badge || '/img/badge-72.webp', self.location.origin).href,
       vibrate: isCall
         ? [800, 400, 800, 400, 800, 400, 800, 400, 1000]
         : (isAnnouncement ? [300, 150, 300] : [100, 50, 100]), // Modern double haptic tap
