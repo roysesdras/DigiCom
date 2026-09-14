@@ -835,9 +835,22 @@ body {
   box-shadow: none;
 }
 
-#active-contact-status-dot,
-#active-contact-status {
+#active-contact-status-dot {
   display: none !important;
+}
+
+#active-contact-status:empty {
+  display: none !important;
+}
+
+#active-contact-status:not(:empty) {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: var(--emerald-light, #10b981);
+  animation: fadeIn 0.2s ease;
+  line-height: 1.2;
 }
 
 /* Support SOS Context Header Bar (Option A) */
@@ -1692,6 +1705,92 @@ body {
     transform: scale(1.25);
     opacity: 1;
   }
+}
+
+/* Voice Recording Indicator & Animated Pulsing Mic */
+.typing-recording-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  background: var(--bg-input);
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  width: fit-content;
+  animation: fadeInVoiceIndicator 0.2s ease;
+}
+
+@keyframes fadeInVoiceIndicator {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.recording-pulse-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--emerald-light, #10b981);
+  animation: pulseRecordingMic 1.2s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+.typing-recording-text {
+  font-size: 0.78rem;
+  color: var(--emerald-light, #10b981);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@keyframes pulseRecordingMic {
+  0% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
+  }
+  70% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.active-contact-recording-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--emerald-light, #10b981);
+  font-weight: 500;
+  font-size: 0.76rem;
+}
+
+.active-contact-typing-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--emerald-light, #10b981);
+  font-size: 0.76rem;
+}
+
+.rec-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  animation: pulseRedDot 1s infinite alternate;
+  flex-shrink: 0;
+}
+
+@keyframes pulseRedDot {
+  from { opacity: 0.4; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.25); }
 }
 
 /* Message Row Entrance Animation & Tactile Responsiveness */

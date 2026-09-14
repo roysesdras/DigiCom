@@ -721,6 +721,21 @@
     });
 
     // Voice Recorder Handler
+    let recTypingInterval = null;
+
+    function emitWidgetVoiceSignal(isRec) {
+      if (socket) {
+        socket.emit('typing', {
+          channel: 'support',
+          senderId: config.trainerId,
+          senderName: config.trainerName,
+          isTyping: isRec,
+          isRecordingVoice: isRec,
+          action: isRec ? 'recording_voice' : 'stop'
+        });
+      }
+    }
+
     micBtn.addEventListener('click', async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -734,6 +749,11 @@
         mediaRecorder.start();
         recordingSeconds = 0;
         recTimer.textContent = '00:00';
+
+        // Emit voice recording signal immediately and periodically
+        emitWidgetVoiceSignal(true);
+        if (recTypingInterval) clearInterval(recTypingInterval);
+        recTypingInterval = setInterval(() => emitWidgetVoiceSignal(true), 1500);
 
         recordingTimer = setInterval(() => {
           recordingSeconds++;
@@ -752,6 +772,11 @@
     });
 
     function resetVoiceUI() {
+      if (recTypingInterval) {
+        clearInterval(recTypingInterval);
+        recTypingInterval = null;
+      }
+      emitWidgetVoiceSignal(false);
       if (recordingTimer) clearInterval(recordingTimer);
       voiceBanner.style.display = 'none';
       textarea.style.display = 'block';
@@ -794,7 +819,7 @@
             const msgPayload = {
               type: 'audio',
               url: data.url,
-              text: '🎤 Note vocale'
+              text: 'Note vocale'
             };
             sendSOS(JSON.stringify(msgPayload));
           }
@@ -912,12 +937,20 @@
         });
       });
 
-      // Listen for Typing indicator from Admin
+      // Listen for Typing & Voice recording indicator from Admin
       socket.on('typing', (data) => {
         const bar = document.getElementById('rebonly-typing-bar');
         if (bar) {
+          if (data.isTyping === false || data.action === 'stop') {
+            bar.style.display = 'none';
+            return;
+          }
           bar.style.display = 'block';
-          bar.textContent = `${data.senderName || 'Le support'} est en train d'écrire...`;
+          if (data.isRecordingVoice || data.action === 'recording_voice') {
+            bar.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#ef4444;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg> <strong>${data.senderName || 'Le support'}</strong> enregistre un vocal...</span>`;
+          } else {
+            bar.textContent = `${data.senderName || 'Le support'} est en train d'écrire...`;
+          }
           clearTimeout(window.rebonlyTypingTimeout);
           window.rebonlyTypingTimeout = setTimeout(() => {
             bar.style.display = 'none';

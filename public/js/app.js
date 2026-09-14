@@ -52,9 +52,101 @@ let voiceRecorder = {
   audioChunks: [],
   startTime: null,
   timerInterval: null,
+  signalInterval: null,
   stream: null,
   isRecording: false
 };
+
+// Helper: Emit voice recording / typing signal in real time
+function emitVoiceRecordingSignal(isRecording) {
+  if (!state.socket || !state.user) return;
+  const action = isRecording ? 'recording_voice' : 'stop';
+  const isTyping = isRecording;
+  const isRecordingVoice = isRecording;
+
+  if (state.activeContact) {
+    state.socket.emit('typing', {
+      channel: 'private',
+      senderId: state.user.id,
+      senderName: state.user.displayName || state.user.username,
+      receiverId: state.activeContact.id,
+      isTyping,
+      isRecordingVoice,
+      action
+    });
+  } else if (state.activeSalon) {
+    state.socket.emit('typing', {
+      channel: 'salon',
+      salonId: state.activeSalon.id,
+      senderId: state.user.id,
+      senderName: state.user.displayName || state.user.username,
+      isTyping,
+      isRecordingVoice,
+      action
+    });
+  } else if (state.activeTab === 'support' && state.activeSupportSession) {
+    state.socket.emit('typing', {
+      channel: 'support',
+      senderId: state.user.id,
+      senderName: state.user.displayName || 'Support DigiCom',
+      targetRoom: `support_${state.activeSupportSession}`,
+      isTyping,
+      isRecordingVoice,
+      action
+    });
+  }
+}
+
+// Helper: Update live preview in conversation sidebar card
+const activeCardTypingTimeouts = window.activeCardTypingTimeouts || {};
+window.activeCardTypingTimeouts = activeCardTypingTimeouts;
+
+function updateConversationCardTypingState(type, id, data) {
+  let card = null;
+  if (type === 'contact') {
+    card = document.querySelector(`.contact-card[data-user-id="${id}"]`);
+  } else if (type === 'salon') {
+    card = document.querySelector(`.salon-card[data-salon-id="${id}"]`);
+  }
+  if (!card) return;
+
+  const previewBox = card.querySelector('.contact-preview-box');
+  if (!previewBox) return;
+
+  const key = `${type}_${id}`;
+  if (!previewBox.dataset.originalHtml) {
+    previewBox.dataset.originalHtml = previewBox.innerHTML;
+  }
+
+  if (activeCardTypingTimeouts[key]) {
+    clearTimeout(activeCardTypingTimeouts[key]);
+    delete activeCardTypingTimeouts[key];
+  }
+
+  if (data.isTyping === false || data.action === 'stop') {
+    if (previewBox.dataset.originalHtml) {
+      previewBox.innerHTML = previewBox.dataset.originalHtml;
+      delete previewBox.dataset.originalHtml;
+    }
+    return;
+  }
+
+  if (data.isRecordingVoice || data.action === 'recording_voice') {
+    const namePrefix = (type === 'salon' && (data.userName || data.senderName)) ? `${escapeHtml(data.userName || data.senderName)}: ` : '';
+    previewBox.innerHTML = `<span style="color: #10b981; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg> ${namePrefix}enregistre un vocal...</span>`;
+  } else {
+    const namePrefix = (type === 'salon' && (data.userName || data.senderName)) ? `${escapeHtml(data.userName || data.senderName)}: ` : '';
+    previewBox.innerHTML = `<span style="color: #10b981; font-weight: 500;">${namePrefix}en train d'écrire...</span>`;
+  }
+
+  activeCardTypingTimeouts[key] = setTimeout(() => {
+    if (previewBox.dataset.originalHtml) {
+      previewBox.innerHTML = previewBox.dataset.originalHtml;
+      delete previewBox.dataset.originalHtml;
+    }
+    delete activeCardTypingTimeouts[key];
+  }, 2600);
+}
 
 // ---------------- EMOJIS & STICKERS DATA ----------------
 const EMOJI_CATEGORIES = [
@@ -1275,11 +1367,27 @@ function initSocket() {
 
   state.socket.on('salon_typing', (data) => {
     if (data && data.salonId && state.activeSalon && String(state.activeSalon.id) === String(data.salonId)) {
-      if (data.userId === state.user.id) return;
+      if (data.userId === state.user.id || data.senderId === state.user.id) return;
       const bar = document.getElementById('typing-indicator');
       if (bar) {
-        if (data.isTyping !== false) {
-          bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name">${escapeHtml(data.userName || data.senderName || 'Un membre')}</span><div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div>`;
+        if (data.isTyping !== false && data.action !== 'stop') {
+          const name = escapeHtml(data.userName || data.senderName || 'Un membre');
+          if (data.isRecordingVoice || data.action === 'recording_voice') {
+            bar.innerHTML = `
+              <div class="typing-recording-wrapper">
+                <span class="recording-pulse-mic">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                </span>
+                <span class="typing-recording-text"><strong>${name}</strong> enregistre une note vocale...</span>
+              </div>`;
+          } else {
+            bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name">${name}</span><div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div>`;
+          }
           clearTimeout(window.typingTimeout);
           window.typingTimeout = setTimeout(() => {
             if (bar) bar.innerHTML = '';
@@ -1289,15 +1397,40 @@ function initSocket() {
         }
       }
     }
+
+    // Live update in salon conversation card in sidebar
+    if (data && data.salonId) {
+      updateConversationCardTypingState('salon', data.salonId, data);
+    }
   });
 
-  // Typing indicator (Display at the bottom above composer only)
+  // Typing & Voice recording indicator (Direct chat & Support)
   state.socket.on('typing', (data) => {
     if (data.channel === 'support') {
       if (state.activeTab === 'support' && state.activeSupportSession === data.senderId) {
         const bar = document.getElementById('typing-indicator');
         if (bar) {
-          bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name" style="color: #f43f5e;">${escapeHtml(data.senderName || 'Le formateur')}</span><div class="typing-dots-bubble"><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span></div></div>`;
+          if (data.isTyping === false || data.action === 'stop') {
+            bar.innerHTML = '';
+            return;
+          }
+          const name = escapeHtml(data.senderName || 'Le formateur');
+          if (data.isRecordingVoice || data.action === 'recording_voice') {
+            bar.innerHTML = `
+              <div class="typing-recording-wrapper">
+                <span class="recording-pulse-mic" style="color: #f43f5e; background: rgba(244,63,94,0.15);">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                </span>
+                <span class="typing-recording-text" style="color: #f43f5e;"><strong>${name}</strong> enregistre une note vocale...</span>
+              </div>`;
+          } else {
+            bar.innerHTML = `<div class="typing-dots-wrapper"><span class="typing-dots-name" style="color: #f43f5e;">${name}</span><div class="typing-dots-bubble"><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span><span class="typing-dot" style="background: #f43f5e;"></span></div></div>`;
+          }
           clearTimeout(window.typingTimeout);
           window.typingTimeout = setTimeout(() => {
             if (bar) bar.innerHTML = '';
@@ -1309,15 +1442,63 @@ function initSocket() {
 
     if (state.activeContact && data.senderId === state.activeContact.id) {
       const bar = document.getElementById('typing-indicator');
+      const statusEl = document.getElementById('active-contact-status');
 
-      if (bar) {
-        bar.innerHTML = `<div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
-      }
-
-      clearTimeout(window.typingTimeout);
-      window.typingTimeout = setTimeout(() => {
+      if (data.isTyping === false || data.action === 'stop') {
         if (bar) bar.innerHTML = '';
-      }, 2500);
+        if (statusEl) {
+          statusEl.textContent = '';
+          statusEl.style.display = 'none';
+        }
+      } else if (data.isRecordingVoice || data.action === 'recording_voice') {
+        if (bar) {
+          bar.innerHTML = `
+            <div class="typing-recording-wrapper">
+              <span class="recording-pulse-mic">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                  <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+              </span>
+              <span class="typing-recording-text">enregistre une note vocale...</span>
+            </div>`;
+        }
+        if (statusEl) {
+          statusEl.innerHTML = `<span class="active-contact-recording-status"><span class="rec-status-dot"></span>enregistre un vocal...</span>`;
+          statusEl.style.display = 'inline-flex';
+        }
+        clearTimeout(window.typingTimeout);
+        window.typingTimeout = setTimeout(() => {
+          if (bar) bar.innerHTML = '';
+          if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.style.display = 'none';
+          }
+        }, 2500);
+      } else {
+        if (bar) {
+          bar.innerHTML = `<div class="typing-dots-bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
+        }
+        if (statusEl) {
+          statusEl.innerHTML = `<span class="active-contact-typing-status">en train d'écrire...</span>`;
+          statusEl.style.display = 'inline-flex';
+        }
+        clearTimeout(window.typingTimeout);
+        window.typingTimeout = setTimeout(() => {
+          if (bar) bar.innerHTML = '';
+          if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.style.display = 'none';
+          }
+        }, 2500);
+      }
+    }
+
+    // Live update in contact conversation card in sidebar
+    if (data && data.senderId) {
+      updateConversationCardTypingState('contact', data.senderId, data);
     }
   });
 
@@ -4289,6 +4470,18 @@ async function startVoiceRecording() {
     voiceRecorder.isRecording = true;
     voiceRecorder.startTime = Date.now();
 
+    // Signal interlocutor immediately that voice note is being recorded
+    emitVoiceRecordingSignal(true);
+    if (voiceRecorder.signalInterval) clearInterval(voiceRecorder.signalInterval);
+    voiceRecorder.signalInterval = setInterval(() => {
+      if (voiceRecorder.isRecording) {
+        emitVoiceRecordingSignal(true);
+      } else {
+        clearInterval(voiceRecorder.signalInterval);
+        voiceRecorder.signalInterval = null;
+      }
+    }, 1500);
+
     // UI Switches
     document.getElementById('normal-composer-pill').style.display = 'none';
     document.getElementById('voice-recording-panel').style.display = 'flex';
@@ -4309,6 +4502,11 @@ async function startVoiceRecording() {
 
 function cancelVoiceRecording() {
   releaseVoiceWakeLock();
+  if (voiceRecorder.signalInterval) {
+    clearInterval(voiceRecorder.signalInterval);
+    voiceRecorder.signalInterval = null;
+  }
+  emitVoiceRecordingSignal(false);
   if (voiceRecorder.isRecording) {
     clearInterval(voiceRecorder.timerInterval);
     voiceRecorder.isRecording = false;
@@ -4328,6 +4526,12 @@ function cancelVoiceRecording() {
 
 async function stopAndSendVoiceRecording() {
   if (!voiceRecorder.isRecording) return;
+
+  if (voiceRecorder.signalInterval) {
+    clearInterval(voiceRecorder.signalInterval);
+    voiceRecorder.signalInterval = null;
+  }
+  emitVoiceRecordingSignal(false);
 
   clearInterval(voiceRecorder.timerInterval);
   const durationSec = Math.max(1, Math.floor((Date.now() - voiceRecorder.startTime) / 1000));
@@ -4379,7 +4583,7 @@ async function stopAndSendVoiceRecording() {
           <line x1="2" y1="12" x2="6" y2="12"></line>
           <line x1="18" y1="12" x2="22" y2="12"></line>
         </svg>
-        <span>🎤 Envoi de la note vocale (${durationSec}s)...</span>
+        <span>Envoi de la note vocale (${durationSec}s)...</span>
       </div>
     `;
     feed.appendChild(tempBubble);

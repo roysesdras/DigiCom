@@ -4181,25 +4181,38 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Typing indicator
+  // Typing & Voice Recording indicators
   socket.on('typing', (data) => {
     if (data && data.receiverId) {
       io.to(`user_${data.receiverId}`).emit('typing', {
         senderId: currentUser ? currentUser.id : socket.userId,
-        senderName: currentUser ? (currentUser.displayName || currentUser.username) : 'Membre'
+        senderName: currentUser ? (currentUser.displayName || currentUser.username) : 'Membre',
+        isTyping: data.isTyping !== false,
+        isRecordingVoice: Boolean(data.isRecordingVoice),
+        action: data.action || (data.isRecordingVoice ? 'recording_voice' : (data.isTyping === false ? 'stop' : 'typing'))
       });
     } else if (data && data.salonId) {
       socket.to(`salon_${data.salonId}`).emit('salon_typing', {
         salonId: data.salonId,
         userId: currentUser ? currentUser.id : socket.userId,
         userName: currentUser ? (currentUser.displayName || currentUser.username) : 'Un membre',
-        isTyping: data.isTyping !== false
+        isTyping: data.isTyping !== false,
+        isRecordingVoice: Boolean(data.isRecordingVoice),
+        action: data.action || (data.isRecordingVoice ? 'recording_voice' : (data.isTyping === false ? 'stop' : 'typing'))
       });
-    } else if (data.channel === 'support') {
+    } else if (data && data.channel === 'support') {
+      const payload = {
+        senderName: data.senderName,
+        senderId: data.senderId,
+        channel: 'support',
+        isTyping: data.isTyping !== false,
+        isRecordingVoice: Boolean(data.isRecordingVoice),
+        action: data.action || (data.isRecordingVoice ? 'recording_voice' : (data.isTyping === false ? 'stop' : 'typing'))
+      };
       if (data.targetRoom) {
-        socket.to(data.targetRoom).emit('typing', { senderName: data.senderName, channel: 'support' });
+        socket.to(data.targetRoom).emit('typing', payload);
       } else {
-        socket.to('admin_room').emit('typing', { senderName: data.senderName, senderId: data.senderId, channel: 'support' });
+        socket.to('admin_room').emit('typing', payload);
       }
     }
   });
@@ -4210,7 +4223,9 @@ io.on('connection', (socket) => {
         salonId: data.salonId,
         userId: currentUser ? currentUser.id : socket.userId,
         userName: currentUser ? (currentUser.displayName || currentUser.username) : 'Un membre',
-        isTyping: data.isTyping !== false
+        isTyping: data.isTyping !== false,
+        isRecordingVoice: Boolean(data.isRecordingVoice),
+        action: data.action || (data.isRecordingVoice ? 'recording_voice' : (data.isTyping === false ? 'stop' : 'typing'))
       });
     }
   });
