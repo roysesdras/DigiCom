@@ -6819,16 +6819,15 @@ function createMessageRowElement(msg, isSos = false) {
     const escapedStatusLbl = escapeHtml(statusLbl);
 
     bodyHtml = `
-      <div class="chat-task-card task-card-${statusTheme}">
+      <div class="chat-task-card">
         <div class="task-card-header">
-          <div class="task-card-badge badge-${statusTheme}">
+          <div class="task-card-badge">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 11 12 14 22 4"></polyline>
               <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
             </svg>
             <span>${isCreated ? 'NOUVELLE TÂCHE' : 'MISE À JOUR DE TÂCHE'}</span>
           </div>
-          <span class="task-status-pill status-${statusTheme}">${escapedStatusLbl}</span>
         </div>
 
         <div class="task-card-body">
@@ -6837,10 +6836,10 @@ function createMessageRowElement(msg, isSos = false) {
             ${isCreated ? `
               <span class="task-detail-item">Créée par : <strong>${creator}</strong></span>
               <span class="task-detail-item">Assignée à : <strong>${assigned}</strong></span>
-              <span class="task-detail-item">Statut initial : <strong class="status-highlight status-${statusTheme}-text">${escapedStatusLbl}</strong></span>
+              <span class="task-detail-item">Statut initial : <strong class="status-${statusTheme}-text">${escapedStatusLbl}</strong></span>
             ` : `
               <span class="task-detail-item">Modifiée par : <strong>${creator}</strong></span>
-              <span class="task-detail-item">Nouveau statut : <strong class="status-highlight status-${statusTheme}-text">${escapedStatusLbl}</strong></span>
+              <span class="task-detail-item">Nouveau statut : <strong class="status-${statusTheme}-text">${escapedStatusLbl}</strong></span>
             `}
           </div>
         </div>
@@ -10735,16 +10734,9 @@ function renderKanbanBoard(tasks) {
 
   const renderCards = (items, currentStatus) => {
     if (items.length === 0) return '<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:1rem;">Aucune tâche</div>';
-    const statusLabels = { todo: 'À faire', in_progress: 'En cours', done: 'Terminé' };
-    const statusTheme = (currentStatus === 'in_progress') ? 'in_progress' : (currentStatus === 'done' ? 'done' : 'todo');
-    const label = statusLabels[currentStatus] || currentStatus;
-
     return items.map(t => `
-      <div class="kanban-card kanban-card-${statusTheme}">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
-          <span class="kanban-card-title">${escapeHtml(t.title)}</span>
-          <span class="task-status-pill status-${statusTheme}">${label}</span>
-        </div>
+      <div class="kanban-card">
+        <span class="kanban-card-title">${escapeHtml(t.title)}</span>
         ${t.description ? `<span style="font-size:0.78rem; color:var(--text-muted);">${escapeHtml(t.description)}</span>` : ''}
         <div class="kanban-card-meta">
           <span>${t.assigned_name ? `Assigné: ${escapeHtml(t.assigned_name)}` : 'Non assigné'}</span>
