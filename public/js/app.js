@@ -1466,7 +1466,7 @@ function initSocket() {
             </div>`;
         }
         if (statusEl) {
-          statusEl.innerHTML = `<span class="active-contact-recording-status"><span class="rec-status-dot"></span>enregistre un vocal...</span>`;
+          statusEl.innerHTML = `<span class="active-contact-recording-status">Enr. vocal</span>`;
           statusEl.style.display = 'inline-flex';
         }
         clearTimeout(window.typingTimeout);
@@ -6105,12 +6105,21 @@ function selectContact(contact) {
 function updateActiveContactStatus() {
   const dotEl = document.getElementById('active-contact-status-dot');
   const statusEl = document.getElementById('active-contact-status');
-  if (!dotEl || !state.activeContact) return;
+  if (!dotEl) return;
 
-  const isOnline = state.onlineUserIds.includes(state.activeContact.id);
+  if (!state.activeContact) {
+    dotEl.className = 'status-dot-overlay offline';
+    if (statusEl) {
+      statusEl.textContent = '';
+      statusEl.style.display = 'none';
+    }
+    return;
+  }
+
+  const isOnline = Boolean(state.onlineUserIds && state.onlineUserIds.includes(state.activeContact.id));
   dotEl.className = `status-dot-overlay ${isOnline ? 'online' : 'offline'}`;
   dotEl.removeAttribute('title');
-  if (statusEl && state.activeContact) {
+  if (statusEl && state.activeContact && !statusEl.dataset.isTyping) {
     statusEl.textContent = '';
     statusEl.style.display = 'none';
   }
@@ -8980,7 +8989,7 @@ async function selectSalon(salon) {
   }
   const statusDot = document.getElementById('active-contact-status-dot');
   if (statusDot) {
-    statusDot.className = 'status-dot-overlay online';
+    statusDot.className = 'status-dot-overlay offline';
     statusDot.removeAttribute('title');
   }
 

@@ -836,6 +836,26 @@ body {
 }
 
 #active-contact-status-dot {
+  display: none;
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #111b21;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  z-index: 2;
+}
+
+#active-contact-status-dot.online {
+  display: block !important;
+  background: #00a884;
+  box-shadow: 0 0 8px rgba(0, 168, 132, 0.7);
+  animation: pulseGlow 2s infinite;
+}
+
+#active-contact-status-dot.offline {
   display: none !important;
 }
 
